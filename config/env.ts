@@ -9,8 +9,8 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const envFile = `.env.${nodeEnv}`;
-const envPath = path.resolve(__dirname, "../../backend", envFile);
-const fallbackPath = path.resolve(__dirname, "../../backend/.env");
+const envPath = path.resolve(__dirname, "..", envFile);
+const fallbackPath = path.resolve(__dirname, "../.env");
 
 // Try environment-specific file first, fall back to .env
 dotenv.config({ path: envPath });

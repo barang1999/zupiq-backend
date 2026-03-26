@@ -1,0 +1,1064 @@
+import { GoogleGenAI, Content, Part } from "@google/genai";
+import { env } from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
+
+// ─── Client ───────────────────────────────────────────────────────────────────
+
+let _client: GoogleGenAI | null = null;
+
+function getClient(): GoogleGenAI {
+  if (!_client) {
+    if (!env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
+    }
+    _client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  }
+  return _client;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  role: "user" | "model";
+  content: string;
+}
+
+export interface AIRequestOptions {
+  subject?: string;
+  educationLevel?: string;
+  language?: string;
+  grade?: string;
+}
+
+export interface ImagePart {
+  data: string; // base64
+  mimeType: string;
+}
+
+// ─── Language code → full name map ────────────────────────────────────────────
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  fr: "French",
+  es: "Spanish",
+  ar: "Arabic",
+  zh: "Chinese (Simplified)",
+  hi: "Hindi",
+  pt: "Portuguese",
+  de: "German",
+  ja: "Japanese",
+  ko: "Korean",
+  km: "Khmer",
+};
+
+// ─── System prompt builder ────────────────────────────────────────────────────
+
+function buildSystemInstruction(options: AIRequestOptions): string {
+  const { subject, educationLevel, language, grade } = options;
+
+  const langName = LANGUAGE_NAMES[language ?? "en"] ?? "English";
+  const langInstruction = langName !== "English"
+    ? `IMPORTANT: You MUST respond entirely in ${langName}. Every word of your response — explanations, labels, and descriptions — must be written in ${langName}. Mathematical expressions and formulas should remain in standard universal notation.`
+    : "Respond in English.";
+
+  const levelInfo = grade
+    ? `The student is in grade ${grade} (${educationLevel ?? "high school"} level).`
+    : `The student is at ${educationLevel ?? "high school"} level.`;
+
+  const subjectInfo = subject
+    ? `You are a specialized tutor for ${subject}.`
+    : "You are a general science and math tutor.";
+
+  return `You are Zupiq, an expert AI tutor. ${subjectInfo}
+${levelInfo}
+${langInstruction}
+
+Guidelines:
+- Explain concepts clearly with step-by-step reasoning.
+- Use examples relevant to the student's level.
+- For math/physics problems, show full working and explain each step.
+- If a student seems stuck, offer a hint before giving the full answer.
+- Encourage curiosity and critical thinking.
+- Keep answers focused and avoid unnecessary verbosity.
+
+Math formatting rules (CRITICAL — always follow these):
+- Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
+- NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.
+- If you need to label a variable in the local language, write it as plain text OUTSIDE the math block. Example: "$A = l \\times w$ (ដែល $A$ គឺជាក្រឡា, $l$ គឺជាប្រវែង, $w$ គឺជាទទឹង)"
+- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.`;
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+export async function chat(
+  messages: ChatMessage[],
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const client = getClient();
+
+  const history: Content[] = messages.slice(0, -1).map((m) => ({
+    role: m.role,
+    parts: [{ text: m.content }],
+  }));
+
+  const lastMessage = messages[messages.length - 1];
+
+  const chatSession = client.chats.create({
+    model: env.GEMINI_MODEL,
+    config: {
+      systemInstruction: buildSystemInstruction(options),
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+    },
+    history,
+  });
+
+  const response = await chatSession.sendMessage({ message: lastMessage.content });
+  return response.text ?? "";
+}
+
+// ─── Explain a concept ────────────────────────────────────────────────────────
+
+export async function explainConcept(
+  concept: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const prompt = `Explain the following concept clearly and concisely: "${concept}"
+
+  Structure your response with:
+  1. A simple definition
+  2. Key points / formula (if applicable)
+  3. A practical example
+  4. A common misconception to avoid`;
+
+  return generateText(prompt, options);
+}
+
+// ─── Solve a problem ─────────────────────────────────────────────────────────
+
+export async function solveProblem(
+  problem: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const prompt = `Solve the following problem step by step: "${problem}"
+
+  Show all working clearly. After solving, briefly explain the key concept used.`;
+
+  return generateText(prompt, options);
+}
+
+// ─── Give a hint ──────────────────────────────────────────────────────────────
+
+export async function giveHint(
+  problem: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const prompt = `Give me a helpful hint (NOT the full solution) for this problem: "${problem}"
+
+  The hint should guide the student toward the approach without giving away the answer.`;
+
+  return generateText(prompt, options);
+}
+
+// ─── Summarize content ────────────────────────────────────────────────────────
+
+export async function summarizeContent(
+  content: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const prompt = `Summarize the following educational content into key points:
+
+${content}
+
+Format as:
+- Main topic
+- Key concepts (bullet points)
+- Important formulas or rules (if any)
+- Summary paragraph`;
+
+  return generateText(prompt, options);
+}
+
+// ─── Breakdown a problem into a neural tree ───────────────────────────────────
+
+export interface BreakdownNode {
+  id: string;
+  type: 'root' | 'branch' | 'leaf';
+  label: string;
+  description: string;
+  mathContent?: string;
+  parentId?: string;
+  tags?: string[];
+}
+
+export interface ProblemBreakdown {
+  title: string;
+  subject: string;
+  nodes: BreakdownNode[];
+  insights: {
+    simpleBreakdown: string;
+    keyFormula: string;
+  };
+}
+
+interface JsonGenerationConfig<T> {
+  prompt: string;
+  options: AIRequestOptions;
+  temperature: number;
+  maxOutputTokens: number;
+  taskName: string;
+  maxAttempts?: number;
+  recoverFromRaw?: (raw: string) => T | null;
+}
+
+type StructuredJsonSource = "parsed" | "recovered" | "none";
+
+export async function breakdownProblem(
+  problem: string,
+  options: AIRequestOptions = {}
+): Promise<ProblemBreakdown> {
+  const prompt = `Analyze and break down the following problem into a detailed step-by-step neural concept tree: "${problem}"
+
+Return ONLY valid JSON with no markdown, no code blocks, no explanation outside the JSON. Use this exact structure:
+{
+  "title": "short descriptive title (4-6 words)",
+  "subject": "subject area (e.g. Calculus, Physics, Literature, Algebra)",
+  "nodes": [
+    {
+      "id": "root",
+      "type": "root",
+      "label": "the exact equation or problem statement as given",
+      "description": "one sentence describing the overall problem",
+      "mathContent": "the original problem or equation, formatted clearly",
+      "tags": ["SUBJECT TAG", "TYPE TAG"]
+    },
+    {
+      "id": "branch1",
+      "type": "branch",
+      "label": "Step name (3-5 words)",
+      "description": "Step 01: one-line description of what this step does",
+      "mathContent": "the actual equation or expression after applying this step (e.g. '3x - 2x = 17 - 5')",
+      "parentId": "root"
+    },
+    {
+      "id": "branch2",
+      "type": "branch",
+      "label": "Step name (3-5 words)",
+      "description": "Step 02: one-line description",
+      "mathContent": "the equation after this step (e.g. 'x = 12')",
+      "parentId": "root"
+    },
+    {
+      "id": "leaf1",
+      "type": "leaf",
+      "label": "Underlying rule or concept name",
+      "description": "brief note on why this rule applies",
+      "mathContent": "the formula or rule (e.g. 'aⁿ · aᵐ = aⁿ⁺ᵐ')",
+      "parentId": "branch1"
+    }
+  ],
+  "insights": {
+    "simpleBreakdown": "2-3 sentence plain English explanation of the overall approach",
+    "keyFormula": "the single most important formula or rule used"
+  }
+}
+
+Important rules:
+- 1 root node (the original problem)
+- 2-4 branch nodes (one per meaningful solving step — include ALL necessary steps)
+- 1-3 leaf nodes (underlying concepts/rules that make the steps work)
+- mathContent MUST contain actual math notation for every node, not empty strings
+- Keep labels concise; put the math in mathContent
+- CRITICAL JSON ESCAPING: any backslash in LaTeX must be escaped for JSON (write \\\\circ, \\\\times, \\\\frac, not \\circ, \\times, \\frac)`;
+
+  const { data, raw } = await generateStructuredJson<ProblemBreakdown>({
+    prompt,
+    options,
+    temperature: 0.2,
+    maxOutputTokens: 8192,
+    taskName: "breakdownProblem",
+    maxAttempts: 3,
+  });
+
+  if (data) return data;
+  return buildFallbackBreakdown(problem, options.subject ?? "General", raw, options.language);
+}
+
+// ─── Expand a single node into sub-steps ──────────────────────────────────────
+
+export async function expandNode(
+  nodeLabel: string,
+  nodeMathContent: string,
+  parentProblem: string,
+  options: AIRequestOptions = {}
+): Promise<Omit<BreakdownNode, 'parentId'>[]> {
+  const prompt = `A student is solving this problem: "${parentProblem}"
+
+They are stuck on this specific step: "${nodeLabel}" (${nodeMathContent})
+
+Break THIS STEP into 2-3 smaller, simpler sub-steps that are easier to understand. Each sub-step should be more granular than the parent.
+
+Return ONLY a valid JSON array (no markdown, no code blocks):
+[
+  {
+    "id": "sub_1",
+    "type": "branch",
+    "label": "Sub-step name (3-5 words)",
+    "description": "Simple one-line explanation of what this sub-step does",
+    "mathContent": "the actual math expression or transformation for this sub-step"
+  },
+  {
+    "id": "sub_2",
+    "type": "branch",
+    "label": "Sub-step name",
+    "description": "Simple one-line explanation",
+    "mathContent": "actual math expression"
+  }
+]
+
+Rules:
+- 2-3 sub-steps only
+- Each must be simpler and more specific than the parent step
+- mathContent must have real math notation, not empty
+- Labels must be short (3-5 words)`;
+
+  const { data } = await generateStructuredJson<Omit<BreakdownNode, "parentId">[]>({
+    prompt,
+    options,
+    temperature: 0.2,
+    maxOutputTokens: 4096,
+    taskName: "expandNode",
+    maxAttempts: 2,
+  });
+
+  return Array.isArray(data) ? data : [];
+}
+
+// ─── Analyze image ────────────────────────────────────────────────────────────
+
+export async function analyzeImage(
+  imagePart: ImagePart,
+  userQuestion: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const client = getClient();
+
+  const parts: Part[] = [
+    {
+      inlineData: {
+        data: imagePart.data,
+        mimeType: imagePart.mimeType,
+      },
+    },
+    { text: userQuestion || "Please analyze this image and explain what you see from an educational perspective." },
+  ];
+
+  try {
+    const response = await client.models.generateContent({
+      model: env.GEMINI_MODEL,
+      config: {
+        systemInstruction: buildSystemInstruction(options),
+        temperature: 0.5,
+      },
+      contents: [{ role: "user", parts }],
+    });
+
+    return response.text ?? "";
+  } catch (err) {
+    logger.error("Gemini image analysis error:", err);
+    throw err;
+  }
+}
+
+// ─── Node insight (per-selected-node breakdown) ───────────────────────────────
+
+export interface NodeInsight {
+  simpleBreakdown: string;
+  keyFormula: string;
+}
+
+export async function getNodeInsight(
+  nodeLabel: string,
+  nodeDescription: string,
+  nodeMathContent: string,
+  subject: string,
+  options: AIRequestOptions = {},
+  level: string = 'standard'
+): Promise<NodeInsight> {
+  const isKidLevel = level === '5-year-old';
+  logger.info("[getNodeInsight] start", {
+    level,
+    subject,
+    language: options.language ?? "en",
+    nodeLabelLength: nodeLabel.length,
+    nodeDescriptionLength: nodeDescription.length,
+    nodeMathLength: (nodeMathContent || nodeLabel).length,
+  });
+
+  // Kid-mode is plain-text only for robustness (structured JSON frequently truncates).
+  if (isKidLevel) {
+    const kidText = await generateFallbackNodeInsightText(
+      nodeLabel,
+      nodeDescription,
+      nodeMathContent,
+      subject,
+      options,
+      true,
+      6
+    );
+    const normalizedKid = normalizeSimpleBreakdown(kidText);
+    const acceptedKid = isInsightTextSufficient(normalizedKid, true) ? normalizedKid : "";
+    const deterministicKid = buildDeterministicKidExplanation(
+      nodeLabel,
+      nodeDescription,
+      nodeMathContent,
+      options.language
+    );
+    if (!acceptedKid) {
+      logger.warn("[getNodeInsight] kid result rejected (too short)", {
+        rawLength: kidText.length,
+        normalizedLength: normalizedKid.length,
+        deterministicLength: deterministicKid.length,
+        preview: debugPreview(normalizedKid || kidText),
+      });
+    }
+    const finalKidText = acceptedKid || deterministicKid;
+    logger.info("[getNodeInsight] kid result", {
+      source: acceptedKid ? "fallback-text" : "deterministic-fallback",
+      rawLength: kidText.length,
+      normalizedLength: normalizedKid.length,
+      acceptedLength: acceptedKid.length,
+      finalLength: finalKidText.length,
+      preview: debugPreview(finalKidText || normalizedKid || kidText),
+    });
+    return {
+      simpleBreakdown: finalKidText,
+      keyFormula: "",
+    };
+  }
+
+  const simpleBreakdownInstruction = isKidLevel
+    ? `Write 2-3 short, fun sentences explaining this step as if talking to a 5-year-old child. Use a simple everyday analogy (toys, food, animals). NO math jargon. NO markdown. NO bullet points. Plain sentences only.`
+    : `Write 2-3 clear sentences explaining what this step does and why it matters. Plain text only. NO markdown, NO bullet points, NO bold or italic formatting.`;
+
+  const prompt = `Explain a single problem-solving step in a JSON response.
+
+Step: "${nodeLabel}"
+Description: "${nodeDescription}"
+Math expression: "${nodeMathContent || nodeLabel}"
+Subject: "${subject}"
+
+Rules:
+- simpleBreakdown must be plain text only — no markdown, no bullet points, no asterisks, no bold, no headers.
+- simpleBreakdown must be ${isKidLevel ? "2-3 short sentences (max ~320 characters)." : "at most 2 short sentences (max ~220 characters)."}
+- keyFormula must be a SHORT valid LaTeX expression only (no text, no explanation). Empty string if none.
+- CRITICAL JSON ESCAPING: if keyFormula includes backslashes, they must be JSON-escaped (e.g. \\\\frac{a}{b}, not \\frac{a}{b}).
+
+Return ONLY this JSON:
+{
+  "simpleBreakdown": "${simpleBreakdownInstruction}",
+  "keyFormula": "LaTeX expression only, or empty string"
+}`;
+
+  const { data, source } = await generateStructuredJson<NodeInsight>({
+    prompt,
+    options,
+    temperature: isKidLevel ? 0.5 : 0.2,
+    maxOutputTokens: isKidLevel ? 700 : 512,
+    taskName: "getNodeInsight",
+    maxAttempts: 3,
+    recoverFromRaw: (raw) => recoverNodeInsightFromPartialJson(raw),
+  });
+
+  if (data) {
+    const cleaned = normalizeSimpleBreakdown(data.simpleBreakdown ?? "");
+    if (isInsightTextSufficient(cleaned, false)) {
+      logger.info("[getNodeInsight] standard result", {
+        source,
+        simpleBreakdownLength: cleaned.length,
+        keyFormulaLength: (data.keyFormula ?? "").length,
+        preview: debugPreview(cleaned),
+      });
+      return {
+        simpleBreakdown: cleaned,
+        keyFormula: normalizeKeyFormula(data.keyFormula ?? ""),
+      };
+    }
+    logger.warn("[getNodeInsight] discarded short cleaned simpleBreakdown", {
+      source,
+      rawLength: (data.simpleBreakdown ?? "").length,
+      cleanedLength: cleaned.length,
+      preview: debugPreview(data.simpleBreakdown ?? ""),
+    });
+  }
+  const rescuedText = await generateFallbackNodeInsightText(
+    nodeLabel,
+    nodeDescription,
+    nodeMathContent,
+    subject,
+    options,
+    false
+  );
+  const normalizedRescued = normalizeSimpleBreakdown(rescuedText);
+  const acceptedRescued = isInsightTextSufficient(normalizedRescued, false) ? normalizedRescued : "";
+  logger.info("[getNodeInsight] fallback result", {
+    source: "fallback-text",
+    rawLength: rescuedText.length,
+    normalizedLength: normalizedRescued.length,
+    acceptedLength: acceptedRescued.length,
+    preview: debugPreview(acceptedRescued || normalizedRescued || rescuedText),
+  });
+  return {
+    simpleBreakdown: acceptedRescued || nodeDescription || nodeLabel,
+    keyFormula: normalizeKeyFormula(nodeMathContent || ""),
+  };
+}
+
+// ─── Internal helper ──────────────────────────────────────────────────────────
+
+function stripCodeFence(text: string): string {
+  return text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .replace(/^\uFEFF/, "")
+    .trim();
+}
+
+function extractFirstJsonValue(text: string): string | null {
+  const start = text.search(/[{\[]/);
+  if (start < 0) return null;
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      const top = stack[stack.length - 1];
+      if ((ch === "}" && top === "{") || (ch === "]" && top === "[")) {
+        stack.pop();
+        if (stack.length === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function parseJsonLoose<T>(raw: string): T | null {
+  const stripped = stripCodeFence(raw).replace(/\u0000/g, "").trim();
+  if (!stripped) return null;
+
+  const extracted = extractFirstJsonValue(stripped);
+  const candidates = [stripped, extracted]
+    .filter((v): v is string => Boolean(v))
+    .map((v) => v.replace(/,\s*([}\]])/g, "$1").replace(/\u2028|\u2029/g, " "));
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      // Try repairs for common model JSON issues (invalid backslash escapes in LaTeX, control chars).
+      const repaired = repairCommonJsonIssues(candidate);
+      try {
+        return JSON.parse(repaired) as T;
+      } catch {
+        // Try next candidate
+      }
+    }
+  }
+  return null;
+}
+
+function repairCommonJsonIssues(input: string): string {
+  return escapeInvalidBackslashesInsideJsonStrings(
+    input.replace(/[\u0000-\u001F]/g, (ch) => {
+      if (ch === "\n" || ch === "\r" || ch === "\t") return ch;
+      return " ";
+    })
+  );
+}
+
+function escapeInvalidBackslashesInsideJsonStrings(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (!inString) {
+      out += ch;
+      if (ch === "\"") inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      const next = input[i + 1];
+      const validEscape =
+        next === "\"" ||
+        next === "\\" ||
+        next === "/" ||
+        next === "b" ||
+        next === "f" ||
+        next === "n" ||
+        next === "r" ||
+        next === "t" ||
+        next === "u";
+
+      if (validEscape) {
+        out += ch;
+        escaped = true;
+      } else {
+        // JSON requires escaping unknown backslashes, common with LaTeX: \circ, \times, \frac...
+        out += "\\\\";
+      }
+      continue;
+    }
+
+    out += ch;
+    if (ch === "\"") inString = false;
+  }
+
+  return out;
+}
+
+function recoverNodeInsightFromPartialJson(raw: string): NodeInsight | null {
+  const simpleBreakdown = normalizeSimpleBreakdown(extractJsonStringFieldLoose(raw, "simpleBreakdown") ?? "");
+  if (!simpleBreakdown) return null;
+
+  const keyFormula = (extractJsonStringFieldLoose(raw, "keyFormula") ?? "").trim();
+  return { simpleBreakdown, keyFormula };
+}
+
+async function generateFallbackNodeInsightText(
+  nodeLabel: string,
+  nodeDescription: string,
+  nodeMathContent: string,
+  subject: string,
+  options: AIRequestOptions = {},
+  isKidLevel: boolean = false,
+  maxAttempts: number = 2
+): Promise<string> {
+  const client = getClient();
+  let bestCandidate = "";
+  let bestScore = -1;
+
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+    const prompt = `Explain this single step in plain text only.
+
+Step: "${nodeLabel}"
+Description: "${nodeDescription}"
+Math expression: "${nodeMathContent || nodeLabel}"
+Subject: "${subject}"
+
+Rules:
+- ${isKidLevel
+  ? "Write a detailed explanation for a 5-year-old in 5-8 short sentences. Use one simple everyday analogy and keep the language very easy."
+  : "Keep it concise (about 2 short sentences)."}
+- Must be ${isKidLevel ? "at least 4 complete sentences and at least 160 characters." : "at least 1 complete sentence and at least 40 characters."}
+- No JSON, no markdown, no bullet points.
+- Keep it clear and student-friendly.
+- ${isKidLevel ? "Use playful simple words suitable for a 5-year-old." : "Keep a clear tutoring tone."}
+${attempt > 1 ? "- Previous output was too short; give a complete explanation now." : ""}`;
+
+    try {
+      const response = await client.models.generateContent({
+        model: env.GEMINI_MODEL,
+        config: {
+          systemInstruction: buildSystemInstruction(options),
+          temperature: isKidLevel ? 0.4 : 0.2,
+          maxOutputTokens: isKidLevel ? 8192 : 220,
+        },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+      const cleaned = normalizeSimpleBreakdown(response.text ?? "");
+      const finishReason = extractFinishReason(response);
+      const complete = looksLikeCompleteEnding(cleaned);
+      const sufficient = isInsightTextSufficient(cleaned, isKidLevel);
+      const score = scoreInsightCandidate(cleaned, isKidLevel, complete, finishReason);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = cleaned;
+      }
+      logger.info("[getNodeInsight] fallback text attempt", {
+        attempt,
+        maxAttempts,
+        rawLength: (response.text ?? "").length,
+        cleanedLength: cleaned.length,
+        sentenceCount: countSentenceLikeChunks(cleaned),
+        score,
+        sufficient,
+        complete,
+        finishReason,
+        preview: debugPreview(response.text ?? ""),
+      });
+      // For kid-mode, if generation hit max tokens and text appears unfinished, retry.
+      if (isKidLevel && sufficient && finishReason === "MAX_TOKENS" && !complete) {
+        continue;
+      }
+      if (sufficient) return cleaned;
+    } catch {
+      logger.warn("[getNodeInsight] fallback text attempt failed", { attempt, maxAttempts });
+      // Try next attempt
+    }
+  }
+
+  return bestCandidate;
+}
+
+function normalizeSimpleBreakdown(input: string): string {
+  const cleaned = stripCodeFence(input)
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "";
+  // Drop tiny/partial fragments (e.g. "ស្រម") produced by truncated JSON recovery.
+  if (cleaned.length < 24) return "";
+  return cleaned;
+}
+
+function isInsightTextSufficient(text: string, isKidLevel: boolean): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+
+  const minLen = isKidLevel ? 100 : 40;
+  if (t.length < minLen) return false;
+
+  const sentenceCount = countSentenceLikeChunks(t);
+  if (isKidLevel) {
+    return sentenceCount >= 3 || t.length >= 180;
+  }
+
+  const wordCount = t.split(/\s+/).filter(Boolean).length;
+  const minWords = 6;
+  if (wordCount < minWords) return false;
+
+  return true;
+}
+
+function scoreInsightCandidate(
+  text: string,
+  isKidLevel: boolean,
+  complete: boolean = true,
+  finishReason: string = ""
+): number {
+  const t = (text ?? "").trim();
+  if (!t) return -1;
+  const sentenceCount = countSentenceLikeChunks(t);
+  let score = isKidLevel ? t.length + sentenceCount * 80 : t.length + sentenceCount * 20;
+  if (!complete) score -= 120;
+  if (isKidLevel && finishReason === "MAX_TOKENS") score -= 80;
+  return score;
+}
+
+function countSentenceLikeChunks(text: string): number {
+  return text
+    .split(/[.!?។]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .length;
+}
+
+function looksLikeCompleteEnding(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return /[.!?។៕]\s*$/.test(t);
+}
+
+function extractFinishReason(response: unknown): string {
+  const reason = (
+    response as { candidates?: Array<{ finishReason?: string | null }> }
+  ).candidates?.[0]?.finishReason;
+  return typeof reason === "string" ? reason.toUpperCase() : "";
+}
+
+function buildDeterministicKidExplanation(
+  nodeLabel: string,
+  nodeDescription: string,
+  nodeMathContent: string,
+  language?: string
+): string {
+  const isKhmer = (language ?? "").toLowerCase() === "km";
+  const label = normalizeSimpleBreakdown(nodeLabel) || (isKhmer ? "ជំហាននេះ" : "This step");
+  const description = normalizeSimpleBreakdown(nodeDescription);
+  const math = normalizeSimpleBreakdown(nodeMathContent);
+
+  if (isKhmer) {
+    const line4 = description
+      ? `គំនិតសំខាន់នៅទីនេះគឺ៖ ${description}។`
+      : "គន្លឹះគឺយើងធ្វើតាមលំដាប់តូចៗ មិនលោតជំហាន។";
+    const line5 = math
+      ? `បន្ទាត់គណនានេះ (${math}) គ្រាន់តែជាឧបករណ៍ជួយឲ្យយើងមើលឃើញចម្លើយបានច្បាស់។`
+      : "បន្ទាប់ពីយើងយល់ទិន្នន័យហើយ យើងគណនាបន្តតាមជំហាន។";
+    return `${label} គឺដូចជាការឡើងជណ្តើរមួយជំហានម្តង។ ដំបូង យើងមើលអ្វីដែលបានផ្តល់ឲ្យ ហើយសួរថាត្រូវរកអ្វី។ បន្ទាប់មក យើងយកព័ត៌មានត្រឹមត្រូវមកភ្ជាប់គ្នា ដូចជាភ្ជាប់ប្លុកលេង។ ${line4} ${line5} ចុងក្រោយ យើងពិនិត្យម្តងទៀតថាចម្លើយសមហេតុផល ហើយនោះជាវិធីសាមញ្ញដែលកុមារអាចយល់បាន។`;
+  }
+
+  const line4 = description
+    ? `The key idea here is: ${description}.`
+    : "The key idea is to do one small action at a time and not skip steps.";
+  const line5 = math
+    ? `This math line (${math}) is just a tool to help us see the answer clearly.`
+    : "After we understand the given facts, we keep calculating step by step.";
+  return `${label} is like climbing a ladder one step at a time. First, we look at what we already know and what we are trying to find. Next, we connect those pieces carefully, like building with toy blocks. ${line4} ${line5} At the end, we check the answer one more time to make sure it makes sense.`;
+}
+
+function normalizeKeyFormula(input: string): string {
+  const value = input.trim();
+  if (!value) return "";
+  const unwrapped = value.startsWith("$") && value.endsWith("$") && value.length > 2
+    ? value.slice(1, -1).trim()
+    : value;
+  return isLikelyCompactFormula(unwrapped) ? unwrapped : "";
+}
+
+function isLikelyCompactFormula(value: string): boolean {
+  if (value.length < 2 || value.length > 140) return false;
+  if (/[\u1780-\u17FF\u0600-\u06FF\u4E00-\u9FFF\u0900-\u097F]/.test(value)) return false;
+  return /[=+\-*/^_\\(){}\[\]0-9]/.test(value);
+}
+
+function extractJsonStringFieldLoose(raw: string, key: string): string | null {
+  const keyToken = `"${key}"`;
+  const keyPos = raw.indexOf(keyToken);
+  if (keyPos < 0) return null;
+
+  let i = keyPos + keyToken.length;
+  while (i < raw.length && /\s/.test(raw[i])) i++;
+  if (raw[i] !== ":") return null;
+  i++;
+  while (i < raw.length && /\s/.test(raw[i])) i++;
+  if (raw[i] !== "\"") return null;
+  i++;
+
+  let chunk = "";
+  let escaped = false;
+  for (; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escaped) {
+      chunk += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      chunk += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === "\"") {
+      break;
+    }
+    chunk += ch;
+  }
+
+  return decodeJsonStringLoose(chunk);
+}
+
+function decodeJsonStringLoose(chunk: string): string {
+  let normalized = chunk
+    .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+    .replace(/\\$/g, "\\\\");
+  try {
+    return JSON.parse(`"${normalized}"`) as string;
+  } catch {
+    // Best-effort fallback
+    normalized = normalized
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, "\"");
+    return normalized;
+  }
+}
+
+async function generateStructuredJson<T>(
+  config: JsonGenerationConfig<T>
+): Promise<{ data: T | null; raw: string; source: StructuredJsonSource }> {
+  const client = getClient();
+  const attempts = Math.max(1, config.maxAttempts ?? 2);
+  let lastRaw = "";
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const retrySuffix = attempt === 1
+      ? ""
+      : `\n\nIMPORTANT: Your previous response was invalid or incomplete JSON. Regenerate from scratch and return compact, complete valid JSON only.`;
+
+    const response = await client.models.generateContent({
+      model: env.GEMINI_MODEL,
+      config: {
+        systemInstruction: buildSystemInstruction(config.options),
+        temperature: config.temperature,
+        maxOutputTokens: config.maxOutputTokens,
+        responseMimeType: "application/json",
+      },
+      contents: [{ role: "user", parts: [{ text: `${config.prompt}${retrySuffix}` }] }],
+    });
+
+    const raw = response.text ?? "";
+    lastRaw = raw;
+    const parsed = parseJsonLoose<T>(raw);
+    if (parsed !== null) {
+      return { data: parsed, raw, source: "parsed" };
+    }
+    const recovered = config.recoverFromRaw?.(raw) ?? null;
+    if (recovered !== null) {
+      return { data: recovered, raw, source: "recovered" };
+    }
+
+    if (attempt < attempts) {
+      logger.warn(
+        `${config.taskName} JSON parse failed (attempt ${attempt}/${attempts}) — retrying. Length:`,
+        raw.length,
+        "Raw:",
+        raw.slice(0, 500)
+      );
+    } else {
+      logger.error(
+        `${config.taskName} JSON parse failed (attempt ${attempt}/${attempts}). Length:`,
+        raw.length,
+        "Raw:",
+        raw.slice(0, 500)
+      );
+    }
+  }
+
+  return { data: null, raw: lastRaw, source: "none" };
+}
+
+function debugPreview(input: string, max = 140): string {
+  const s = (input ?? "").replace(/\s+/g, " ").trim();
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}...`;
+}
+
+function buildFallbackBreakdown(problem: string, subject: string, rawInsight: string, language?: string): ProblemBreakdown {
+  const isKhmer = (language ?? "").toLowerCase() === "km";
+  const copy = isKhmer
+    ? {
+        title: "ការបំបែកបញ្ហា",
+        rootDesc: "នេះជាចំណោទដើមដែលត្រូវដោះស្រាយ។",
+        branch1Label: "ជំហាន ១",
+        branch1Desc: "កំណត់តម្លៃដែលមាន និងតម្លៃដែលត្រូវរក។",
+        branch1Math: "ទិន្នន័យដែលមាន -> អថេរត្រូវរក",
+        branch2Label: "ជំហាន ២",
+        branch2Desc: "អនុវត្តរូបមន្ត ឬ ទំនាក់ទំនងសំខាន់។",
+        branch2Math: "ប្រើទំនាក់ទំនងដើម្បីគណនា",
+        leafLabel: "គំនិតគន្លឹះ",
+        leafDesc: "ជំនួសតម្លៃ រួចសម្រួលតាមលំដាប់។",
+        leafMath: "ជំនួស -> សម្រួល -> លទ្ធផលចុងក្រោយ",
+        insight: "បំបែកជាចំណុចតូចៗ កំណត់ទិន្នន័យសំខាន់ ហើយគណនាជំហានៗ។",
+      }
+    : {
+        title: "Problem Breakdown",
+        rootDesc: "The original problem statement to solve.",
+        branch1Label: "Step 1",
+        branch1Desc: "List known values and the target unknown.",
+        branch1Math: "Known values -> target unknown",
+        branch2Label: "Step 2",
+        branch2Desc: "Apply the governing formula or relationship.",
+        branch2Math: "Use problem relationship to connect knowns to unknown",
+        leafLabel: "Key Concept",
+        leafDesc: "Substitute values carefully and simplify in order.",
+        leafMath: "Substitute -> simplify -> compute final value",
+        insight: "Break the problem into known values, apply the key rule, then compute the final result.",
+      };
+
+  return {
+    title: problem.slice(0, 50) || copy.title,
+    subject,
+    nodes: [
+      {
+        id: "root",
+        type: "root",
+        label: problem,
+        description: copy.rootDesc,
+        mathContent: problem,
+        tags: [subject.toUpperCase(), "PROBLEM"],
+      },
+      {
+        id: "branch1",
+        type: "branch",
+        label: copy.branch1Label,
+        description: copy.branch1Desc,
+        mathContent: copy.branch1Math,
+        parentId: "root",
+      },
+      {
+        id: "branch2",
+        type: "branch",
+        label: copy.branch2Label,
+        description: copy.branch2Desc,
+        mathContent: copy.branch2Math,
+        parentId: "root",
+      },
+      {
+        id: "leaf1",
+        type: "leaf",
+        label: copy.leafLabel,
+        description: copy.leafDesc,
+        mathContent: copy.leafMath,
+        parentId: "branch2",
+      },
+    ],
+    insights: {
+      simpleBreakdown: rawInsight?.trim() || copy.insight,
+      keyFormula: "",
+    },
+  };
+}
+
+async function generateText(
+  prompt: string,
+  options: AIRequestOptions = {}
+): Promise<string> {
+  const client = getClient();
+
+  try {
+    const response = await client.models.generateContent({
+      model: env.GEMINI_MODEL,
+      config: {
+        systemInstruction: buildSystemInstruction(options),
+        temperature: 0.6,
+        maxOutputTokens: 2048,
+      },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+
+    return response.text ?? "";
+  } catch (err) {
+    logger.error("Gemini generateText error:", err);
+    throw err;
+  }
+}

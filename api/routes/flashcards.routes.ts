@@ -22,7 +22,7 @@ router.use(requireAuth);
 // GET /api/flashcards/decks
 router.get("/decks", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const decks = await getUserDecks(req.user!.id);
+    const decks = await getUserDecks(req.user!.sub);
     res.json({ decks });
   } catch (err) {
     next(err);
@@ -35,7 +35,7 @@ router.post("/decks", async (req: Request, res: Response, next: NextFunction) =>
     const dto = req.body as CreateDeckDTO;
     if (!dto.title) throw new ValidationError("title is required");
 
-    const deck = await createDeck(req.user!.id, dto);
+    const deck = await createDeck(req.user!.sub, dto);
     res.status(201).json({ deck });
   } catch (err) {
     next(err);
@@ -47,7 +47,7 @@ router.get("/decks/:id", async (req: Request, res: Response, next: NextFunction)
   try {
     const deck = await getDeckById(req.params.id);
     if (!deck) throw new NotFoundError("Flashcard deck");
-    if (deck.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (deck.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
     res.json({ deck });
   } catch (err) {
     next(err);
@@ -57,7 +57,7 @@ router.get("/decks/:id", async (req: Request, res: Response, next: NextFunction)
 // DELETE /api/flashcards/decks/:id
 router.delete("/decks/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await deleteDeck(req.params.id, req.user!.id);
+    await deleteDeck(req.params.id, req.user!.sub);
     res.json({ message: "Deck deleted" });
   } catch (err) {
     next(err);
@@ -71,7 +71,7 @@ router.get("/decks/:id/cards", async (req: Request, res: Response, next: NextFun
   try {
     const deck = await getDeckById(req.params.id);
     if (!deck) throw new NotFoundError("Flashcard deck");
-    if (deck.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (deck.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
 
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -87,7 +87,7 @@ router.get("/decks/:id/due", async (req: Request, res: Response, next: NextFunct
   try {
     const deck = await getDeckById(req.params.id);
     if (!deck) throw new NotFoundError("Flashcard deck");
-    if (deck.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (deck.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
 
     const cards = await getDueCards(req.params.id);
     res.json({ cards, due_count: cards.length });
@@ -101,7 +101,7 @@ router.post("/decks/:id/cards", async (req: Request, res: Response, next: NextFu
   try {
     const deck = await getDeckById(req.params.id);
     if (!deck) throw new NotFoundError("Flashcard deck");
-    if (deck.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (deck.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
 
     const dto = req.body as CreateFlashcardDTO;
     if (!dto.front || !dto.back) throw new ValidationError("front and back are required");
@@ -125,7 +125,7 @@ router.post("/review", async (req: Request, res: Response, next: NextFunction) =
 
     const deck = await getDeckById(dto.deck_id);
     if (!deck) throw new NotFoundError("Flashcard deck");
-    if (deck.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (deck.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
 
     const card = await reviewCard(dto);
     res.json({ card });
@@ -142,7 +142,7 @@ router.post("/generate", async (req: Request, res: Response, next: NextFunction)
     const dto = req.body as GenerateFlashcardsDTO;
     if (!dto.content) throw new ValidationError("content is required");
 
-    const deck = await generateFlashcardsFromContent(req.user!.id, dto);
+    const deck = await generateFlashcardsFromContent(req.user!.sub, dto);
     res.status(201).json({ deck, message: `Generated ${deck.card_count} flashcards` });
   } catch (err) {
     next(err);

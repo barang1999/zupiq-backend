@@ -24,14 +24,30 @@ export async function createApp(): Promise<Express> {
 
   // ─── Core middleware ──────────────────────────────────────────────────────
 
+  // Support comma-separated origins: "https://zupiq.ai,https://www.zupiq.ai"
+  const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim());
+
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, server-to-server)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS: origin '${origin}' not allowed`));
+      },
       credentials: true,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
     })
   );
+
+  // Allow Firebase's signInWithPopup to communicate with the opener window.
+  // Without this, COOP: same-origin (often set by hosting platforms) blocks
+  // the popup's window.closed check and the Google auth flow fails silently.
+  app.use((_req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    next();
+  });
 
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));

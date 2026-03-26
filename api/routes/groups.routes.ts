@@ -39,7 +39,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 // GET /api/groups/mine — user's groups
 router.get("/mine", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const groups = await getUserGroups(req.user!.id);
+    const groups = await getUserGroups(req.user!.sub);
     res.json({ groups });
   } catch (err) {
     next(err);
@@ -52,7 +52,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     const dto = req.body as CreateGroupDTO;
     if (!dto.name) throw new ValidationError("name is required");
 
-    const group = await createGroup(req.user!.id, dto);
+    const group = await createGroup(req.user!.sub, dto);
     res.status(201).json({ group });
   } catch (err) {
     next(err);
@@ -74,7 +74,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dto = req.body as UpdateGroupDTO;
-    const group = await updateGroup(req.params.id, req.user!.id, dto);
+    const group = await updateGroup(req.params.id, req.user!.sub, dto);
     res.json({ group });
   } catch (err) {
     next(err);
@@ -84,7 +84,7 @@ router.patch("/:id", async (req: Request, res: Response, next: NextFunction) => 
 // DELETE /api/groups/:id
 router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await deleteGroup(req.params.id, req.user!.id);
+    await deleteGroup(req.params.id, req.user!.sub);
     res.json({ message: "Group deleted" });
   } catch (err) {
     next(err);
@@ -99,7 +99,7 @@ router.post("/join", async (req: Request, res: Response, next: NextFunction) => 
     const { invite_code } = req.body;
     if (!invite_code) throw new ValidationError("invite_code is required");
 
-    const group = await joinGroupByCode(req.user!.id, invite_code);
+    const group = await joinGroupByCode(req.user!.sub, invite_code);
     res.json({ group, message: "Joined group successfully" });
   } catch (err) {
     next(err);
@@ -113,7 +113,7 @@ router.get("/:id/members", async (req: Request, res: Response, next: NextFunctio
     if (!group) throw new NotFoundError("Group");
 
     if (!group.is_public) {
-      const member = await getMember(req.params.id, req.user!.id);
+      const member = await getMember(req.params.id, req.user!.sub);
       if (!member) throw new ForbiddenError("This group is private");
     }
 
@@ -127,7 +127,7 @@ router.get("/:id/members", async (req: Request, res: Response, next: NextFunctio
 // DELETE /api/groups/:id/members/:userId — leave or remove member
 router.delete("/:id/members/:userId", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await removeMember(req.params.id, req.params.userId, req.user!.id);
+    await removeMember(req.params.id, req.params.userId, req.user!.sub);
     res.json({ message: "Member removed" });
   } catch (err) {
     next(err);
@@ -142,7 +142,7 @@ router.get("/:id/posts", async (req: Request, res: Response, next: NextFunction)
     const group = await getGroupById(req.params.id);
     if (!group) throw new NotFoundError("Group");
 
-    const member = await getMember(req.params.id, req.user!.id);
+    const member = await getMember(req.params.id, req.user!.sub);
     if (!member && !group.is_public) throw new ForbiddenError("Members only");
 
     const page = parseInt(req.query.page as string) || 1;
@@ -160,7 +160,7 @@ router.post("/:id/posts", async (req: Request, res: Response, next: NextFunction
     const dto = req.body as CreateGroupPostDTO;
     if (!dto.content) throw new ValidationError("content is required");
 
-    const post = await createPost(req.params.id, req.user!.id, dto);
+    const post = await createPost(req.params.id, req.user!.sub, dto);
     res.status(201).json({ post });
   } catch (err) {
     next(err);

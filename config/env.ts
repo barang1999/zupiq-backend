@@ -1,16 +1,15 @@
 import dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 
 // Auto-load the right env file based on NODE_ENV:
-//   development → backend/.env.development
-//   production  → backend/.env.production
-//   fallback    → backend/.env
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+//   development → .env.development
+//   production  → .env.production
+//   fallback    → .env
+// Uses process.cwd() so it resolves correctly whether running via tsx (src/)
+// or via node (dist/) — both are started from the project root.
 const nodeEnv = process.env.NODE_ENV ?? "development";
-const envFile = `.env.${nodeEnv}`;
-const envPath = path.resolve(__dirname, "..", envFile);
-const fallbackPath = path.resolve(__dirname, "../.env");
+const envPath = path.resolve(process.cwd(), `.env.${nodeEnv}`);
+const fallbackPath = path.resolve(process.cwd(), ".env");
 
 // Try environment-specific file first, fall back to .env
 dotenv.config({ path: envPath });
@@ -63,8 +62,9 @@ export const env = {
   RATE_LIMIT_WINDOW_MS: parseInt(optionalEnv("RATE_LIMIT_WINDOW_MS", "900000"), 10),
   RATE_LIMIT_MAX_REQUESTS: parseInt(optionalEnv("RATE_LIMIT_MAX_REQUESTS", "100"), 10),
 
-  // CORS
-  CORS_ORIGIN: optionalEnv("CORS_ORIGIN", "http://localhost:3000"),
+  // CORS — comma-separated list of allowed origins
+  // e.g. CORS_ORIGIN=https://zupiq.ai,https://www.zupiq.ai
+  CORS_ORIGIN: optionalEnv("CORS_ORIGIN", "http://localhost:5173,http://localhost:3000"),
 } as const;
 
 export type Env = typeof env;

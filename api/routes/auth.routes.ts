@@ -7,7 +7,7 @@ import {
   toPublicUser,
 } from "../../services/auth.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
-import { authRateLimit } from "../middlewares/rateLimit.middleware.js";
+import { authRateLimit, loginRateLimit } from "../middlewares/rateLimit.middleware.js";
 import { ValidationError, UnauthorizedError } from "../middlewares/error.middleware.js";
 import { firebaseAdmin } from "../../config/firebase.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
@@ -55,7 +55,7 @@ router.post(
 
 router.post(
   "/login",
-  authRateLimit,
+  loginRateLimit,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, password } = req.body;

@@ -44,7 +44,7 @@ router.post(
           let storageUrl: string | undefined;
           try {
             const result = await uploadFileToStorage(
-              req.user!.id,
+              req.user!.sub,
               localPath,
               file.originalname,
               file.mimetype
@@ -55,7 +55,7 @@ router.post(
           }
 
           const upload = await saveUpload({
-            user_id: req.user!.id,
+            user_id: req.user!.sub,
             original_name: file.originalname,
             stored_name: file.filename,
             mime_type: file.mimetype,
@@ -83,7 +83,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const context = req.query.context as UploadContext | undefined;
 
-    const uploads = await getUserUploads(req.user!.id, { page, limit, context });
+    const uploads = await getUserUploads(req.user!.sub, { page, limit, context });
     res.json({ uploads });
   } catch (err) {
     next(err);
@@ -96,7 +96,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const upload = await getUploadById(req.params.id);
     if (!upload) throw new NotFoundError("Upload");
-    if (upload.user_id !== req.user!.id) throw new ForbiddenError("Access denied");
+    if (upload.user_id !== req.user!.sub) throw new ForbiddenError("Access denied");
     res.json({ upload });
   } catch (err) {
     next(err);
@@ -107,7 +107,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 
 router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await deleteUpload(req.params.id, req.user!.id);
+    await deleteUpload(req.params.id, req.user!.sub);
     res.json({ message: "Upload deleted" });
   } catch (err) {
     next(err);

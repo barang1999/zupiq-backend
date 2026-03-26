@@ -10,8 +10,6 @@ interface RateLimitRecord {
   resetAt: number;
 }
 
-const store = new Map<string, RateLimitRecord>();
-
 function getClientKey(req: Request): string {
   // Prefer X-Forwarded-For for clients behind proxies
   const forwarded = req.headers["x-forwarded-for"];
@@ -20,18 +18,6 @@ function getClientKey(req: Request): string {
     : forwarded?.split(",")[0] ?? req.socket.remoteAddress ?? "unknown";
   return ip.trim();
 }
-
-function cleanup(): void {
-  const now = Date.now();
-  for (const [key, record] of store.entries()) {
-    if (record.resetAt < now) {
-      store.delete(key);
-    }
-  }
-}
-
-// Run cleanup every 5 minutes
-setInterval(cleanup, 5 * 60 * 1000);
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
@@ -46,16 +32,37 @@ export function createRateLimit(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? env.RATE_LIMIT_WINDOW_MS;
   const maxRequests = options.maxRequests ?? env.RATE_LIMIT_MAX_REQUESTS;
   const message = options.message ?? "Too many requests. Please try again later.";
+  const skipSuccessfulRequests = options.skipSuccessfulRequests ?? false;
+
+  // Each limiter instance gets its own store so endpoints don't share counters
+  const instanceStore = new Map<string, RateLimitRecord>();
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of instanceStore.entries()) {
+      if (record.resetAt < now) instanceStore.delete(key);
+    }
+  }, 5 * 60 * 1000);
 
   return function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
     const key = getClientKey(req);
     const now = Date.now();
-    const record = store.get(key);
+    const record = instanceStore.get(key);
 
     if (!record || record.resetAt < now) {
-      store.set(key, { count: 1, resetAt: now + windowMs });
+      instanceStore.set(key, { count: 1, resetAt: now + windowMs });
       res.setHeader("X-RateLimit-Limit", maxRequests);
       res.setHeader("X-RateLimit-Remaining", maxRequests - 1);
+
+      if (skipSuccessfulRequests) {
+        res.on("finish", () => {
+          if (res.statusCode < 400) {
+            const r = instanceStore.get(key);
+            if (r) r.count = Math.max(0, r.count - 1);
+          }
+        });
+      }
+
       return next();
     }
 
@@ -71,6 +78,15 @@ export function createRateLimit(options: RateLimitOptions = {}) {
       return;
     }
 
+    if (skipSuccessfulRequests) {
+      res.on("finish", () => {
+        if (res.statusCode < 400) {
+          const r = instanceStore.get(key);
+          if (r) r.count = Math.max(0, r.count - 1);
+        }
+      });
+    }
+
     next();
   };
 }
@@ -80,11 +96,23 @@ export function createRateLimit(options: RateLimitOptions = {}) {
 /** Standard API rate limit */
 export const apiRateLimit = createRateLimit();
 
-/** Stricter limit for auth endpoints (prevent brute force) */
+/** Stricter limit for register/google auth endpoints */
 export const authRateLimit = createRateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   maxRequests: env.NODE_ENV === "development" ? 100 : 10,
   message: "Too many authentication attempts. Please try again in 15 minutes.",
+});
+
+/**
+ * Login-specific rate limit: only failed attempts count.
+ * Successful logins do not consume the quota, so signing out
+ * and back in never triggers the lockout.
+ */
+export const loginRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: env.NODE_ENV === "development" ? 100 : 10,
+  message: "Too many failed login attempts. Please try again in 15 minutes.",
+  skipSuccessfulRequests: true,
 });
 
 /** Stricter limit for AI endpoints (expensive calls) */

@@ -193,3 +193,85 @@ CREATE TABLE IF NOT EXISTS study_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_study_sessions_user_id ON study_sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_created_at ON study_sessions (created_at DESC);
+
+-- ─── Billing: Normalized Subscriptions ──────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
+  workspace_id TEXT,
+  plan_key TEXT NOT NULL DEFAULT 'free',
+  status TEXT NOT NULL DEFAULT 'free',
+  provider TEXT NOT NULL DEFAULT 'none',
+  billing_interval TEXT,
+  amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+  current_period_start TIMESTAMPTZ,
+  current_period_end TIMESTAMPTZ,
+  trial_start TIMESTAMPTZ,
+  trial_end TIMESTAMPTZ,
+  provider_customer_id TEXT,
+  provider_subscription_id TEXT,
+  granted_by TEXT NOT NULL DEFAULT 'billing',
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_plan_key ON subscriptions (plan_key);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_period_end ON subscriptions (current_period_end);
+
+-- ─── Billing: Provider Mapping ───────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS billing_provider_mappings (
+  id TEXT PRIMARY KEY,
+  plan_key TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  environment TEXT NOT NULL DEFAULT 'production',
+  product_id TEXT,
+  price_id_monthly TEXT,
+  price_id_annual TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (plan_key, provider, environment)
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_provider_mappings_provider
+  ON billing_provider_mappings (provider, active);
+
+-- ─── Billing: Daily Feature Usage ────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS feature_usage_daily (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  usage_date DATE NOT NULL,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, feature_key, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feature_usage_daily_lookup
+  ON feature_usage_daily (user_id, feature_key, usage_date);
+
+-- ─── Billing: Raw Event Audit ────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS billing_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES users (id) ON DELETE SET NULL,
+  provider TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  external_event_id TEXT,
+  payload JSONB NOT NULL DEFAULT '{}',
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (provider, external_event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_events_provider_created
+  ON billing_events (provider, created_at DESC);

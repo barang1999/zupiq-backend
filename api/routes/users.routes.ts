@@ -7,6 +7,7 @@ import { AppError, NotFoundError } from "../middlewares/error.middleware.js";
 import { STORAGE_BUCKETS } from "../../config/supabase.js";
 import { signAccessToken } from "../../services/auth.service.js";
 import type { UpdateUserDTO } from "../../models/user.model.js";
+import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
 
 const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -36,7 +37,9 @@ router.get(
     try {
       const user = await getUserById(req.user!.sub);
       if (!user) throw new NotFoundError("User");
-      res.json({ user });
+      await ensureSubscriptionSeed(user.id);
+      const billing = await getEffectiveAccessState(user.id);
+      res.json({ user, billing });
     } catch (err) {
       next(err);
     }

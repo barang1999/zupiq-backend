@@ -12,6 +12,7 @@ import flashcardsRoutes from "./api/routes/flashcards.routes.js";
 import groupsRoutes from "./api/routes/groups.routes.js";
 import uploadsRoutes from "./api/routes/uploads.routes.js";
 import sessionsRoutes from "./api/routes/sessions.routes.js";
+import billingRoutes from "./api/routes/billing.routes.js";
 
 // ─── Middlewares ──────────────────────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from "./api/middlewares/error.middleware.js";
@@ -49,8 +50,19 @@ export async function createApp(): Promise<Express> {
     next();
   });
 
-  app.use(express.json({ limit: "10mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+  // Stripe webhook requires raw request body for signature verification.
+  app.use("/api/billing/webhook/stripe", express.raw({ type: "application/json" }));
+
+  const jsonParser = express.json({ limit: "10mb" });
+  const urlEncodedParser = express.urlencoded({ extended: true, limit: "10mb" });
+  app.use((req, res, next) => {
+    if (req.path === "/api/billing/webhook/stripe") return next();
+    return jsonParser(req, res, next);
+  });
+  app.use((req, res, next) => {
+    if (req.path === "/api/billing/webhook/stripe") return next();
+    return urlEncodedParser(req, res, next);
+  });
 
   // Serve uploaded files statically
   app.use("/uploads", express.static("uploads"));
@@ -76,6 +88,7 @@ export async function createApp(): Promise<Express> {
   app.use("/api/groups", groupsRoutes);
   app.use("/api/uploads", uploadsRoutes);
   app.use("/api/sessions", sessionsRoutes);
+  app.use("/api/billing", billingRoutes);
 
   // ─── Error handling (must come last) ─────────────────────────────────────
 

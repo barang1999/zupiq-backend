@@ -17,12 +17,22 @@ import { buildAIOptions } from "../../services/ai/personalization.service.js";
 import { getUserById } from "../../services/user.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { aiRateLimit } from "../middlewares/rateLimit.middleware.js";
-import { ValidationError } from "../middlewares/error.middleware.js";
+import { ForbiddenError, ValidationError } from "../middlewares/error.middleware.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
+import {
+  getEffectiveAccessState,
+  hasEntitlement,
+  resolveEntitlementLimit,
+} from "../../billing/subscription-service.js";
+import {
+  DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+  getTodayUsageSnapshot,
+  incrementTodayUsage,
+} from "../../billing/usage-service.js";
 
 const router = Router();
 
@@ -81,6 +91,22 @@ router.post(
         throw new ValidationError("messages array is required");
       }
 
+      const access = await getEffectiveAccessState(req.user!.sub);
+      if (!hasEntitlement(access.entitlements, "deep_dive_access")) {
+        throw new ForbiddenError("Deep Dive is not available for your current plan.");
+      }
+      const dailyLimit = resolveEntitlementLimit(access.entitlements, "daily_deep_dive_limit");
+      const usageBefore = await getTodayUsageSnapshot(
+        req.user!.sub,
+        DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+        dailyLimit
+      );
+      if (dailyLimit !== null && usageBefore.used >= dailyLimit) {
+        throw new ForbiddenError(
+          `Daily Deep Dive limit reached (${dailyLimit}/day). Upgrade to Builder or Architect for unlimited access.`
+        );
+      }
+
       const aiOptions = await resolveAIOptions(req, subject);
       const response = await chat(messages, aiOptions);
       const userId = req.user!.sub;
@@ -94,7 +120,15 @@ router.post(
         { id: generateId(), user_id: userId, session_id: sid, role: "model", content: response, subject: subject ?? null, created_at: nowISO() },
       ]);
 
-      res.json({ response, session_id: sid });
+      const nextUsed = await incrementTodayUsage(userId, DAILY_DEEP_DIVE_USAGE_FEATURE_KEY, 1);
+      const usage = {
+        featureKey: DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+        used: nextUsed,
+        limit: dailyLimit,
+        remaining: dailyLimit === null ? null : Math.max(0, dailyLimit - nextUsed),
+      };
+
+      res.json({ response, session_id: sid, usage });
     } catch (err) {
       next(err);
     }

@@ -65,6 +65,19 @@ export const env = {
   // CORS — comma-separated list of allowed origins
   // e.g. CORS_ORIGIN=https://zupiq.ai,https://www.zupiq.ai
   CORS_ORIGIN: optionalEnv("CORS_ORIGIN", "http://localhost:5173,http://localhost:3000"),
+
+  // Stripe Billing
+  STRIPE_SECRET_KEY: optionalEnv("STRIPE_SECRET_KEY", ""),
+  STRIPE_WEBHOOK_SECRET: optionalEnv("STRIPE_WEBHOOK_SECRET", ""),
+  STRIPE_PRODUCT_CORE: optionalEnv("STRIPE_PRODUCT_CORE", ""),
+  STRIPE_PRICE_CORE_MONTHLY: optionalEnv("STRIPE_PRICE_CORE_MONTHLY", ""),
+  STRIPE_PRICE_CORE_ANNUAL: optionalEnv("STRIPE_PRICE_CORE_ANNUAL", ""),
+  STRIPE_PRODUCT_PRO: optionalEnv("STRIPE_PRODUCT_PRO", ""),
+  STRIPE_PRICE_PRO_MONTHLY: optionalEnv("STRIPE_PRICE_PRO_MONTHLY", ""),
+  STRIPE_PRICE_PRO_ANNUAL: optionalEnv("STRIPE_PRICE_PRO_ANNUAL", ""),
+  STRIPE_CHECKOUT_SUCCESS_URL: optionalEnv("STRIPE_CHECKOUT_SUCCESS_URL", ""),
+  STRIPE_CHECKOUT_CANCEL_URL: optionalEnv("STRIPE_CHECKOUT_CANCEL_URL", ""),
+  STRIPE_BILLING_PORTAL_RETURN_URL: optionalEnv("STRIPE_BILLING_PORTAL_RETURN_URL", ""),
 } as const;
 
 export type Env = typeof env;

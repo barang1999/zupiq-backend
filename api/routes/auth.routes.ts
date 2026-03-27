@@ -13,6 +13,7 @@ import { firebaseAdmin } from "../../config/firebase.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import type { CreateUserDTO } from "../../models/user.model.js";
+import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
 
 const router = Router();
 
@@ -42,9 +43,11 @@ router.post(
         language,
       });
 
+      await ensureSubscriptionSeed(user.id);
+      const billing = await getEffectiveAccessState(user.id);
       const tokens = buildAuthTokens(user);
 
-      res.status(201).json({ user, ...tokens });
+      res.status(201).json({ user, billing, ...tokens });
     } catch (err) {
       next(err);
     }
@@ -75,9 +78,11 @@ router.post(
       }
 
       const publicUser = toPublicUser(user);
+      await ensureSubscriptionSeed(publicUser.id);
+      const billing = await getEffectiveAccessState(publicUser.id);
       const tokens = buildAuthTokens(publicUser);
 
-      res.json({ user: publicUser, ...tokens });
+      res.json({ user: publicUser, billing, ...tokens });
     } catch (err) {
       next(err);
     }
@@ -97,8 +102,10 @@ router.post(
       const user = await getUserById(payload.sub);
       if (!user) throw new UnauthorizedError("User not found");
 
+      await ensureSubscriptionSeed(user.id);
+      const billing = await getEffectiveAccessState(user.id);
       const tokens = buildAuthTokens(user);
-      res.json({ user, ...tokens });
+      res.json({ user, billing, ...tokens });
     } catch (err) {
       next(err);
     }
@@ -170,9 +177,11 @@ router.post(
       }
 
       const { password_hash, ...publicUser } = existingUser as any;
+      await ensureSubscriptionSeed(publicUser.id);
+      const billing = await getEffectiveAccessState(publicUser.id);
       const tokens = buildAuthTokens(publicUser);
 
-      res.json({ user: publicUser, ...tokens });
+      res.json({ user: publicUser, billing, ...tokens });
     } catch (err) {
       next(err);
     }
@@ -188,7 +197,9 @@ router.get(
     try {
       const user = await getUserById(req.user!.sub);
       if (!user) throw new UnauthorizedError("User not found");
-      res.json({ user });
+      await ensureSubscriptionSeed(user.id);
+      const billing = await getEffectiveAccessState(user.id);
+      res.json({ user, billing });
     } catch (err) {
       next(err);
     }

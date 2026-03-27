@@ -83,6 +83,38 @@ export async function uploadToStorage(
 }
 
 /**
+ * Create a signed upload URL for direct browser uploads.
+ */
+export async function createSignedUploadUrl(
+  bucket: string,
+  filePath: string,
+  options: { upsert?: boolean } = {}
+): Promise<{ signedUrl: string; token: string; path: string }> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUploadUrl(filePath, { upsert: options.upsert ?? false });
+
+  if (error || !data) {
+    throw new Error(`Supabase signed upload url failed: ${error?.message ?? "unknown"}`);
+  }
+  return {
+    signedUrl: data.signedUrl,
+    token: data.token,
+    path: data.path,
+  };
+}
+
+/**
+ * Resolve public URL for a storage path.
+ */
+export function getPublicStorageUrl(bucket: string, filePath: string): string {
+  const supabase = getSupabaseAdmin();
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+/**
  * Delete a file from Supabase Storage.
  */
 export async function deleteFromStorage(bucket: string, filePath: string): Promise<void> {

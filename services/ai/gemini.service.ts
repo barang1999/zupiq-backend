@@ -370,6 +370,394 @@ export async function analyzeImage(
   }
 }
 
+interface MaskedMathResult {
+  masked: string;
+  placeholders: string[];
+}
+
+export interface OcrMathSegment {
+  id: string;
+  placeholder: string;
+  token: string;
+  latexRaw: string;
+  latexNormalized: string;
+  display: boolean;
+  valid: boolean;
+  issues: string[];
+}
+
+export interface ProblemOcrStructuredResult {
+  text: string;
+  plainText: string;
+  mathSegments: OcrMathSegment[];
+  warnings: string[];
+}
+
+function normalizeImageExtractionText(raw: string): string {
+  return stripCodeFence(raw)
+    .replace(/\r\n?/g, "\n")
+    .replace(/^\s*[\u{1F300}-\u{1FAFF}\u2600-\u27BF]+\s*/u, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function isMostlyKhmer(text: string): boolean {
+  const khmerCount = (text.match(/[\u1780-\u17FF]/g) ?? []).length;
+  const latinCount = (text.match(/[A-Za-z]/g) ?? []).length;
+  return khmerCount >= 24 && khmerCount >= latinCount * 2;
+}
+
+function fixKhmerSpacingArtifacts(text: string): string {
+  let out = text.normalize("NFC");
+  // Remove zero-width artifacts commonly produced by OCR.
+  out = out.replace(/[\u200B\u200C\u200D\uFEFF]/g, "");
+  // Some OCR outputs underscores between Khmer glyphs.
+  out = out.replace(/([\u1780-\u17FF])_+(?=[\u1780-\u17FF])/g, "$1");
+  // Remove spaces before Khmer combining marks that should attach to previous glyph.
+  out = out.replace(/\s+([\u17B6-\u17D3\u17DD])/g, "$1");
+  // Normalize spacing around sentence punctuation without collapsing Khmer words.
+  out = out.replace(/\s+([៖:។៕!?])/g, "$1");
+  out = out.replace(/([៖:។៕!?])(?=[^\s\n])/g, "$1 ");
+  out = out.replace(/[ \t]{2,}/g, " ");
+  return out;
+}
+
+function countMathSegments(text: string): number {
+  return (text.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? []).length;
+}
+
+function normalizeMathExpression(expr: string): string {
+  let out = (expr ?? "").trim();
+  if (!out) return out;
+
+  out = out
+    // Collapse over-escaped LaTeX commands (e.g. \\\\mathrm -> \mathrm).
+    .replace(/\\{2,}(?=[A-Za-z])/g, "\\")
+    // OCR/model sometimes escapes dollar delimiters inside already-delimited math.
+    .replace(/\\\$/g, "$")
+    .replace(/[−–]/g, "-")
+    .replace(/²/g, "^2")
+    .replace(/³/g, "^3")
+    .replace(/⁴/g, "^4")
+    .replace(/⁵/g, "^5")
+    .replace(/\^(\s+)(\d+)/g, "^$2")
+    .replace(/([A-Za-z])\s*\/\s*([A-Za-z])/g, "$1/$2")
+    .replace(/\b([A-Za-z])\/([A-Za-z])\s*(\d)\b/g, "$1/$2^$3")
+    .replace(/\\text\s*\{\s*([^{}]*?)\s*\}/g, (_m, inner: string) => `\\mathrm{${inner.replace(/\s+/g, "")}}`)
+    .replace(/\\mathrm\s*\{\s*([^{}]*?)\s*\}/g, (_m, inner: string) => `\\mathrm{${inner.replace(/\s+/g, "")}}`)
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return out;
+}
+
+function normalizeMathSegments(text: string): string {
+  return (text ?? "").replace(/\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g, (_match, displayExpr?: string, inlineExpr?: string) => {
+    if (displayExpr !== undefined) return `$$${normalizeMathExpression(displayExpr)}$$`;
+    if (inlineExpr !== undefined) return `$${normalizeMathExpression(inlineExpr)}$`;
+    return _match;
+  });
+}
+
+function finalizeExtractedProblemText(text: string): string {
+  const cleaned = fixKhmerSpacingArtifacts(normalizeImageExtractionText(text))
+    // Canonicalize escaped delimiters before math-segment normalization.
+    .replace(/\\\$/g, "$")
+    .replace(/\\{2,}(?=[A-Za-z])/g, "\\");
+  return normalizeMathSegments(cleaned);
+}
+
+function hasBalancedBraces(input: string): boolean {
+  let depth = 0;
+  for (const ch of input) {
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+function containsUnsupportedMathUnicode(input: string): boolean {
+  return /[\u0600-\u06FF\u0900-\u097F\u1780-\u17FF\u4E00-\u9FFF\uAC00-\uD7AF\u3040-\u30FF]/.test(input);
+}
+
+function emptyProblemOcrResult(warning?: string): ProblemOcrStructuredResult {
+  return {
+    text: "",
+    plainText: "",
+    mathSegments: [],
+    warnings: warning ? [warning] : [],
+  };
+}
+
+function buildStructuredProblemOcr(text: string): ProblemOcrStructuredResult {
+  const normalizedText = finalizeExtractedProblemText(text ?? "");
+  if (!normalizedText) return emptyProblemOcrResult("empty_ocr_text");
+
+  const mathSegments: OcrMathSegment[] = [];
+  const warnings: string[] = [];
+
+  const plainText = normalizedText.replace(
+    /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g,
+    (_match, displayExpr?: string, inlineExpr?: string, bracketExpr?: string, parenExpr?: string) => {
+      const display = displayExpr !== undefined || bracketExpr !== undefined;
+      const rawExpr = (displayExpr ?? inlineExpr ?? bracketExpr ?? parenExpr ?? "").trim();
+      const latexNormalized = normalizeMathExpression(rawExpr);
+      const id = `EQ_${mathSegments.length + 1}`;
+      const placeholder = `[[${id}]]`;
+      const token = display ? `$$${latexNormalized}$$` : `$${latexNormalized}$`;
+      const issues: string[] = [];
+
+      if (!latexNormalized) issues.push("empty_math_expression");
+      if (!hasBalancedBraces(latexNormalized)) issues.push("unbalanced_braces");
+      if (containsUnsupportedMathUnicode(latexNormalized)) issues.push("non_math_unicode_inside_math");
+
+      mathSegments.push({
+        id,
+        placeholder,
+        token,
+        latexRaw: rawExpr,
+        latexNormalized,
+        display,
+        valid: issues.length === 0,
+        issues,
+      });
+
+      return placeholder;
+    }
+  );
+
+  const placeholderCount = (plainText.match(/\[\[EQ_\d+\]\]/g) ?? []).length;
+  if (placeholderCount !== mathSegments.length) {
+    warnings.push("placeholder_count_mismatch");
+  }
+  if (mathSegments.some((segment) => !segment.valid)) {
+    warnings.push("invalid_math_segment_detected");
+  }
+
+  return {
+    text: normalizedText,
+    plainText,
+    mathSegments,
+    warnings,
+  };
+}
+
+function maskMathSegments(text: string): MaskedMathResult {
+  const placeholders: string[] = [];
+  const masked = text.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
+    placeholders.push(match);
+    return `[[EQ_${placeholders.length}]]`;
+  });
+  return { masked, placeholders };
+}
+
+function restoreMathSegments(text: string, placeholders: string[]): string {
+  let out = text;
+  placeholders.forEach((value, idx) => {
+    const token = `[[EQ_${idx + 1}]]`;
+    out = out.split(token).join(value);
+  });
+  return out;
+}
+
+export async function extractProblemFromImage(
+  imagePart: ImagePart,
+  options: AIRequestOptions = {}
+): Promise<ProblemOcrStructuredResult> {
+  const client = getClient();
+  const targetLangCode = (options.language ?? "en").toLowerCase();
+  const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? targetLangCode ?? "English";
+  logger.info("[image-ocr] start", {
+    targetLanguageCode: targetLangCode,
+    targetLanguageName: targetLangName,
+    imageMimeType: imagePart.mimeType,
+    imageBytesApprox: imagePart.data.length,
+  });
+
+  const transcriptionResponse = await client.models.generateContent({
+    model: env.GEMINI_MODEL,
+    config: {
+      systemInstruction: `You are a strict OCR transcriber for educational problem statements.
+Rules:
+- Extract text from the image faithfully. Do not solve the problem.
+- Keep original numbers, symbols, and units exactly.
+- Preserve equations using KaTeX-friendly LaTeX in $...$ or $$...$$.
+- Do not add emoji, icons, bullets, or decorative characters.
+- Output plain text only. No markdown. No extra commentary.`,
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    },
+    contents: [{
+      role: "user",
+      parts: [
+        {
+          inlineData: {
+            data: imagePart.data,
+            mimeType: imagePart.mimeType,
+          },
+        },
+        {
+          text: "Transcribe this problem exactly as written. Keep equations and math symbols intact.",
+        },
+      ],
+    }],
+  });
+  const transcribedRaw = transcriptionResponse.text ?? "";
+  logger.info("[image-ocr] transcription:raw", {
+    length: transcribedRaw.length,
+    finishReason: extractFinishReason(transcriptionResponse),
+    preview: debugPreview(transcribedRaw, 260),
+  });
+
+  const transcribedBase = normalizeImageExtractionText(transcribedRaw);
+  const transcribed = fixKhmerSpacingArtifacts(transcribedBase);
+  const transcribedFinal = finalizeExtractedProblemText(transcribed);
+  logger.info("[image-ocr] transcription:normalized", {
+    length: transcribedFinal.length,
+    mathSegments: countMathSegments(transcribedFinal),
+    mostlyKhmer: isMostlyKhmer(transcribedFinal),
+    preview: debugPreview(transcribedFinal, 260),
+  });
+  if (!transcribedBase) {
+    logger.warn("[image-ocr] transcription empty after normalization");
+    return emptyProblemOcrResult("transcription_empty_after_normalization");
+  }
+
+  // If already Khmer, run a minimal OCR cleanup pass (no paraphrase) while protecting math.
+  if (targetLangCode === "km" && isMostlyKhmer(transcribedFinal)) {
+    const { masked: kmMasked, placeholders: kmPlaceholders } = maskMathSegments(transcribedFinal);
+    if (!kmMasked.trim()) return buildStructuredProblemOcr(transcribedFinal);
+    try {
+      const cleanupResponse = await client.models.generateContent({
+        model: env.GEMINI_MODEL,
+        config: {
+          systemInstruction: `You are a Khmer OCR cleanup assistant for educational text.
+Rules:
+- Fix OCR spacing/diacritic/spelling noise only.
+- Keep wording and meaning as close as possible; do not paraphrase.
+- Never alter placeholders like [[EQ_1]], [[EQ_2]], etc.
+- Keep numbering and punctuation structure.
+- Output plain text only.`,
+          temperature: 0.05,
+          maxOutputTokens: 4096,
+        },
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `Clean this OCR text with minimal edits. Keep placeholder tokens unchanged:\n\n${kmMasked}`,
+          }],
+        }],
+      });
+
+      const cleanedKmMasked = normalizeImageExtractionText(cleanupResponse.text ?? "");
+      logger.info("[image-ocr] khmer-cleanup:raw", {
+        length: (cleanupResponse.text ?? "").length,
+        finishReason: extractFinishReason(cleanupResponse),
+        preview: debugPreview(cleanupResponse.text ?? "", 260),
+      });
+      if (!cleanedKmMasked) {
+        logger.warn("[image-ocr] khmer-cleanup empty; fallback to raw transcription");
+        return buildStructuredProblemOcr(transcribedFinal);
+      }
+
+      const hasAllPlaceholders = kmPlaceholders.every((_value, idx) =>
+        cleanedKmMasked.includes(`[[EQ_${idx + 1}]]`)
+      );
+      if (!hasAllPlaceholders) {
+        logger.warn("[image-ocr] khmer-cleanup placeholder mismatch; fallback to raw transcription");
+        return buildStructuredProblemOcr(transcribedFinal);
+      }
+
+      const cleanedKm = finalizeExtractedProblemText(restoreMathSegments(cleanedKmMasked, kmPlaceholders));
+      const structured = buildStructuredProblemOcr(cleanedKm);
+      logger.info("[image-ocr] khmer-cleanup:done", {
+        outputLength: structured.text.length,
+        outputMathSegments: structured.mathSegments.length,
+        outputPreview: debugPreview(structured.text, 260),
+        outputWarnings: structured.warnings,
+      });
+      return structured;
+    } catch (err) {
+      logger.warn("[image-ocr] khmer-cleanup failed; fallback to raw transcription", err);
+      return buildStructuredProblemOcr(transcribedFinal);
+    }
+  }
+
+  const { masked, placeholders } = maskMathSegments(transcribedFinal);
+  logger.info("[image-ocr] mask", {
+    placeholders: placeholders.length,
+    maskedLength: masked.length,
+    maskedPreview: debugPreview(masked, 260),
+  });
+  if (!masked.trim()) {
+    logger.warn("[image-ocr] masked text empty; falling back to transcription");
+    return buildStructuredProblemOcr(transcribedFinal);
+  }
+
+  try {
+    const translationResponse = await client.models.generateContent({
+      model: env.GEMINI_MODEL,
+      config: {
+      systemInstruction: `You are a precise translator for educational content.
+Rules:
+- Translate only non-math text into ${targetLangName}.
+- Never alter placeholders like [[EQ_1]], [[EQ_2]], etc.
+- Keep order, numbering, and sentence structure as close as possible.
+- Do not paraphrase, summarize, or add emoji/symbol decorations.
+- Output plain text only.`,
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      },
+      contents: [{
+        role: "user",
+        parts: [{
+          text: `Translate this text into ${targetLangName}. Keep placeholder tokens unchanged:\n\n${masked}`,
+        }],
+      }],
+    });
+    const translatedRaw = translationResponse.text ?? "";
+    logger.info("[image-ocr] translation:raw", {
+      length: translatedRaw.length,
+      finishReason: extractFinishReason(translationResponse),
+      preview: debugPreview(translatedRaw, 260),
+    });
+
+    const translatedMasked = fixKhmerSpacingArtifacts(normalizeImageExtractionText(translatedRaw));
+    if (!translatedMasked) {
+      logger.warn("[image-ocr] translation empty after normalization; falling back to transcription");
+      return buildStructuredProblemOcr(transcribedFinal);
+    }
+
+    const hasAllPlaceholders = placeholders.every((_value, idx) =>
+      translatedMasked.includes(`[[EQ_${idx + 1}]]`)
+    );
+    logger.info("[image-ocr] translation:checked", {
+      hasAllPlaceholders,
+      placeholders: placeholders.length,
+      translatedLength: translatedMasked.length,
+      translatedPreview: debugPreview(translatedMasked, 260),
+    });
+    if (!hasAllPlaceholders) {
+      logger.warn("[image-ocr] placeholder mismatch; falling back to transcription");
+      return buildStructuredProblemOcr(transcribedFinal);
+    }
+
+    const restored = finalizeExtractedProblemText(restoreMathSegments(translatedMasked, placeholders));
+    const structured = buildStructuredProblemOcr(restored);
+    logger.info("[image-ocr] done", {
+      outputLength: structured.text.length,
+      outputMathSegments: structured.mathSegments.length,
+      outputPreview: debugPreview(structured.text, 260),
+      outputWarnings: structured.warnings,
+    });
+    return structured;
+  } catch (err) {
+    logger.warn("Gemini image translation fallback to transcription:", err);
+    return buildStructuredProblemOcr(transcribedFinal);
+  }
+}
+
 // ─── Node insight (per-selected-node breakdown) ───────────────────────────────
 
 export interface NodeInsight {

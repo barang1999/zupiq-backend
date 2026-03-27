@@ -37,7 +37,7 @@ export async function createApp(): Promise<Express> {
       },
       credentials: true,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
+      allowedHeaders: ["Content-Type", "Authorization", "x-attach-trace-id"],
     })
   );
 

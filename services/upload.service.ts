@@ -58,7 +58,7 @@ export async function uploadFileToStorage(
     logger.warn("Supabase storage upload failed, falling back to local:", err);
     // Return a local file URL as fallback
     const localUrl = `/uploads/${path.basename(localFilePath)}`;
-    return { storageUrl: localUrl, storagePath: localFilePath };
+    return { storageUrl: localUrl, storagePath: path.basename(localFilePath) };
   }
 }
 
@@ -134,6 +134,42 @@ export function readFileAsBase64(filePath: string): { data: string; mimeType: st
   return {
     data: buffer.toString("base64"),
     mimeType: getMimeFromExtension(path.extname(filePath)),
+  };
+}
+
+/**
+ * Read upload bytes from local disk (legacy flow) or Supabase Storage (direct-upload flow).
+ */
+export async function readUploadAsBase64(
+  upload: Upload
+): Promise<{ data: string; mimeType: string; source: "local" | "supabase"; storagePath?: string }> {
+  const localPath = path.resolve(env.UPLOAD_DIR, upload.stored_name);
+  if (fs.existsSync(localPath)) {
+    const buffer = fs.readFileSync(localPath);
+    return {
+      data: buffer.toString("base64"),
+      mimeType: upload.mime_type || getMimeFromExtension(path.extname(localPath)),
+      source: "local",
+    };
+  }
+
+  const supabase = getSupabaseAdmin();
+  const storagePath = upload.stored_name;
+  const { data, error } = await supabase.storage
+    .from(STORAGE_BUCKETS.UPLOADS)
+    .download(storagePath);
+
+  if (error || !data) {
+    throw new AppError(`Failed to read upload from storage: ${error?.message ?? "not found"}`, 500);
+  }
+
+  const arrayBuffer = await data.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  return {
+    data: buffer.toString("base64"),
+    mimeType: upload.mime_type || getMimeFromExtension(path.extname(storagePath)),
+    source: "supabase",
+    storagePath,
   };
 }
 

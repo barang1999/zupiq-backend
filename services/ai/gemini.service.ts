@@ -334,6 +334,67 @@ Rules:
   return Array.isArray(data) ? data : [];
 }
 
+// ─── Regenerate a branch node ────────────────────────────────────────────────
+
+export interface RegeneratedBranchNode {
+  label: string;
+  description: string;
+  mathContent: string;
+}
+
+export async function regenerateBranchNode(
+  nodeLabel: string,
+  nodeDescription: string,
+  nodeMathContent: string,
+  nodeType: string,
+  parentProblem: string,
+  options: AIRequestOptions = {}
+): Promise<RegeneratedBranchNode> {
+  const fallback: RegeneratedBranchNode = {
+    label: (nodeLabel ?? "").trim() || "Refined step",
+    description: (nodeDescription ?? "").trim() || "Refined explanation of this solving step.",
+    mathContent: (nodeMathContent ?? nodeLabel ?? "").trim(),
+  };
+
+  const prompt = `A student is solving this problem: "${parentProblem}"
+
+Current step appears low quality and must be regenerated:
+- nodeType: "${nodeType}"
+- label: "${nodeLabel}"
+- description: "${nodeDescription}"
+- mathContent: "${nodeMathContent}"
+
+Regenerate this SINGLE node so it is mathematically coherent, concise, and easier to understand.
+
+Return ONLY valid JSON object:
+{
+  "label": "short step title (3-6 words)",
+  "description": "one clear sentence explaining what this step does",
+  "mathContent": "actual equation/transformation for this step"
+}
+
+Rules:
+- Keep it as ONE node, not multiple steps
+- Keep description concise and concrete
+- mathContent must contain real math notation, not empty
+- No markdown, no extra keys, no prose outside JSON`;
+
+  const { data } = await generateStructuredJson<RegeneratedBranchNode>({
+    prompt,
+    options,
+    temperature: 0.3,
+    maxOutputTokens: 1024,
+    taskName: "regenerateBranchNode",
+    maxAttempts: 2,
+  });
+
+  const label = `${data?.label ?? ""}`.trim() || fallback.label;
+  const description = `${data?.description ?? ""}`.trim() || fallback.description;
+  const mathContent = `${data?.mathContent ?? ""}`.trim() || fallback.mathContent || fallback.label;
+
+  return { label, description, mathContent };
+}
+
 // ─── Analyze image ────────────────────────────────────────────────────────────
 
 export async function analyzeImage(
@@ -889,6 +950,12 @@ Return ONLY this JSON:
   );
   const normalizedRescued = normalizeSimpleBreakdown(rescuedText);
   const acceptedRescued = isInsightTextSufficient(normalizedRescued, false) ? normalizedRescued : "";
+  const deterministicStandard = buildDeterministicStandardExplanation(
+    nodeLabel,
+    nodeDescription,
+    nodeMathContent,
+    options.language
+  );
   logger.info("[getNodeInsight] fallback result", {
     source: "fallback-text",
     rawLength: rescuedText.length,
@@ -897,7 +964,7 @@ Return ONLY this JSON:
     preview: debugPreview(acceptedRescued || normalizedRescued || rescuedText),
   });
   return {
-    simpleBreakdown: acceptedRescued || nodeDescription || nodeLabel,
+    simpleBreakdown: acceptedRescued || deterministicStandard,
     keyFormula: normalizeKeyFormula(nodeMathContent || ""),
   };
 }
@@ -1133,9 +1200,11 @@ function normalizeSimpleBreakdown(input: string): string {
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned) return "";
+  const deduped = dedupeRepeatedInsightChunks(cleaned);
+  if (!deduped) return "";
   // Drop tiny/partial fragments (e.g. "ស្រម") produced by truncated JSON recovery.
-  if (cleaned.length < 24) return "";
-  return cleaned;
+  if (deduped.length < 24) return "";
+  return deduped;
 }
 
 function isInsightTextSufficient(text: string, isKidLevel: boolean): boolean {
@@ -1186,6 +1255,49 @@ function looksLikeCompleteEnding(text: string): boolean {
   return /[.!?។៕]\s*$/.test(t);
 }
 
+function canonicalInsightChunk(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim();
+}
+
+function dedupeRepeatedInsightChunks(text: string): string {
+  const normalized = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  const chunks = normalized
+    .split(/(?<=[.!?។៕])\s+/g)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  if (chunks.length === 0) return normalized;
+
+  const deduped: string[] = [];
+  for (const chunk of chunks) {
+    const currentCanonical = canonicalInsightChunk(chunk);
+    const previousCanonical = deduped.length > 0
+      ? canonicalInsightChunk(deduped[deduped.length - 1])
+      : "";
+    if (currentCanonical && currentCanonical === previousCanonical) continue;
+    deduped.push(chunk);
+  }
+
+  const joined = deduped.join(" ").trim();
+  if (joined.length < 40) return joined;
+
+  const half = Math.floor(joined.length / 2);
+  if (joined.length % 2 === 0) {
+    const left = joined.slice(0, half).trim();
+    const right = joined.slice(half).trim();
+    if (left.length >= 20 && canonicalInsightChunk(left) === canonicalInsightChunk(right)) {
+      return left;
+    }
+  }
+
+  return joined;
+}
+
 function extractFinishReason(response: unknown): string {
   const reason = (
     response as { candidates?: Array<{ finishReason?: string | null }> }
@@ -1221,6 +1333,36 @@ function buildDeterministicKidExplanation(
     ? `This math line (${math}) is just a tool to help us see the answer clearly.`
     : "After we understand the given facts, we keep calculating step by step.";
   return `${label} is like climbing a ladder one step at a time. First, we look at what we already know and what we are trying to find. Next, we connect those pieces carefully, like building with toy blocks. ${line4} ${line5} At the end, we check the answer one more time to make sure it makes sense.`;
+}
+
+function buildDeterministicStandardExplanation(
+  nodeLabel: string,
+  nodeDescription: string,
+  nodeMathContent: string,
+  language?: string
+): string {
+  const isKhmer = (language ?? "").toLowerCase() === "km";
+  const label = normalizeSimpleBreakdown(nodeLabel) || (isKhmer ? "ជំហាននេះ" : "This step");
+  const description = normalizeSimpleBreakdown(nodeDescription);
+  const math = normalizeSimpleBreakdown(nodeMathContent);
+
+  if (isKhmer) {
+    const desc = description
+      ? `គោលបំណងគឺ ${description.replace(/[។៕.!?]+$/g, "")}។`
+      : "គោលបំណងគឺធ្វើការបំលែងតាមលំដាប់ឲ្យច្បាស់។";
+    const mathLine = math
+      ? `អនុវត្តលើបន្ទាត់គណនា ${math} ហើយពិនិត្យលទ្ធផលឲ្យសមហេតុផល។`
+      : "បន្ទាប់មក អនុវត្តការគណនាដោយប្រុងប្រយ័ត្ន ហើយពិនិត្យចម្លើយចុងក្រោយ។";
+    return `${label} ជួយយើងបំបែកការដោះស្រាយឲ្យច្បាស់ជាជំហានតូចៗ។ ${desc} ${mathLine}`;
+  }
+
+  const desc = description
+    ? `The goal here is to ${description.replace(/[.!?]+$/g, "")}.`
+    : "The goal here is to apply one clear transformation before moving to the next step.";
+  const mathLine = math
+    ? `Use the expression ${math} as the working line, then verify the result is consistent.`
+    : "Use the current expression carefully, then verify the result is consistent.";
+  return `${label} keeps the solution focused on one clear transformation at a time. ${desc} ${mathLine}`;
 }
 
 function normalizeKeyFormula(input: string): string {

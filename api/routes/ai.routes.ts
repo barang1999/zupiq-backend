@@ -10,6 +10,7 @@ import {
   type ProblemOcrStructuredResult,
   breakdownProblem,
   expandNode,
+  regenerateBranchNode,
   getNodeInsight,
 } from "../../services/ai/gemini.service.js";
 import { buildAIOptions } from "../../services/ai/personalization.service.js";
@@ -358,6 +359,31 @@ router.post(
       const aiOptions = await resolveAIOptions(req, subject);
       const nodes = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
       res.json({ nodes });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/regenerate-node ────────────────────────────────────────────
+
+router.post(
+  "/regenerate-node",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { nodeLabel, nodeDescription, nodeMathContent, nodeType, parentProblem, subject } = req.body;
+      if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
+
+      const aiOptions = await resolveAIOptions(req, subject);
+      const node = await regenerateBranchNode(
+        nodeLabel,
+        nodeDescription ?? "",
+        nodeMathContent ?? nodeLabel,
+        typeof nodeType === "string" ? nodeType : "branch",
+        parentProblem,
+        aiOptions
+      );
+      res.json({ node });
     } catch (err) {
       next(err);
     }

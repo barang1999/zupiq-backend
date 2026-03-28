@@ -42,6 +42,17 @@ function resolveUploadExtension(originalName: string, mimeType: string): string 
   return fromMime[mimeType] ?? ".bin";
 }
 
+function isMimeTypeAllowedForContext(mimeType: string, context: UploadContext): boolean {
+  if (env.ALLOWED_FILE_TYPES.includes(mimeType)) return true;
+  // Avatar flow supports GIF in addition to generic upload types.
+  if (context === "profile_avatar" && mimeType === "image/gif") return true;
+  return false;
+}
+
+function resolveStorageBucketForContext(context: UploadContext): string {
+  return context === "profile_avatar" ? STORAGE_BUCKETS.AVATARS : STORAGE_BUCKETS.UPLOADS;
+}
+
 // ─── POST /api/uploads/signed-upload-url ─────────────────────────────────────
 
 router.post(
@@ -58,7 +69,7 @@ router.post(
       if (!originalName) throw new ValidationError("original_name is required");
       if (!mimeType) throw new ValidationError("mime_type is required");
       if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) throw new ValidationError("size_bytes must be > 0");
-      if (!env.ALLOWED_FILE_TYPES.includes(mimeType)) {
+      if (!isMimeTypeAllowedForContext(mimeType, context)) {
         throw new ValidationError(`File type ${mimeType} is not allowed.`);
       }
       if (sizeBytes > env.UPLOAD_MAX_SIZE_MB * 1024 * 1024) {
@@ -67,8 +78,9 @@ router.post(
 
       const ext = resolveUploadExtension(originalName, mimeType);
       const storagePath = `${req.user!.sub}/${generateId()}${ext}`;
-      const signed = await createSignedUploadUrl(STORAGE_BUCKETS.UPLOADS, storagePath, { upsert: false });
-      const storageUrl = getPublicStorageUrl(STORAGE_BUCKETS.UPLOADS, storagePath);
+      const storageBucket = resolveStorageBucketForContext(context);
+      const signed = await createSignedUploadUrl(storageBucket, storagePath, { upsert: false });
+      const storageUrl = getPublicStorageUrl(storageBucket, storagePath);
 
       const upload = await saveUpload({
         user_id: req.user!.sub,
@@ -88,6 +100,7 @@ router.post(
         originalName,
         mimeType,
         sizeBytes,
+        storageBucket,
         storagePath,
         elapsedMs: Date.now() - startedAt,
       });
@@ -95,7 +108,7 @@ router.post(
       res.status(201).json({
         upload,
         signed_upload: {
-          bucket: STORAGE_BUCKETS.UPLOADS,
+          bucket: storageBucket,
           path: signed.path,
           token: signed.token,
           signedUrl: signed.signedUrl,

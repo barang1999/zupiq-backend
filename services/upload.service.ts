@@ -8,6 +8,10 @@ import { NotFoundError, ForbiddenError, AppError } from "../api/middlewares/erro
 import { logger } from "../utils/logger.js";
 import { env } from "../config/env.js";
 
+function resolveStorageBucketForUpload(upload: Pick<Upload, "context">): string {
+  return upload.context === "profile_avatar" ? STORAGE_BUCKETS.AVATARS : STORAGE_BUCKETS.UPLOADS;
+}
+
 // ─── Save upload record ───────────────────────────────────────────────────────
 
 export async function saveUpload(dto: CreateUploadDTO): Promise<Upload> {
@@ -110,7 +114,7 @@ export async function deleteUpload(id: string, userId: string): Promise<void> {
   // Try to delete from Supabase storage
   if (upload.storage_url && upload.storage_url.startsWith("https://")) {
     try {
-      await deleteFromStorage(STORAGE_BUCKETS.UPLOADS, upload.stored_name);
+      await deleteFromStorage(resolveStorageBucketForUpload(upload), upload.stored_name);
     } catch (err) {
       logger.warn("Failed to delete from Supabase storage:", err);
     }
@@ -155,8 +159,9 @@ export async function readUploadAsBase64(
 
   const supabase = getSupabaseAdmin();
   const storagePath = upload.stored_name;
+  const storageBucket = resolveStorageBucketForUpload(upload);
   const { data, error } = await supabase.storage
-    .from(STORAGE_BUCKETS.UPLOADS)
+    .from(storageBucket)
     .download(storagePath);
 
   if (error || !data) {

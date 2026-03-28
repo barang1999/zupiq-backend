@@ -11,7 +11,7 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     entitlements: {
       basic_breakdowns: true,
       deep_dive_access: true,
-      daily_deep_dive_limit: 3,
+      daily_deep_dive_token_limit: 12000,
       knowledge_maps: false,
       knowledge_map_export: false,
       ai_tutor: false,
@@ -31,7 +31,7 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     entitlements: {
       basic_breakdowns: true,
       deep_dive_access: true,
-      daily_deep_dive_limit: null,
+      daily_deep_dive_token_limit: 120000,
       knowledge_maps: true,
       knowledge_map_export: false,
       ai_tutor: true,
@@ -51,7 +51,7 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     entitlements: {
       basic_breakdowns: true,
       deep_dive_access: true,
-      daily_deep_dive_limit: null,
+      daily_deep_dive_token_limit: 500000,
       knowledge_maps: true,
       knowledge_map_export: true,
       ai_tutor: true,

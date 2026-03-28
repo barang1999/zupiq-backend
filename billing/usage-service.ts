@@ -14,7 +14,9 @@ interface DailyUsageRow {
   updated_at: string;
 }
 
-export const DAILY_DEEP_DIVE_USAGE_FEATURE_KEY = "daily_deep_dive";
+export const DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY = "daily_deep_dive_tokens";
+// Backward-compatible alias for existing imports.
+export const DAILY_DEEP_DIVE_USAGE_FEATURE_KEY = DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY;
 
 function isMissingUsageTableError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;

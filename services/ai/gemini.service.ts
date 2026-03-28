@@ -23,6 +23,18 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number;
+  source: "provider" | "estimate";
+}
+
+export interface ChatResult {
+  text: string;
+  usage: ChatUsage;
+}
+
 export interface AIRequestOptions {
   subject?: string;
   educationLevel?: string;
@@ -90,10 +102,69 @@ Math formatting rules (CRITICAL — always follow these):
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
+function coerceTokenCount(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return Math.floor(value);
+}
+
+function estimateTokenCount(text: string): number {
+  const normalized = (text ?? "").trim();
+  if (!normalized) return 0;
+  // Practical approximation for LLM tokens across mixed-language text.
+  return Math.max(1, Math.ceil(normalized.length / 4));
+}
+
+function extractProviderUsage(response: unknown): Omit<ChatUsage, "source"> | null {
+  const candidate = response as {
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
+    response?: {
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+      };
+    };
+  };
+
+  const usage = candidate.usageMetadata ?? candidate.response?.usageMetadata;
+  if (!usage) return null;
+
+  const promptTokens = coerceTokenCount(usage.promptTokenCount);
+  const completionTokens = coerceTokenCount(usage.candidatesTokenCount);
+  const totalFromProvider = coerceTokenCount(usage.totalTokenCount);
+  const totalTokens = totalFromProvider
+    ?? ((promptTokens ?? 0) + (completionTokens ?? 0));
+
+  if (totalTokens <= 0) return null;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  };
+}
+
+function estimateChatUsage(messages: ChatMessage[], responseText: string): ChatUsage {
+  const inputText = messages.map((m) => m.content ?? "").join("\n");
+  const promptTokens = estimateTokenCount(inputText);
+  const completionTokens = estimateTokenCount(responseText ?? "");
+  const totalTokens = Math.max(1, promptTokens + completionTokens);
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    source: "estimate",
+  };
+}
+
 export async function chat(
   messages: ChatMessage[],
   options: AIRequestOptions = {}
-): Promise<string> {
+): Promise<ChatResult> {
   const client = getClient();
 
   const history: Content[] = messages.slice(0, -1).map((m) => ({
@@ -114,7 +185,12 @@ export async function chat(
   });
 
   const response = await chatSession.sendMessage({ message: lastMessage.content });
-  return response.text ?? "";
+  const text = response.text ?? "";
+  const providerUsage = extractProviderUsage(response);
+  const usage: ChatUsage = providerUsage
+    ? { ...providerUsage, source: "provider" }
+    : estimateChatUsage(messages, text);
+  return { text, usage };
 }
 
 // ─── Explain a concept ────────────────────────────────────────────────────────

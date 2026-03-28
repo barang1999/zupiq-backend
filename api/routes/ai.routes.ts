@@ -29,12 +29,15 @@ import {
   resolveEntitlementLimit,
 } from "../../billing/subscription-service.js";
 import {
-  DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+  DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
   getTodayUsageSnapshot,
   incrementTodayUsage,
 } from "../../billing/usage-service.js";
+import { publishUsageUpdate } from "../../billing/usage-stream.js";
 
 const router = Router();
+const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
+const TOKEN_ESTIMATE_CHARS_PER_TOKEN = 4;
 
 router.use(requireAuth);
 router.use(aiRateLimit);
@@ -79,6 +82,117 @@ function endsWithSentenceTerminator(text: string): boolean {
   return /[.!?។៕]\s*$/.test(t);
 }
 
+interface TokenBudget {
+  userId: string;
+  limit: number | null;
+  usedBefore: number;
+}
+
+interface MeteredUsage {
+  featureKey: string;
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  consumedTokens: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  source: "provider" | "estimate";
+}
+
+function estimateTokensFromText(text: string): number {
+  const normalized = (text ?? "").trim();
+  if (!normalized) return 0;
+  return Math.max(1, Math.ceil(normalized.length / TOKEN_ESTIMATE_CHARS_PER_TOKEN));
+}
+
+function estimateTokensFromPayload(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === "string") return estimateTokensFromText(value);
+  try {
+    return estimateTokensFromText(JSON.stringify(value));
+  } catch {
+    return estimateTokensFromText(String(value));
+  }
+}
+
+async function reserveTokenBudget(userId: string): Promise<TokenBudget> {
+  const access = await getEffectiveAccessState(userId);
+  if (!hasEntitlement(access.entitlements, "deep_dive_access")) {
+    throw new ForbiddenError("Deep Dive is not available for your current plan.");
+  }
+
+  const dailyLimit = resolveEntitlementLimit(
+    access.entitlements,
+    DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+  );
+  const usageBefore = await getTodayUsageSnapshot(
+    userId,
+    DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+    dailyLimit
+  );
+  if (dailyLimit !== null && usageBefore.used >= dailyLimit) {
+    throw new ForbiddenError(
+      `Daily Deep Dive token limit reached (${usageBefore.used}/${dailyLimit} tokens today).`
+    );
+  }
+
+  return {
+    userId,
+    limit: dailyLimit,
+    usedBefore: usageBefore.used,
+  };
+}
+
+async function consumeTokenBudget(
+  budget: TokenBudget,
+  payload: {
+    input?: unknown;
+    output?: unknown;
+    providerTotalTokens?: number | null;
+    promptTokens?: number | null;
+    completionTokens?: number | null;
+    source?: "provider" | "estimate";
+  }
+): Promise<MeteredUsage> {
+  const providerTotal = typeof payload.providerTotalTokens === "number" && Number.isFinite(payload.providerTotalTokens)
+    ? Math.max(0, Math.floor(payload.providerTotalTokens))
+    : null;
+  const estimatedInput = estimateTokensFromPayload(payload.input);
+  const estimatedOutput = estimateTokensFromPayload(payload.output);
+  const estimatedTotal = Math.max(1, estimatedInput + estimatedOutput);
+  const consumedTokens = Math.max(1, providerTotal ?? estimatedTotal);
+
+  const nextUsed = await incrementTodayUsage(
+    budget.userId,
+    DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+    consumedTokens
+  );
+
+  const meteredUsage: MeteredUsage = {
+    featureKey: DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+    used: nextUsed,
+    limit: budget.limit,
+    remaining: budget.limit === null ? null : Math.max(0, budget.limit - nextUsed),
+    consumedTokens,
+    promptTokens:
+      typeof payload.promptTokens === "number" && Number.isFinite(payload.promptTokens)
+        ? Math.max(0, Math.floor(payload.promptTokens))
+        : null,
+    completionTokens:
+      typeof payload.completionTokens === "number" && Number.isFinite(payload.completionTokens)
+        ? Math.max(0, Math.floor(payload.completionTokens))
+        : null,
+    source: payload.source ?? (providerTotal !== null ? "provider" : "estimate"),
+  };
+
+  publishUsageUpdate(budget.userId, {
+    ...meteredUsage,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return meteredUsage;
+}
+
 // ─── POST /api/ai/chat ────────────────────────────────────────────────────────
 
 router.post(
@@ -91,25 +205,10 @@ router.post(
         throw new ValidationError("messages array is required");
       }
 
-      const access = await getEffectiveAccessState(req.user!.sub);
-      if (!hasEntitlement(access.entitlements, "deep_dive_access")) {
-        throw new ForbiddenError("Deep Dive is not available for your current plan.");
-      }
-      const dailyLimit = resolveEntitlementLimit(access.entitlements, "daily_deep_dive_limit");
-      const usageBefore = await getTodayUsageSnapshot(
-        req.user!.sub,
-        DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
-        dailyLimit
-      );
-      if (dailyLimit !== null && usageBefore.used >= dailyLimit) {
-        throw new ForbiddenError(
-          `Daily Deep Dive limit reached (${dailyLimit}/day). Upgrade to Builder or Architect for unlimited access.`
-        );
-      }
-
-      const aiOptions = await resolveAIOptions(req, subject);
-      const response = await chat(messages, aiOptions);
       const userId = req.user!.sub;
+      const budget = await reserveTokenBudget(userId);
+      const aiOptions = await resolveAIOptions(req, subject);
+      const chatResult = await chat(messages, aiOptions);
 
       // Persist last user message and AI response
       const sid = session_id ?? generateId();
@@ -117,18 +216,19 @@ router.post(
       const db = getSupabaseAdmin();
       await db.from("chat_messages").insert([
         { id: generateId(), user_id: userId, session_id: sid, role: "user", content: lastUserMsg.content, subject: subject ?? null, created_at: nowISO() },
-        { id: generateId(), user_id: userId, session_id: sid, role: "model", content: response, subject: subject ?? null, created_at: nowISO() },
+        { id: generateId(), user_id: userId, session_id: sid, role: "model", content: chatResult.text, subject: subject ?? null, created_at: nowISO() },
       ]);
 
-      const nextUsed = await incrementTodayUsage(userId, DAILY_DEEP_DIVE_USAGE_FEATURE_KEY, 1);
-      const usage = {
-        featureKey: DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
-        used: nextUsed,
-        limit: dailyLimit,
-        remaining: dailyLimit === null ? null : Math.max(0, dailyLimit - nextUsed),
-      };
+      const usage = await consumeTokenBudget(budget, {
+        input: { messages, subject, session_id: sid },
+        output: chatResult.text,
+        providerTotalTokens: chatResult.usage.totalTokens,
+        promptTokens: chatResult.usage.promptTokens,
+        completionTokens: chatResult.usage.completionTokens,
+        source: chatResult.usage.source,
+      });
 
-      res.json({ response, session_id: sid, usage });
+      res.json({ response: chatResult.text, session_id: sid, usage });
     } catch (err) {
       next(err);
     }
@@ -144,10 +244,15 @@ router.post(
       const { concept, subject } = req.body;
       if (!concept) throw new ValidationError("concept is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const explanation = await explainConcept(concept, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { concept, subject },
+        output: explanation,
+      });
 
-      res.json({ explanation });
+      res.json({ explanation, usage });
     } catch (err) {
       next(err);
     }
@@ -163,10 +268,15 @@ router.post(
       const { problem, subject } = req.body;
       if (!problem) throw new ValidationError("problem is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const solution = await solveProblem(problem, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { problem, subject },
+        output: solution,
+      });
 
-      res.json({ solution });
+      res.json({ solution, usage });
     } catch (err) {
       next(err);
     }
@@ -182,10 +292,15 @@ router.post(
       const { problem, subject } = req.body;
       if (!problem) throw new ValidationError("problem is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const hint = await giveHint(problem, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { problem, subject },
+        output: hint,
+      });
 
-      res.json({ hint });
+      res.json({ hint, usage });
     } catch (err) {
       next(err);
     }
@@ -201,10 +316,15 @@ router.post(
       const { content, subject } = req.body;
       if (!content) throw new ValidationError("content is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const summary = await summarizeContent(content, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { content, subject },
+        output: summary,
+      });
 
-      res.json({ summary });
+      res.json({ summary, usage });
     } catch (err) {
       next(err);
     }
@@ -242,6 +362,7 @@ router.post(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
+      const budget = await reserveTokenBudget(req.user!.sub);
       logger.info("[analyze-image] trace:upload-found", {
         traceId,
         uploadId: upload_id,
@@ -312,6 +433,16 @@ router.post(
           mathSegments: structured.mathSegments,
           warnings: structured.warnings,
         };
+        const usage = await consumeTokenBudget(budget, {
+          input: {
+            mode: mode ?? "problem_ocr",
+            question: question ?? "",
+            subject: subject ?? null,
+            imageBytesApprox: imagePart.data.length,
+            uploadMimeType: imagePart.mimeType,
+          },
+          output: analysisStructured,
+        });
         res.json({
           analysis_contract_version: 2,
           analysis,
@@ -323,6 +454,7 @@ router.post(
             math_segments: analysisStructured.mathSegments,
             warnings: analysisStructured.warnings,
           },
+          usage,
         });
         logger.info("[analyze-image] trace:done", {
           traceId,
@@ -343,7 +475,17 @@ router.post(
         analysisPreview: clip(analysis ?? "", 260),
         elapsedMs: Date.now() - startedAt,
       });
-      res.json({ analysis });
+      const usage = await consumeTokenBudget(budget, {
+        input: {
+          mode: mode ?? "default",
+          question: question ?? "",
+          subject: subject ?? null,
+          imageBytesApprox: imagePart.data.length,
+          uploadMimeType: imagePart.mimeType,
+        },
+        output: analysis,
+      });
+      res.json({ analysis, usage });
       logger.info("[analyze-image] trace:done", {
         traceId,
         stage: "vision:analyze",
@@ -371,10 +513,15 @@ router.post(
       const { problem, subject } = req.body;
       if (!problem) throw new ValidationError("problem is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const breakdown = await breakdownProblem(problem, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { problem, subject },
+        output: breakdown,
+      });
 
-      res.json({ breakdown });
+      res.json({ breakdown, usage });
     } catch (err) {
       next(err);
     }
@@ -390,9 +537,14 @@ router.post(
       const { nodeLabel, nodeMathContent, parentProblem, subject } = req.body;
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const nodes = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
-      res.json({ nodes });
+      const usage = await consumeTokenBudget(budget, {
+        input: { nodeLabel, nodeMathContent: nodeMathContent ?? nodeLabel, parentProblem, subject },
+        output: nodes,
+      });
+      res.json({ nodes, usage });
     } catch (err) {
       next(err);
     }
@@ -408,6 +560,7 @@ router.post(
       const { nodeLabel, nodeDescription, nodeMathContent, nodeType, parentProblem, subject } = req.body;
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       const node = await regenerateBranchNode(
         nodeLabel,
@@ -417,7 +570,18 @@ router.post(
         parentProblem,
         aiOptions
       );
-      res.json({ node });
+      const usage = await consumeTokenBudget(budget, {
+        input: {
+          nodeLabel,
+          nodeDescription: nodeDescription ?? "",
+          nodeMathContent: nodeMathContent ?? nodeLabel,
+          nodeType: typeof nodeType === "string" ? nodeType : "branch",
+          parentProblem,
+          subject,
+        },
+        output: node,
+      });
+      res.json({ node, usage });
     } catch (err) {
       next(err);
     }
@@ -433,6 +597,7 @@ router.post(
       const { nodeLabel, nodeDescription, nodeMathContent, subject, level } = req.body;
       if (!nodeLabel) throw new ValidationError("nodeLabel is required");
 
+      const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
       logger.info("[node-insight] request", {
         userId: req.user!.sub,
@@ -462,7 +627,17 @@ router.post(
         keyFormulaLength: (insight.keyFormula ?? "").length,
         simpleBreakdownPreview: clip(insight.simpleBreakdown ?? ""),
       });
-      res.json({ insight });
+      const usage = await consumeTokenBudget(budget, {
+        input: {
+          nodeLabel,
+          nodeDescription: nodeDescription ?? "",
+          nodeMathContent: nodeMathContent ?? nodeLabel,
+          subject: subject ?? "General",
+          level: level ?? "standard",
+        },
+        output: insight,
+      });
+      res.json({ insight, usage });
     } catch (err) {
       next(err);
     }

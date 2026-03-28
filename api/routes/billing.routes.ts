@@ -23,9 +23,15 @@ import {
   syncSubscriptionFromProvider,
 } from "../../billing/subscription-service.js";
 import type { BillingInterval, BillingProvider, PlanKey, SubscriptionStatus } from "../../billing/types.js";
-import { DAILY_DEEP_DIVE_USAGE_FEATURE_KEY, getTodayUsageSnapshot } from "../../billing/usage-service.js";
+import { DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY, getTodayUsageSnapshot } from "../../billing/usage-service.js";
+import {
+  registerUsageStreamClient,
+  sendUsageSnapshot,
+  setupUsageStreamHeaders,
+} from "../../billing/usage-stream.js";
 
 const router = Router();
+const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
 
 function coercePlanKey(value: string | null | undefined): PlanKey | null {
   if (value === "free" || value === "core" || value === "pro") return value;
@@ -219,8 +225,6 @@ router.post(
   }
 );
 
-router.use(requireAuth);
-
 router.get(
   "/catalog",
   async (_req: Request, res: Response, next: NextFunction) => {
@@ -235,15 +239,52 @@ router.get(
   }
 );
 
+router.use(requireAuth);
+
+router.get(
+  "/usage/stream",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user!.sub;
+      setupUsageStreamHeaders(res);
+      const cleanup = registerUsageStreamClient(userId, res);
+
+      const access = await getEffectiveAccessState(userId);
+      const dailyLimit = resolveEntitlementLimit(
+        access.entitlements,
+        DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+      );
+      const usage = await getTodayUsageSnapshot(
+        userId,
+        DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+        dailyLimit
+      );
+
+      sendUsageSnapshot(res, {
+        ...usage,
+        updatedAt: new Date().toISOString(),
+        source: "snapshot",
+      });
+
+      req.on("close", cleanup);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 router.get(
   "/subscription",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const access = await getEffectiveAccessState(req.user!.sub);
-      const dailyLimit = resolveEntitlementLimit(access.entitlements, "daily_deep_dive_limit");
+      const dailyLimit = resolveEntitlementLimit(
+        access.entitlements,
+        DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+      );
       const usage = await getTodayUsageSnapshot(
         req.user!.sub,
-        DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+        DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
         dailyLimit
       );
       res.json({ access, usage });
@@ -326,10 +367,13 @@ router.post(
       });
 
       const access = await getEffectiveAccessState(req.user!.sub);
-      const dailyLimit = resolveEntitlementLimit(access.entitlements, "daily_deep_dive_limit");
+      const dailyLimit = resolveEntitlementLimit(
+        access.entitlements,
+        DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+      );
       const usage = await getTodayUsageSnapshot(
         req.user!.sub,
-        DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+        DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
         dailyLimit
       );
 
@@ -358,10 +402,13 @@ router.post(
         mode,
       });
       const access = await getEffectiveAccessState(req.user!.sub);
-      const dailyLimit = resolveEntitlementLimit(access.entitlements, "daily_deep_dive_limit");
+      const dailyLimit = resolveEntitlementLimit(
+        access.entitlements,
+        DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+      );
       const usage = await getTodayUsageSnapshot(
         req.user!.sub,
-        DAILY_DEEP_DIVE_USAGE_FEATURE_KEY,
+        DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
         dailyLimit
       );
 

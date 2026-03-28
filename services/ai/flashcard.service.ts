@@ -12,12 +12,69 @@ import {
 import { generateId, nowISO, addDays, getPaginationOffset } from "../../utils/helpers.js";
 import { NotFoundError, ForbiddenError, AppError } from "../../api/middlewares/error.middleware.js";
 import { logger } from "../../utils/logger.js";
+import { resolveOrCreateSubjectId } from "../session.service.js";
+
+type DeckRow = {
+  id: string;
+  user_id: string;
+  lesson_id: string | null;
+  title: string;
+  description: string | null;
+  subject_id?: string | null;
+  subject?: string | null; // legacy column support
+  subjects?: { name?: string | null } | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function normalizeDeckRow(row: DeckRow): FlashcardDeck {
+  const joinedSubjectName = row.subjects?.name ?? null;
+  const legacySubjectName = typeof row.subject === "string" ? row.subject : null;
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    lesson_id: row.lesson_id ?? null,
+    title: row.title,
+    description: row.description ?? null,
+    subject_id: row.subject_id ?? null,
+    subject_name: joinedSubjectName ?? legacySubjectName,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+async function getSubjectNameById(subjectId: string): Promise<string | null> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from("subjects")
+    .select("name")
+    .eq("id", subjectId)
+    .maybeSingle();
+  if (error) throw new AppError(error.message, 500);
+  return data?.name ? String(data.name) : null;
+}
+
+async function resolveDeckSubject(dto: Pick<CreateDeckDTO, "subject_id" | "subject">): Promise<{ subjectId: string | null; subjectName: string | null }> {
+  if (dto.subject_id) {
+    const subjectName = await getSubjectNameById(dto.subject_id);
+    if (!subjectName) throw new AppError("Invalid subject_id", 400);
+    return { subjectId: dto.subject_id, subjectName };
+  }
+
+  const rawSubject = String(dto.subject ?? "").trim();
+  if (!rawSubject) return { subjectId: null, subjectName: null };
+
+  const subjectId = await resolveOrCreateSubjectId(rawSubject);
+  const subjectName = await getSubjectNameById(subjectId);
+  return { subjectId, subjectName: subjectName ?? rawSubject };
+}
 
 // ─── Deck management ──────────────────────────────────────────────────────────
 
 export async function createDeck(userId: string, dto: CreateDeckDTO): Promise<FlashcardDeck> {
   const db = getSupabaseAdmin();
   const id = generateId();
+  const { subjectId, subjectName } = await resolveDeckSubject(dto);
 
   const { error } = await db.from("flashcard_decks").insert({
     id,
@@ -25,47 +82,86 @@ export async function createDeck(userId: string, dto: CreateDeckDTO): Promise<Fl
     lesson_id: dto.lesson_id ?? null,
     title: dto.title,
     description: dto.description ?? null,
-    subject: dto.subject ?? null,
+    subject_id: subjectId,
     created_at: nowISO(),
     updated_at: nowISO(),
   });
 
-  if (error) throw new AppError(error.message, 500);
+  if (error) {
+    // Backward compatibility for environments where flashcard_decks.subject_id has not been added yet.
+    if (error.message.includes("subject_id") && error.message.includes("does not exist")) {
+      const { error: legacyError } = await db.from("flashcard_decks").insert({
+        id,
+        user_id: userId,
+        lesson_id: dto.lesson_id ?? null,
+        title: dto.title,
+        description: dto.description ?? null,
+        subject: subjectName ?? null,
+        created_at: nowISO(),
+        updated_at: nowISO(),
+      });
+      if (legacyError) throw new AppError(legacyError.message, 500);
+      return getDeckById(id).then((d) => d!);
+    }
+    throw new AppError(error.message, 500);
+  }
 
   return getDeckById(id).then((d) => d!);
 }
 
 export async function getDeckById(id: string): Promise<FlashcardDeck | null> {
   const db = getSupabaseAdmin();
+  let deck: DeckRow | null = null;
 
-  const { data: deck, error } = await db
+  const { data: modernDeck, error: modernError } = await db
     .from("flashcard_decks")
-    .select("*")
+    .select("*, subjects(name)")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  if (error || !deck) return null;
+  if (modernError) {
+    const { data: legacyDeck, error: legacyError } = await db
+      .from("flashcard_decks")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (legacyError) throw new AppError(legacyError.message, 500);
+    if (!legacyDeck) return null;
+    deck = legacyDeck as DeckRow;
+  } else {
+    if (!modernDeck) return null;
+    deck = modernDeck as DeckRow;
+  }
 
   const { count } = await db
     .from("flashcards")
     .select("id", { count: "exact", head: true })
     .eq("deck_id", id);
 
-  return { ...(deck as FlashcardDeck), card_count: count ?? 0 };
+  return { ...normalizeDeckRow(deck), card_count: count ?? 0 };
 }
 
 export async function getUserDecks(userId: string): Promise<FlashcardDeck[]> {
   const db = getSupabaseAdmin();
-
-  const { data, error } = await db
+  let decks: FlashcardDeck[] = [];
+  const { data: modernData, error: modernError } = await db
     .from("flashcard_decks")
-    .select("*")
+    .select("*, subjects(name)")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
-  if (error) throw new AppError(error.message, 500);
+  if (modernError) {
+    const { data: legacyData, error: legacyError } = await db
+      .from("flashcard_decks")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false });
+    if (legacyError) throw new AppError(legacyError.message, 500);
+    decks = ((legacyData ?? []) as DeckRow[]).map((row) => normalizeDeckRow(row));
+  } else {
+    decks = ((modernData ?? []) as DeckRow[]).map((row) => normalizeDeckRow(row));
+  }
 
-  const decks = (data ?? []) as FlashcardDeck[];
   if (decks.length === 0) return [];
 
   const deckIds = decks.map((d) => d.id);
@@ -217,6 +313,9 @@ export async function generateFlashcardsFromContent(
 ): Promise<FlashcardDeck> {
   const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
   const count = dto.count ?? 10;
+  const { subjectId, subjectName } = await resolveDeckSubject(dto);
+  const fallbackSubjectName = String(dto.subject ?? "").trim();
+  const resolvedSubjectName = (subjectName ?? fallbackSubjectName) || "General";
 
   const prompt = `You are an expert educator. Generate exactly ${count} flashcards from the following educational content.
 
@@ -225,7 +324,7 @@ Content:
 ${dto.content.slice(0, 8000)}
 """
 
-Subject: ${dto.subject ?? "General"}
+Subject: ${resolvedSubjectName}
 Difficulty: ${dto.difficulty ?? "medium"}
 
 Respond ONLY with a valid JSON array. No markdown, no extra text, just JSON:
@@ -269,10 +368,11 @@ Requirements:
   }
 
   // Create deck
-  const deckTitle = dto.deck_title ?? `AI-Generated: ${dto.subject ?? "Study"} Deck`;
+  const deckTitle = dto.deck_title ?? `AI-Generated: ${resolvedSubjectName} Deck`;
   const deck = await createDeck(userId, {
     title: deckTitle,
-    subject: dto.subject,
+    subject_id: subjectId ?? undefined,
+    subject: resolvedSubjectName,
     lesson_id: dto.lesson_id,
     description: `Auto-generated from content on ${new Date().toLocaleDateString()}`,
   });

@@ -5,6 +5,7 @@ export interface StudySession {
   user_id: string;
   title: string;
   subject: string;
+  subject_id: string | null;
   problem: string;
   node_count: number;
   duration_seconds: number | null;
@@ -15,6 +16,7 @@ export interface StudySession {
 export interface CreateSessionDTO {
   title: string;
   subject: string;
+  subject_id?: string | null;
   problem: string;
   node_count: number;
   duration_seconds?: number;
@@ -24,6 +26,7 @@ export interface CreateSessionDTO {
 export interface UpdateSessionDTO {
   title?: string;
   subject?: string;
+  subject_id?: string | null;
   problem?: string;
   node_count?: number;
   duration_seconds?: number;
@@ -38,6 +41,7 @@ export const STUDY_SESSIONS_TABLE_SQL = `
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     subject TEXT NOT NULL DEFAULT 'General',
+    subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL,
     problem TEXT NOT NULL,
     node_count INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER,

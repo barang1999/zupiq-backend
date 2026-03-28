@@ -1,18 +1,189 @@
 import { getSupabaseAdmin } from "../config/supabase.js";
-import { StudySession, CreateSessionDTO } from "../models/session.model.js";
-import { generateId, nowISO } from "../utils/helpers.js";
+import { StudySession, CreateSessionDTO, UpdateSessionDTO } from "../models/session.model.js";
+import { generateId, nowISO, slugify } from "../utils/helpers.js";
 import { AppError } from "../api/middlewares/error.middleware.js";
+
+type CanonicalSubject = {
+  slug: string;
+  name: string;
+  aliases: string[];
+};
+
+type SubjectRow = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+const CANONICAL_SUBJECTS: CanonicalSubject[] = [
+  { slug: "physics", name: "Physics", aliases: ["physics", "រូបវិទ្យា", "រូប វិទ្យា"] },
+  { slug: "mathematics", name: "Mathematics", aliases: ["mathematics", "math", "maths", "គណិតវិទ្យា", "គណិត វិទ្យា"] },
+  { slug: "chemistry", name: "Chemistry", aliases: ["chemistry", "គីមីវិទ្យា", "គីមី វិទ្យា"] },
+  { slug: "biology", name: "Biology", aliases: ["biology", "ជីវវិទ្យា", "ជីវ វិទ្យា"] },
+  { slug: "history", name: "History", aliases: ["history", "ប្រវត្តិវិទ្យា", "ប្រវត្តិ វិទ្យា"] },
+  { slug: "geography", name: "Geography", aliases: ["geography", "ភូមិវិទ្យា", "ភូមិ វិទ្យា"] },
+  { slug: "english", name: "English", aliases: ["english", "អង់គ្លេស"] },
+  { slug: "khmer", name: "Khmer", aliases: ["khmer", "ភាសាខ្មែរ"] },
+];
+
+function normalizeSubjectKey(input: string): string {
+  return String(input ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectCanonicalSubject(input: string): CanonicalSubject | null {
+  const key = normalizeSubjectKey(input);
+  if (!key) return null;
+
+  for (const subject of CANONICAL_SUBJECTS) {
+    const aliasSet = new Set(subject.aliases.map((alias) => normalizeSubjectKey(alias)));
+    if (aliasSet.has(key)) return subject;
+  }
+  return null;
+}
+
+function chooseBestSubjectMatch(candidates: SubjectRow[], canonical: CanonicalSubject | null): SubjectRow | null {
+  if (!candidates.length) return null;
+  if (!canonical) return candidates[0];
+
+  const canonicalAliasSet = new Set(canonical.aliases.map((alias) => normalizeSubjectKey(alias)));
+  let best: SubjectRow | null = null;
+  let bestScore = -1;
+
+  for (const candidate of candidates) {
+    const normalizedName = normalizeSubjectKey(candidate.name);
+    let score = 0;
+    if (candidate.slug === canonical.slug) score += 100;
+    if (slugify(candidate.name) === canonical.slug) score += 60;
+    if (canonicalAliasSet.has(normalizedName)) score += 30;
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return best ?? candidates[0];
+}
+
+function normalizeSessionRow(row: Record<string, unknown>): StudySession {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    title: String(row.title),
+    subject: String(row.subject ?? "General"),
+    subject_id: typeof row.subject_id === "string" ? row.subject_id : null,
+    problem: String(row.problem),
+    node_count: Number(row.node_count ?? 0),
+    duration_seconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
+    breakdown_json: typeof row.breakdown_json === "string" ? row.breakdown_json : JSON.stringify(row.breakdown_json ?? {}),
+    created_at: String(row.created_at),
+  };
+}
+
+function normalizeSubjectName(subject: string | null | undefined): string {
+  const normalized = String(subject ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized || "General";
+}
+
+export async function resolveOrCreateSubjectId(rawSubject: string): Promise<string> {
+  const db = getSupabaseAdmin();
+  const subjectName = normalizeSubjectName(rawSubject);
+  const canonical = detectCanonicalSubject(subjectName);
+  const subjectSlug = canonical?.slug ?? slugify(subjectName);
+  const subjectDisplayName = canonical?.name ?? subjectName;
+  const normalizedInput = normalizeSubjectKey(subjectName);
+
+  const { data: allSubjects, error: listError } = await db
+    .from("subjects")
+    .select("id, name, slug")
+    .limit(1000);
+  if (listError) throw new AppError(listError.message, 500);
+
+  const rows = ((allSubjects ?? []) as Array<Record<string, unknown>>)
+    .map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? ""),
+      slug: String(row.slug ?? ""),
+    }))
+    .filter((row) => row.id && row.name);
+
+  if (subjectSlug) {
+    const bySlug = rows.find((row) => row.slug === subjectSlug);
+    if (bySlug) return bySlug.id;
+  }
+
+  if (canonical) {
+    const canonicalAliasSet = new Set(canonical.aliases.map((alias) => normalizeSubjectKey(alias)));
+    const aliasMatches = rows.filter((row) => canonicalAliasSet.has(normalizeSubjectKey(row.name)));
+    const bestAliasMatch = chooseBestSubjectMatch(aliasMatches, canonical);
+    if (bestAliasMatch) return bestAliasMatch.id;
+  }
+
+  const exactName = rows.find((row) => normalizeSubjectKey(row.name) === normalizedInput);
+  if (exactName) return exactName.id;
+
+  if (subjectSlug) {
+    const { data: upsertedSubject, error: upsertError } = await db
+      .from("subjects")
+      .upsert(
+        {
+          id: generateId(),
+          name: subjectDisplayName,
+          slug: subjectSlug,
+          created_at: nowISO(),
+        },
+        { onConflict: "slug" }
+      )
+      .select("id")
+      .single();
+
+    if (upsertError) throw new AppError(upsertError.message, 500);
+    return String(upsertedSubject.id);
+  }
+
+  const { data: existingByName, error: nameLookupError } = await db
+    .from("subjects")
+    .select("id")
+    .eq("name", subjectName)
+    .maybeSingle();
+
+  if (nameLookupError) throw new AppError(nameLookupError.message, 500);
+  if (existingByName?.id) return String(existingByName.id);
+
+  const { data: insertedSubject, error: insertError } = await db
+    .from("subjects")
+    .insert({
+      id: generateId(),
+      name: subjectDisplayName,
+      slug: `subject-${generateId().slice(0, 8)}`,
+      created_at: nowISO(),
+    })
+    .select("id")
+    .single();
+
+  if (insertError) throw new AppError(insertError.message, 500);
+  return String(insertedSubject.id);
+}
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 export async function createSession(userId: string, dto: CreateSessionDTO): Promise<StudySession> {
   const db = getSupabaseAdmin();
+  const subject = normalizeSubjectName(dto.subject);
+  const subjectId = dto.subject_id ?? (await resolveOrCreateSubjectId(subject));
 
   const session: StudySession = {
     id: generateId(),
     user_id: userId,
     title: dto.title,
-    subject: dto.subject,
+    subject,
+    subject_id: subjectId,
     problem: dto.problem,
     node_count: dto.node_count,
     duration_seconds: dto.duration_seconds ?? null,
@@ -26,13 +197,28 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     .select()
     .single();
 
-  if (error) throw new AppError(error.message, 500);
-  return data as StudySession;
+  if (error) {
+    // Backward compatibility for environments where subject_id has not been added yet.
+    if (error.message.includes("subject_id") && error.message.includes("does not exist")) {
+      const { subject_id: _omit, ...legacySession } = session;
+      const { data: legacyData, error: legacyError } = await db
+        .from("study_sessions")
+        .insert(legacySession)
+        .select()
+        .single();
+      if (legacyError) throw new AppError(legacyError.message, 500);
+      const normalized = normalizeSessionRow((legacyData ?? {}) as Record<string, unknown>);
+      return { ...normalized, subject_id: subjectId };
+    }
+    throw new AppError(error.message, 500);
+  }
+
+  return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 
-export async function updateSession(id: string, userId: string, updates: Partial<StudySession>): Promise<StudySession> {
+export async function updateSession(id: string, userId: string, updates: UpdateSessionDTO): Promise<StudySession> {
   const db = getSupabaseAdmin();
 
   const { data, error } = await db
@@ -44,7 +230,7 @@ export async function updateSession(id: string, userId: string, updates: Partial
     .single();
 
   if (error) throw new AppError(error.message, 500);
-  return data as StudySession;
+  return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }
 
 export async function getUserSessions(userId: string): Promise<StudySession[]> {
@@ -57,7 +243,7 @@ export async function getUserSessions(userId: string): Promise<StudySession[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw new AppError(error.message, 500);
-  return (data ?? []) as StudySession[];
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => normalizeSessionRow(row));
 }
 
 export async function getSessionById(id: string, userId: string): Promise<StudySession | null> {
@@ -71,5 +257,5 @@ export async function getSessionById(id: string, userId: string): Promise<StudyS
     .single();
 
   if (error) return null;
-  return data as StudySession;
+  return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }

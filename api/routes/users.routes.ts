@@ -8,6 +8,7 @@ import { STORAGE_BUCKETS } from "../../config/supabase.js";
 import { signAccessToken } from "../../services/auth.service.js";
 import type { UpdateUserDTO } from "../../models/user.model.js";
 import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
+import { getUserMastery } from "../../services/quiz.service.js";
 
 const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -145,6 +146,20 @@ router.post(
 
       const user = await updateUser(userId, { avatar_url: avatarUrl });
       res.json({ user });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── GET /api/users/:userId/mastery ─────────────────────────────────────────
+
+router.get(
+  "/:userId/mastery",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const mastery = await getUserMastery(req.user!.sub, req.params.userId);
+      res.json({ mastery });
     } catch (err) {
       next(err);
     }

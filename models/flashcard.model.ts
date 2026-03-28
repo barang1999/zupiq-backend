@@ -12,7 +12,8 @@ export interface FlashcardDeck {
   lesson_id: string | null;
   title: string;
   description: string | null;
-  subject: string | null;
+  subject_id: string | null;
+  subject_name?: string | null;
   card_count?: number;
   created_at: string;
   updated_at: string;
@@ -36,6 +37,7 @@ export interface Flashcard {
 export interface CreateDeckDTO {
   title: string;
   description?: string;
+  subject_id?: string;
   subject?: string;
   lesson_id?: string;
 }
@@ -43,6 +45,7 @@ export interface CreateDeckDTO {
 export interface UpdateDeckDTO {
   title?: string;
   description?: string;
+  subject_id?: string;
   subject?: string;
 }
 
@@ -64,6 +67,7 @@ export interface ReviewFlashcardDTO {
 export interface GenerateFlashcardsDTO {
   lesson_id?: string;
   content: string;
+  subject_id?: string;
   subject?: string;
   count?: number; // how many cards to generate
   difficulty?: CardDifficulty;

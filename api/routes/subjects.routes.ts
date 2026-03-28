@@ -7,6 +7,13 @@ import type { Subject, Topic, Lesson, CreateSubjectDTO, CreateTopicDTO, CreateLe
 
 const router = Router();
 
+function relationCount(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (!Array.isArray(value) || value.length === 0) return 0;
+  const count = (value[0] as { count?: unknown })?.count;
+  return typeof count === "number" && Number.isFinite(count) ? count : 0;
+}
+
 // ─── Subjects ─────────────────────────────────────────────────────────────────
 
 // GET /api/subjects
@@ -18,7 +25,17 @@ router.get("/", optionalAuth, async (_req: Request, res: Response, next: NextFun
       .select("*, topics(count)")
       .order("name", { ascending: true });
     if (error) throw new Error(error.message);
-    res.json({ subjects });
+    const normalized = ((subjects ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      slug: String(row.slug),
+      description: (row.description as string | null) ?? null,
+      icon: (row.icon as string | null) ?? null,
+      color: (row.color as string | null) ?? null,
+      topic_count: relationCount(row.topics),
+      created_at: String(row.created_at),
+    })) as Subject[];
+    res.json({ subjects: normalized });
   } catch (err) {
     next(err);
   }
@@ -78,7 +95,17 @@ router.get("/:subjectId/topics", optionalAuth, async (req: Request, res: Respons
       .eq("subject_id", subject.id)
       .order("order_index", { ascending: true });
     if (error) throw new Error(error.message);
-    res.json({ topics });
+    const normalized = ((topics ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      subject_id: String(row.subject_id),
+      name: String(row.name),
+      slug: String(row.slug),
+      description: (row.description as string | null) ?? null,
+      order_index: Number(row.order_index ?? 0),
+      lesson_count: relationCount(row.lessons),
+      created_at: String(row.created_at),
+    })) as Topic[];
+    res.json({ topics: normalized });
   } catch (err) {
     next(err);
   }

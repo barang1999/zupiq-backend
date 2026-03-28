@@ -26,6 +26,7 @@ interface RateLimitOptions {
   maxRequests?: number;
   message?: string;
   skipSuccessfulRequests?: boolean;
+  scopeByPath?: boolean;
 }
 
 export function createRateLimit(options: RateLimitOptions = {}) {
@@ -33,6 +34,7 @@ export function createRateLimit(options: RateLimitOptions = {}) {
   const maxRequests = options.maxRequests ?? env.RATE_LIMIT_MAX_REQUESTS;
   const message = options.message ?? "Too many requests. Please try again later.";
   const skipSuccessfulRequests = options.skipSuccessfulRequests ?? false;
+  const scopeByPath = options.scopeByPath ?? false;
 
   // Each limiter instance gets its own store so endpoints don't share counters
   const instanceStore = new Map<string, RateLimitRecord>();
@@ -45,7 +47,16 @@ export function createRateLimit(options: RateLimitOptions = {}) {
   }, 5 * 60 * 1000);
 
   return function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
-    const key = getClientKey(req);
+    if (env.NODE_ENV === "development") {
+      next();
+      return;
+    }
+
+    const clientKey = getClientKey(req);
+    const normalizedPath = `${req.baseUrl}${req.path}`
+      .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,36}(?=\/|$)/gi, "/:id")
+      .replace(/\/\d+(?=\/|$)/g, "/:id");
+    const key = scopeByPath ? `${clientKey}:${normalizedPath}` : clientKey;
     const now = Date.now();
     const record = instanceStore.get(key);
 
@@ -94,7 +105,7 @@ export function createRateLimit(options: RateLimitOptions = {}) {
 // ─── Pre-configured limiters ──────────────────────────────────────────────────
 
 /** Standard API rate limit */
-export const apiRateLimit = createRateLimit();
+export const apiRateLimit = createRateLimit({ scopeByPath: true });
 
 /** Stricter limit for register/google auth endpoints */
 export const authRateLimit = createRateLimit({

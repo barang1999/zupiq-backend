@@ -216,15 +216,22 @@ interface JsonGenerationConfig<T> {
   taskName: string;
   maxAttempts?: number;
   recoverFromRaw?: (raw: string) => T | null;
+  imagePart?: ImagePart;
+  /** When true, do not set responseMimeType=application/json — avoids truncation for complex outputs */
+  noJsonMime?: boolean;
 }
 
 type StructuredJsonSource = "parsed" | "recovered" | "none";
 
 export async function breakdownProblem(
   problem: string,
-  options: AIRequestOptions = {}
+  options: AIRequestOptions = {},
+  imagePart?: ImagePart
 ): Promise<ProblemBreakdown> {
-  const prompt = `Analyze and break down the following problem into a detailed step-by-step neural concept tree: "${problem}"
+  const imageContext = imagePart
+    ? `The problem text below was extracted from an attached image. Use both the image and the extracted text together to fully understand the problem — the image may contain diagrams, figures, or additional visual context.\n\n`
+    : "";
+  const prompt = `${imageContext}Analyze and break down the following problem into a detailed step-by-step neural concept tree: "${problem}"
 
 Return ONLY valid JSON with no markdown, no code blocks, no explanation outside the JSON. Use this exact structure:
 {
@@ -276,7 +283,8 @@ Important rules:
 - 1-3 leaf nodes (underlying concepts/rules that make the steps work)
 - mathContent MUST contain actual math notation for every node, not empty strings
 - Keep labels concise; put the math in mathContent
-- CRITICAL JSON ESCAPING: any backslash in LaTeX must be escaped for JSON (write \\\\circ, \\\\times, \\\\frac, not \\circ, \\times, \\frac)`;
+- CRITICAL JSON ESCAPING: any backslash in LaTeX must be escaped for JSON (write \\\\circ, \\\\times, \\\\frac, not \\circ, \\times, \\frac)
+- NEVER use LaTeX table environments (\\begin{tabular}, \\begin{array}, \\hline, &) in any field — sign/variation tables are rendered separately by the UI`;
 
   const { data, raw } = await generateStructuredJson<ProblemBreakdown>({
     prompt,
@@ -285,10 +293,51 @@ Important rules:
     maxOutputTokens: 8192,
     taskName: "breakdownProblem",
     maxAttempts: 3,
+    imagePart,
   });
 
-  if (data) return data;
+  if (data) return sanitizeBreakdownNodes(data);
   return buildFallbackBreakdown(problem, options.subject ?? "General", raw, options.language);
+}
+
+function stripLatexTabularEnv(text: string): string {
+  if (!text) return text;
+  let result = text
+    .replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/g, '')
+    .replace(/\\begin\{array\}[\s\S]*?\\end\{array\}/g, '')
+    .replace(/\\hline\b/g, '')
+    .replace(/(?:^|\n)(?:\s*&\s*)+(?:\n|$)/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // Strip raw sign-table OCR data: lines that look like isolated sign-table cell sequences
+  // Pattern: text containing sign table column headers (M ... Δ/Delta ... P ... S) followed
+  // by lists of math sign values ($+$, $-$, $0$, $\frac{...}$, $\ominus$, $-\infty$, etc.)
+  if (/\bM\b[\s\S]{0,60}(?:\\Delta|\$\\Delta\$|Δ)[\s\S]{0,60}\bP\b[\s\S]{0,60}\bS\b/i.test(result)) {
+    // Remove the sign table header/data lines — keep only text before the "M Δ P S" pattern
+    result = result.replace(/\bM\b[\s\S]*(?:\$[^$]+\$\s*){3,}[\s\S]*/g, '').trim();
+    // Also strip isolated single-char math sign lines like "$+$", "$-$", "$0$"
+    result = result
+      .split('\n')
+      .filter(line => !/^\s*\$[+\-0\\]\S*\$\s*$/.test(line))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  return result;
+}
+
+function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
+  return {
+    ...bd,
+    nodes: bd.nodes.map((node) => ({
+      ...node,
+      label: stripLatexTabularEnv(node.label ?? ''),
+      description: stripLatexTabularEnv(node.description ?? ''),
+      mathContent: node.mathContent ? stripLatexTabularEnv(node.mathContent) : node.mathContent,
+    })),
+  };
 }
 
 // ─── Expand a single node into sub-steps ──────────────────────────────────────
@@ -828,6 +877,31 @@ Rules:
 
 // ─── Node insight (per-selected-node breakdown) ───────────────────────────────
 
+export interface SignTableRow {
+  label: string;       // "-∞", "1/2", "+∞", etc.
+  type: 'value' | 'interval';
+  cells: string[];     // "+", "-", "0", "" — one per analysis column
+  conclusion: string;  // "0 < x₁ < x₂"
+}
+
+export interface GenericTableRow {
+  cells: string[];
+}
+
+export type VisualTable = 
+  | { 
+      type: 'sign_analysis'; 
+      parameterName: string;   // "m"
+      columns: string[];       // ["Δ'", "P", "S"]
+      conclusionLabel: string;
+      rows: SignTableRow[];
+    }
+  | { 
+      type: 'generic'; 
+      headers: string[]; 
+      rows: GenericTableRow[];
+    };
+
 export interface NodeInsight {
   simpleBreakdown: string;
   keyFormula: string;
@@ -920,7 +994,7 @@ Return ONLY this JSON:
     prompt,
     options,
     temperature: isKidLevel ? 0.5 : 0.2,
-    maxOutputTokens: isKidLevel ? 700 : 512,
+    maxOutputTokens: isKidLevel ? 1024 : 1024,
     taskName: "getNodeInsight",
     maxAttempts: 3,
     recoverFromRaw: (raw) => recoverNodeInsightFromPartialJson(raw),
@@ -974,6 +1048,115 @@ Return ONLY this JSON:
     simpleBreakdown: acceptedRescued || deterministicStandard,
     keyFormula: normalizeKeyFormula(nodeMathContent || ""),
   };
+}
+
+// ─── Sign-table detection & generation ────────────────────────────────────────
+
+export function requiresVisualTable(problem: string): boolean {
+  if (!problem) return false;
+
+  const hasExplicitTable = /sign[\s-]*(table|chart|analysis)|tableau.*sign|variation.*table|sign variation|ตาราง|bảng.*dấu|bảng.*biến|lập bảng|\\begin\{tabular\}|\\begin\{array\}|table\b/i.test(problem);
+  // Sign table column header pattern: M ... Δ/Delta ... P ... S (common in OCR output)
+  const hasColumnHeaders = /\bM\b.{0,30}(?:\u0394|\\Delta|\$\\Delta\$).{0,30}\bP\b.{0,30}\bS\b/i.test(problem);
+  const hasDiscriminant = /[\u0394\u0394]['′\u2019]?|\bDelta['′\u2019]?|\bdelta['′\u2019]?|\\[Dd]elta|discriminant/i.test(problem);
+  const hasVietaOrPS = /\bP\s*[=:]|\bS\s*[=:]|\bVieta\b|\bproduct.{0,10}root|sum.{0,10}root/i.test(problem);
+  const hasParametricQuadratic = /[a-z]\s*x\s*[\^²2]|x\s*[\^²]\s*2?\s*[+\-*]/i.test(problem);
+  const hasRootCondition = /x\s*[₁1]\s*[<>=≤≥]|x\s*[₂2]\s*[<>=≤≥]|both.{0,15}(positive|negative)|opposite.{0,10}sign|no.{0,10}real.{0,10}root/i.test(problem);
+
+  const result =
+    hasExplicitTable ||
+    hasColumnHeaders ||
+    (hasDiscriminant && hasVietaOrPS) ||
+    (hasDiscriminant && hasParametricQuadratic && hasRootCondition);
+
+  logger.debug("[requiresVisualTable]", {
+    result,
+    hasExplicitTable,
+    hasColumnHeaders,
+    hasDiscriminant,
+    hasVietaOrPS,
+    hasParametricQuadratic,
+    hasRootCondition,
+    problemPreview: problem.slice(0, 120),
+  });
+
+  return result;
+}
+
+export async function generateVisualTable(
+  problem: string,
+  subject: string,
+  options: AIRequestOptions,
+  imagePart?: ImagePart | null
+): Promise<VisualTable | null> {
+  const imageNote = imagePart
+    ? `An image of the problem is also attached — read the table directly from it if visible.\n`
+    : "";
+
+  const prompt = `You are extracting or constructing a structured data table for a math problem or educational context.
+
+${imageNote}Problem: "${problem}"
+Subject: "${subject}"
+
+Determine if the problem requires a Sign Analysis Table (tableau de signes) or a Generic Data Table.
+
+If it's a Sign Analysis Table, return a JSON object with this EXACT structure:
+{
+  "type": "sign_analysis",
+  "parameterName": "m",
+  "columns": ["Δ'", "P", "S"],
+  "conclusionLabel": "Conclusion (x₁, x₂)",
+  "rows": [
+    { "label": "+∞", "type": "value", "cells": ["", "", ""], "conclusion": "" },
+    { "label": "", "type": "interval", "cells": ["+", "+", "+"], "conclusion": "0 < x₁ < x₂" },
+    ...
+  ]
+}
+
+Rules for Sign Analysis:
+- "value" rows are critical points; "interval" rows are ranges between them.
+- "cells": "+", "-", "0", or "" (empty for ±∞ boundaries).
+- Rows MUST go from +∞ down to -∞.
+
+If it's a Generic Data Table (for any other structured data, comparison, or list extracted from the problem/image), return:
+{
+  "type": "generic",
+  "headers": ["Header 1", "Header 2", ...],
+  "rows": [
+    { "cells": ["Value 1", "Value 2", ...] },
+    ...
+  ]
+}
+
+Return ONLY the JSON object. No markdown, no explanation.`;
+
+  const { data } = await generateStructuredJson<VisualTable>({
+    prompt,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 4096,
+    taskName: "generateVisualTable",
+    maxAttempts: 3,
+    imagePart: imagePart ?? undefined,
+    noJsonMime: true,
+  });
+
+  if (!data || !['sign_analysis', 'generic'].includes(data.type) || !Array.isArray(data.rows) || data.rows.length === 0) {
+    logger.warn("[generateVisualTable] invalid or empty result", {
+      hasData: !!data,
+      type: (data as VisualTable | null)?.type ?? null,
+      rowCount: Array.isArray((data as VisualTable | null)?.rows) ? (data as VisualTable).rows.length : null,
+    });
+    return null;
+  }
+
+  logger.info("[generateVisualTable] success", {
+    type: data.type,
+    rowCount: data.rows.length,
+    rows: data.rows,
+  });
+
+  return data;
 }
 
 // ─── Internal helper ──────────────────────────────────────────────────────────
@@ -1425,7 +1608,7 @@ function extractJsonStringFieldLoose(raw: string, key: string): string | null {
 
 function decodeJsonStringLoose(chunk: string): string {
   let normalized = chunk
-    .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+    .replace(/\\(?!["\\/])/g, "\\\\")
     .replace(/\\$/g, "\\\\");
   try {
     return JSON.parse(`"${normalized}"`) as string;
@@ -1458,9 +1641,15 @@ async function generateStructuredJson<T>(
         systemInstruction: buildSystemInstruction(config.options),
         temperature: config.temperature,
         maxOutputTokens: config.maxOutputTokens,
-        responseMimeType: "application/json",
+        ...(config.noJsonMime ? {} : { responseMimeType: "application/json" }),
       },
-      contents: [{ role: "user", parts: [{ text: `${config.prompt}${retrySuffix}` }] }],
+      contents: [{
+        role: "user",
+        parts: [
+          ...(config.imagePart ? [{ inlineData: { data: config.imagePart.data, mimeType: config.imagePart.mimeType } } as Part] : []),
+          { text: `${config.prompt}${retrySuffix}` },
+        ],
+      }],
     });
 
     const raw = response.text ?? "";

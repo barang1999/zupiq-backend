@@ -80,6 +80,9 @@ function normalizeSessionRow(row: Record<string, unknown>): StudySession {
     node_count: Number(row.node_count ?? 0),
     duration_seconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
     breakdown_json: typeof row.breakdown_json === "string" ? row.breakdown_json : JSON.stringify(row.breakdown_json ?? {}),
+    visual_table_json: typeof row.visual_table_json === "string" 
+      ? row.visual_table_json 
+      : (row.visual_table_json ? JSON.stringify(row.visual_table_json) : null),
     created_at: String(row.created_at),
   };
 }
@@ -188,6 +191,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     node_count: dto.node_count,
     duration_seconds: dto.duration_seconds ?? null,
     breakdown_json: dto.breakdown_json,
+    visual_table_json: dto.visual_table_json ?? null,
     created_at: nowISO(),
   };
 
@@ -198,6 +202,18 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     .single();
 
   if (error) {
+    // Backward compatibility for environments where visual_table_json has not been added yet.
+    if (error.message.includes("visual_table_json") && error.message.includes("does not exist")) {
+      const { visual_table_json: _omitVt, ...sessionWithoutVt } = session;
+      const { data: vtData, error: vtError } = await db
+        .from("study_sessions")
+        .insert(sessionWithoutVt)
+        .select()
+        .single();
+      if (vtError) throw new AppError(vtError.message, 500);
+      const normalized = normalizeSessionRow((vtData ?? {}) as Record<string, unknown>);
+      return { ...normalized, visual_table_json: session.visual_table_json ?? null };
+    }
     // Backward compatibility for environments where subject_id has not been added yet.
     if (error.message.includes("subject_id") && error.message.includes("does not exist")) {
       const { subject_id: _omit, ...legacySession } = session;

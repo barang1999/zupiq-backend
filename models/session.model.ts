@@ -10,6 +10,7 @@ export interface StudySession {
   node_count: number;
   duration_seconds: number | null;
   breakdown_json: string; // serialized ProblemBreakdown
+  visual_table_json?: string | null;
   created_at: string;
 }
 
@@ -21,6 +22,7 @@ export interface CreateSessionDTO {
   node_count: number;
   duration_seconds?: number;
   breakdown_json: string;
+  visual_table_json?: string | null;
 }
 
 export interface UpdateSessionDTO {
@@ -31,6 +33,7 @@ export interface UpdateSessionDTO {
   node_count?: number;
   duration_seconds?: number;
   breakdown_json?: string;
+  visual_table_json?: string | null;
 }
 
 // ─── DB Schema SQL ────────────────────────────────────────────────────────────
@@ -46,6 +49,7 @@ export const STUDY_SESSIONS_TABLE_SQL = `
     node_count INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER,
     breakdown_json TEXT NOT NULL DEFAULT '{}',
+    visual_table_json TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )
 `;

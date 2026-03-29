@@ -12,6 +12,8 @@ import {
   expandNode,
   regenerateBranchNode,
   getNodeInsight,
+  requiresVisualTable,
+  generateVisualTable,
 } from "../../services/ai/gemini.service.js";
 import {
   generateEducationalGameProblem,
@@ -555,18 +557,69 @@ router.post(
   "/breakdown",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { problem, subject } = req.body;
+      const { problem, subject, upload_id, sign_table_hint } = req.body;
       if (!problem) throw new ValidationError("problem is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
       const aiOptions = await resolveAIOptions(req, subject);
-      const breakdown = await breakdownProblem(problem, aiOptions);
+
+      let imagePart: { data: string; mimeType: string } | undefined;
+      if (upload_id) {
+        const upload = await getUploadById(upload_id);
+        if (upload && upload.user_id === req.user!.sub && upload.mime_type.startsWith("image/")) {
+          const read = await readUploadAsBase64(upload);
+          imagePart = { data: read.data, mimeType: read.mimeType };
+        }
+      }
+
+      const trimmedProblem = (problem as string).trim();
+      const heuristicResult = requiresVisualTable(trimmedProblem);
+
+      logger.info("[breakdown] visual-table detection", {
+        userId: req.user!.sub,
+        sign_table_hint: sign_table_hint === true,
+        heuristic: heuristicResult,
+        hasUploadId: !!upload_id,
+        hasImagePart: !!imagePart,
+        problemLength: trimmedProblem.length,
+        problemPreview: trimmedProblem.slice(0, 160),
+      });
+
+      const breakdown = await breakdownProblem(trimmedProblem, aiOptions, imagePart);
+
+      // Generate visual table if the frontend detected one in OCR (sign_table_hint),
+      // or if the backend heuristic fires on the problem text itself.
+      let visualTable = null;
+      const needsVisualTable = sign_table_hint === true || heuristicResult;
+      if (needsVisualTable) {
+        const tableSubject = (breakdown as { subject?: string }).subject ?? subject ?? "General";
+        logger.info("[breakdown] visual-table generating", {
+          userId: req.user!.sub,
+          tableSubject,
+          hasImagePart: !!imagePart,
+          problemPreview: trimmedProblem.slice(0, 120),
+        });
+        visualTable = await generateVisualTable(trimmedProblem, tableSubject, aiOptions, imagePart ?? null).catch((err) => {
+          logger.error("[breakdown] visual-table generation failed", {
+            userId: req.user!.sub,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return null;
+        });
+        logger.info("[breakdown] visual-table result", {
+          userId: req.user!.sub,
+          generated: visualTable !== null,
+          type: visualTable?.type ?? null,
+          rowCount: visualTable?.rows?.length ?? null,
+        });
+      }
+
       const usage = await consumeTokenBudget(budget, {
-        input: { problem, subject },
+        input: { problem: trimmedProblem, subject, upload_id: upload_id ?? null },
         output: breakdown,
       });
 
-      res.json({ breakdown, usage });
+      res.json({ breakdown, usage, ...(visualTable ? { visualTable } : {}) });
     } catch (err) {
       next(err);
     }

@@ -1,5 +1,5 @@
 import { PublicUser, SUPPORTED_LANGUAGES, UserPreferences } from "../../models/user.model.js";
-import { AIRequestOptions } from "./gemini.service.js";
+import type { AIRequestOptions } from "./core/types.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

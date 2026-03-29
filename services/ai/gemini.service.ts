@@ -1,20 +1,9 @@
-import { GoogleGenAI, Content, Part } from "@google/genai";
+import { Content, Part } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
-
-// ─── Client ───────────────────────────────────────────────────────────────────
-
-let _client: GoogleGenAI | null = null;
-
-function getClient(): GoogleGenAI {
-  if (!_client) {
-    if (!env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
-    }
-    _client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-  }
-  return _client;
-}
+import { getGeminiClient } from "./core/client.js";
+import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
+import type { AIRequestOptions } from "./core/types.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,69 +24,11 @@ export interface ChatResult {
   usage: ChatUsage;
 }
 
-export interface AIRequestOptions {
-  subject?: string;
-  educationLevel?: string;
-  language?: string;
-  grade?: string;
-}
+export type { AIRequestOptions } from "./core/types.js";
 
 export interface ImagePart {
   data: string; // base64
   mimeType: string;
-}
-
-// ─── Language code → full name map ────────────────────────────────────────────
-
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  fr: "French",
-  es: "Spanish",
-  ar: "Arabic",
-  zh: "Chinese (Simplified)",
-  hi: "Hindi",
-  pt: "Portuguese",
-  de: "German",
-  ja: "Japanese",
-  ko: "Korean",
-  km: "Khmer",
-};
-
-// ─── System prompt builder ────────────────────────────────────────────────────
-
-function buildSystemInstruction(options: AIRequestOptions): string {
-  const { subject, educationLevel, language, grade } = options;
-
-  const langName = LANGUAGE_NAMES[language ?? "en"] ?? "English";
-  const langInstruction = langName !== "English"
-    ? `IMPORTANT: You MUST respond entirely in ${langName}. Every word of your response — explanations, labels, and descriptions — must be written in ${langName}. Mathematical expressions and formulas should remain in standard universal notation.`
-    : "Respond in English.";
-
-  const levelInfo = grade
-    ? `The student is in grade ${grade} (${educationLevel ?? "high school"} level).`
-    : `The student is at ${educationLevel ?? "high school"} level.`;
-
-  const subjectInfo = subject
-    ? `You are a specialized tutor for ${subject}.`
-    : "You are a general science and math tutor.";
-
-  return `You are Zupiq, an expert AI tutor. ${subjectInfo}
-${levelInfo}
-${langInstruction}
-
-Guidelines:
-- Explain concepts clearly with step-by-step reasoning.
-- Use examples relevant to the student's level.
-- For math/physics problems, show full working and explain each step.
-- If a student seems stuck, offer a hint before giving the full answer.
-- Encourage curiosity and critical thinking.
-- Keep answers focused and avoid unnecessary verbosity.
-
-Math formatting rules (CRITICAL — always follow these):
-- Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
-- NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.
-- If you need to label a variable in the local language, write it as plain text OUTSIDE the math block. Example: "$A = l \\times w$ (ដែល $A$ គឺជាក្រឡា, $l$ គឺជាប្រវែង, $w$ គឺជាទទឹង)"
-- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.`;
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -165,7 +96,7 @@ export async function chat(
   messages: ChatMessage[],
   options: AIRequestOptions = {}
 ): Promise<ChatResult> {
-  const client = getClient();
+  const client = getGeminiClient();
 
   const history: Content[] = messages.slice(0, -1).map((m) => ({
     role: m.role,
@@ -478,7 +409,7 @@ export async function analyzeImage(
   userQuestion: string,
   options: AIRequestOptions = {}
 ): Promise<string> {
-  const client = getClient();
+  const client = getGeminiClient();
 
   const parts: Part[] = [
     {
@@ -702,7 +633,7 @@ export async function extractProblemFromImage(
   imagePart: ImagePart,
   options: AIRequestOptions = {}
 ): Promise<ProblemOcrStructuredResult> {
-  const client = getClient();
+  const client = getGeminiClient();
   const targetLangCode = (options.language ?? "en").toLowerCase();
   const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? targetLangCode ?? "English";
   logger.info("[image-ocr] start", {
@@ -1202,7 +1133,7 @@ async function generateFallbackNodeInsightText(
   isKidLevel: boolean = false,
   maxAttempts: number = 2
 ): Promise<string> {
-  const client = getClient();
+  const client = getGeminiClient();
   let bestCandidate = "";
   let bestScore = -1;
 
@@ -1512,7 +1443,7 @@ function decodeJsonStringLoose(chunk: string): string {
 async function generateStructuredJson<T>(
   config: JsonGenerationConfig<T>
 ): Promise<{ data: T | null; raw: string; source: StructuredJsonSource }> {
-  const client = getClient();
+  const client = getGeminiClient();
   const attempts = Math.max(1, config.maxAttempts ?? 2);
   let lastRaw = "";
 
@@ -1649,7 +1580,7 @@ async function generateText(
   prompt: string,
   options: AIRequestOptions = {}
 ): Promise<string> {
-  const client = getClient();
+  const client = getGeminiClient();
 
   try {
     const response = await client.models.generateContent({

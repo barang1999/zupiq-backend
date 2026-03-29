@@ -13,6 +13,11 @@ import {
   regenerateBranchNode,
   getNodeInsight,
 } from "../../services/ai/gemini.service.js";
+import {
+  generateEducationalGameProblem,
+  type GameProblemSubject,
+  type GameProblemMode,
+} from "../../services/ai/features/game-problem.service.js";
 import { buildAIOptions } from "../../services/ai/personalization.service.js";
 import { getUserById } from "../../services/user.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
@@ -38,6 +43,8 @@ import { publishUsageUpdate } from "../../billing/usage-stream.js";
 const router = Router();
 const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
 const TOKEN_ESTIMATE_CHARS_PER_TOKEN = 4;
+const GAME_PROBLEM_SUBJECTS: readonly GameProblemSubject[] = ["math", "physics", "logic", "bio"];
+const GAME_PROBLEM_MODES: readonly GameProblemMode[] = ["learn", "practice", "challenge"];
 
 router.use(requireAuth);
 router.use(aiRateLimit);
@@ -325,6 +332,44 @@ router.post(
       });
 
       res.json({ summary, usage });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/game-problem ───────────────────────────────────────────────
+
+router.post(
+  "/game-problem",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const rawSubject = `${req.body?.subject ?? ""}`.trim().toLowerCase();
+      const rawMode = `${req.body?.mode ?? "practice"}`.trim().toLowerCase();
+      const rawDifficulty = Number(req.body?.difficulty ?? 1);
+
+      if (!GAME_PROBLEM_SUBJECTS.includes(rawSubject as GameProblemSubject)) {
+        throw new ValidationError(`subject must be one of: ${GAME_PROBLEM_SUBJECTS.join(", ")}`);
+      }
+      if (!GAME_PROBLEM_MODES.includes(rawMode as GameProblemMode)) {
+        throw new ValidationError(`mode must be one of: ${GAME_PROBLEM_MODES.join(", ")}`);
+      }
+
+      const subject = rawSubject as GameProblemSubject;
+      const mode = rawMode as GameProblemMode;
+      const difficulty = Number.isFinite(rawDifficulty)
+        ? Math.max(1, Math.min(10, Math.floor(rawDifficulty)))
+        : 1;
+
+      const budget = await reserveTokenBudget(req.user!.sub);
+      const aiOptions = await resolveAIOptions(req, subject);
+      const problem = await generateEducationalGameProblem(subject, difficulty, mode, aiOptions);
+      const usage = await consumeTokenBudget(budget, {
+        input: { subject, difficulty, mode },
+        output: problem,
+      });
+
+      res.json({ problem, usage });
     } catch (err) {
       next(err);
     }

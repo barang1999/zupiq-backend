@@ -12,6 +12,8 @@ export interface StudySession {
   breakdown_json: string; // serialized ProblemBreakdown
   visual_table_json?: string | null;
   created_at: string;
+  /** Populated by getUserSessions — caller's access level for this session. */
+  user_role?: 'owner' | 'editor' | 'viewer';
 }
 
 export interface CreateSessionDTO {

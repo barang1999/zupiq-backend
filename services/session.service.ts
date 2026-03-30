@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "../config/supabase.js";
 import { StudySession, CreateSessionDTO, UpdateSessionDTO } from "../models/session.model.js";
 import { generateId, nowISO, slugify } from "../utils/helpers.js";
 import { AppError } from "../api/middlewares/error.middleware.js";
+import { canUserAccessSession, canUserEditSession } from "./collaboration.service.js";
 
 type CanonicalSubject = {
   slug: string;
@@ -237,11 +238,13 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
 export async function updateSession(id: string, userId: string, updates: UpdateSessionDTO): Promise<StudySession> {
   const db = getSupabaseAdmin();
 
+  const canEdit = await canUserEditSession(id, userId);
+  if (!canEdit) throw new AppError("Forbidden", 403);
+
   const { data, error } = await db
     .from("study_sessions")
     .update(updates)
     .eq("id", id)
-    .eq("user_id", userId)
     .select()
     .single();
 
@@ -249,17 +252,64 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
   return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }
 
-export async function getUserSessions(userId: string): Promise<StudySession[]> {
+export async function getUserSessions(userId: string): Promise<(StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[]> {
   const db = getSupabaseAdmin();
 
-  const { data, error } = await db
+  // Owned sessions
+  const { data: ownedData, error: ownedError } = await db
     .from("study_sessions")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  if (error) throw new AppError(error.message, 500);
-  return ((data ?? []) as Record<string, unknown>[]).map((row) => normalizeSessionRow(row));
+  if (ownedError) throw new AppError(ownedError.message, 500);
+
+  // Sessions where the user is a member (editor/viewer)
+  const { data: memberRows } = await db
+    .from("session_members")
+    .select("session_id, role")
+    .eq("user_id", userId);
+
+  let sharedSessions: (StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[] = [];
+
+  if (memberRows && memberRows.length > 0) {
+    const sharedIds = (memberRows as Array<{ session_id: string; role: string }>).map((m) => m.session_id);
+
+    const { data: sharedData } = await db
+      .from("study_sessions")
+      .select("*")
+      .in("id", sharedIds)
+      .order("created_at", { ascending: false });
+
+    if (sharedData) {
+      const roleBySessionId = new Map(
+        (memberRows as Array<{ session_id: string; role: string }>).map((m) => [m.session_id, m.role as 'editor' | 'viewer'])
+      );
+      sharedSessions = (sharedData as Record<string, unknown>[]).map((row) => ({
+        ...normalizeSessionRow(row),
+        user_role: roleBySessionId.get(String(row.id)) ?? 'viewer',
+      }));
+    }
+  }
+
+  const ownedSessions = ((ownedData ?? []) as Record<string, unknown>[]).map((row) => ({
+    ...normalizeSessionRow(row),
+    user_role: 'owner' as const,
+  }));
+
+  // Merge: owned first, then shared. Deduplicate by session ID.
+  const seen = new Set<string>();
+  const merged: (StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[] = [];
+  for (const s of [...ownedSessions, ...sharedSessions]) {
+    if (!seen.has(s.id)) {
+      seen.add(s.id);
+      merged.push(s);
+    }
+  }
+
+  // Sort by created_at descending
+  merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return merged;
 }
 
 export async function deleteSession(id: string, userId: string): Promise<void> {
@@ -277,11 +327,13 @@ export async function deleteSession(id: string, userId: string): Promise<void> {
 export async function getSessionById(id: string, userId: string): Promise<StudySession | null> {
   const db = getSupabaseAdmin();
 
+  const canAccess = await canUserAccessSession(id, userId);
+  if (!canAccess) return null;
+
   const { data, error } = await db
     .from("study_sessions")
     .select("*")
     .eq("id", id)
-    .eq("user_id", userId)
     .single();
 
   if (error) return null;

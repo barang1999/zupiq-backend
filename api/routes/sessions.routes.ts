@@ -3,6 +3,7 @@ import { requireAuth } from "../middlewares/auth.middleware.js";
 import { ValidationError, NotFoundError } from "../middlewares/error.middleware.js";
 import { createSession, getUserSessions, getSessionById, updateSession, deleteSession } from "../../services/session.service.js";
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
+import { publishCollabEvent } from "../../services/collab-stream.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -26,6 +27,8 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dto = req.body as UpdateSessionDTO;
     const session = await updateSession(req.params.id, req.user!.sub, dto);
+    // Notify collaborators that the session has been updated
+    publishCollabEvent(req.params.id, "session_updated", { updatedBy: req.user!.sub });
     res.json({ session });
   } catch (err) {
     next(err);

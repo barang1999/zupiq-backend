@@ -109,22 +109,45 @@ export async function chat(
   const lastMessage = messages[messages.length - 1];
 
   const systemInstruction = buildSystemInstruction(options);
-  const tableInstruction = `\n\nIf the user asks for a table (Sign Analysis or Generic), or if you determine a table would be helpful to explain the concept, you MUST output your response as a JSON object with two fields:
-1. "text": Your conversational response text.
+  const tableInstruction = `\n\nIf the user asks for a table (Sign Analysis or Generic), or if you determine a table would be helpful to explain the concept, you MUST output your ENTIRE response as a single raw JSON object — no text before or after it.
+The JSON object must have two fields:
+1. "text": A VERY SHORT (1-2 sentences) summary of the findings. DO NOT write a long explanation here if a table is provided.
 2. "visualTable": A JSON object representing the table.
 
-Table Structure:
-- Sign Analysis: {"type": "sign_analysis", "parameterName": "m", "columns": ["Δ'", "P", "S"], "conclusionLabel": "Conclusion", "rows": [{"label": "+∞", "type": "value", "cells": ["", "", ""], "conclusion": ""}, ...]}
-- Generic: {"type": "generic", "headers": ["Col 1", "Col 2"], "rows": [{"cells": ["Val 1", "Val 2"]}, ...]}
+CRITICAL: Do NOT write any text before the opening brace { or after the closing brace }. Your response must be valid JSON only.
 
-If no table is needed, you can just return plain text or a JSON object with only the "text" field.`;
+Table Structure for Sign Analysis:
+- Use "type": "sign_analysis".
+- Required fields: "parameterName" (the variable, e.g. "m"), "columns" (array of expression labels), "conclusionLabel".
+- Alternates between "interval" rows and "value" (boundary) rows.
+- example:
+  {
+    "text": "Here is the sign analysis table for the given expressions.",
+    "visualTable": {
+      "type": "sign_analysis",
+      "parameterName": "m",
+      "columns": ["2m-1", "m", "P"],
+      "conclusionLabel": "Result",
+      "rows": [
+        {"label": "(-∞, 0)", "type": "interval", "cells": ["-", "-", "+"], "conclusion": "P > 0"},
+        {"label": "0", "type": "value", "cells": ["", "0", ""], "conclusion": "Boundary"},
+        {"label": "(0, 1/2)", "type": "interval", "cells": ["-", "+", "-"], "conclusion": "P < 0"}
+      ]
+    }
+  }
+
+Table Structure for Generic:
+- Use "type": "generic".
+- "headers": ["Col 1", "Col 2"], "rows": [{"cells": ["Val 1", "Val 2"]}, ...]
+
+If no table is needed, you can return a JSON object with only the "text" field.`;
 
   const chatSession = client.chats.create({
     model: env.GEMINI_MODEL,
     config: {
       systemInstruction: systemInstruction + tableInstruction,
       temperature: 0.7,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
     },
     history,
   });

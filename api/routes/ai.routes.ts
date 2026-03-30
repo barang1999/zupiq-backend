@@ -124,7 +124,13 @@ function estimateTokensFromPayload(value: unknown): number {
   }
 }
 
+const DEV_BYPASS_LIMITS = process.env.DEV_BYPASS_LIMITS === "true";
+
 async function reserveTokenBudget(userId: string): Promise<TokenBudget> {
+  if (DEV_BYPASS_LIMITS) {
+    return { userId, limit: null, usedBefore: 0 };
+  }
+
   const access = await getEffectiveAccessState(userId);
   if (!hasEntitlement(access.entitlements, "deep_dive_access")) {
     throw new ForbiddenError("Deep Dive is not available for your current plan.");

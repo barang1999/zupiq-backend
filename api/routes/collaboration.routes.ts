@@ -17,6 +17,7 @@ import {
   registerCollabStreamClient,
   publishCollabEvent,
 } from "../../services/collab-stream.js";
+import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
 
 const router = Router();
 
@@ -37,6 +38,7 @@ router.post(
         req.user!.sub,
         role as "editor" | "viewer"
       );
+      logActivity(req.params.id, req.user!.sub, "invitation_created", { role });
       res.status(201).json({ invitation });
     } catch (err) {
       next(err);
@@ -78,6 +80,14 @@ router.delete(
       publishCollabEvent(req.params.id, "member_left", {
         userId: req.params.memberId,
       });
+      const isSelf = req.params.memberId === req.user!.sub;
+      if (isSelf) {
+        logActivity(req.params.id, req.user!.sub, "member_left", {});
+      } else {
+        logActivity(req.params.id, req.user!.sub, "member_removed", {
+          removed_by: req.user!.sub,
+        });
+      }
       res.status(204).send();
     } catch (err) {
       next(err);
@@ -144,7 +154,30 @@ router.post(
       publishCollabEvent(result.sessionId, "member_joined", {
         userId: req.user!.sub,
       });
+      logActivity(result.sessionId, req.user!.sub, "member_joined", {
+        role: result.role,
+        invited_by: result.invitedBy ?? undefined,
+      });
       res.json({ sessionId: result.sessionId });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── GET /api/sessions/:id/activity ──────────────────────────────────────────
+// Return the activity log for a session (members + owner only).
+
+router.get(
+  "/sessions/:id/activity",
+  requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const canAccess = await canUserAccessSession(req.params.id, req.user!.sub);
+      if (!canAccess) throw new NotFoundError("Session");
+      const limit = Math.min(100, Number(req.query.limit) || 50);
+      const activity = await getSessionActivity(req.params.id, limit);
+      res.json({ activity });
     } catch (err) {
       next(err);
     }

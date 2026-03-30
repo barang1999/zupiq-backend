@@ -7,7 +7,8 @@ export type CollabEventType =
   | "connected"
   | "session_updated"
   | "member_joined"
-  | "member_left";
+  | "member_left"
+  | "activity_logged";
 
 export interface CollabEvent {
   type: CollabEventType;

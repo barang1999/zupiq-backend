@@ -4,6 +4,7 @@ import { ValidationError, NotFoundError } from "../middlewares/error.middleware.
 import { createSession, getUserSessions, getSessionById, updateSession, deleteSession } from "../../services/session.service.js";
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
 import { publishCollabEvent } from "../../services/collab-stream.js";
+import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -16,6 +17,10 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       throw new ValidationError("title, problem, and breakdown_json are required");
     }
     const session = await createSession(req.user!.sub, dto);
+    logActivity(session.id, req.user!.sub, "session_created", {
+      title: session.title,
+      subject: session.subject,
+    });
     res.status(201).json({ session });
   } catch (err) {
     next(err);
@@ -29,6 +34,9 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
     const session = await updateSession(req.params.id, req.user!.sub, dto);
     // Notify collaborators that the session has been updated
     publishCollabEvent(req.params.id, "session_updated", { updatedBy: req.user!.sub });
+    logActivity(req.params.id, req.user!.sub, "session_updated", {
+      fields: Object.keys(dto),
+    });
     res.json({ session });
   } catch (err) {
     next(err);

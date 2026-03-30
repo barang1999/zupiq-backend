@@ -125,7 +125,7 @@ export async function getInvitationPreview(
 export async function acceptInvitation(
   token: string,
   userId: string
-): Promise<{ sessionId: string }> {
+): Promise<{ sessionId: string; role: string; invitedBy: string | null }> {
   const db = getSupabaseAdmin();
 
   const { data: invitation, error: fetchError } = await db
@@ -152,7 +152,7 @@ export async function acceptInvitation(
       .from("session_invitations")
       .update({ accepted_at: nowISO() })
       .eq("id", invitation.id);
-    return { sessionId: invitation.session_id };
+    return { sessionId: invitation.session_id, role: invitation.role, invitedBy: invitation.invited_by ?? null };
   }
 
   // Upsert membership (gracefully handles duplicate joins)
@@ -177,7 +177,7 @@ export async function acceptInvitation(
     .update({ accepted_at: nowISO() })
     .eq("id", invitation.id);
 
-  return { sessionId: invitation.session_id };
+  return { sessionId: invitation.session_id, role: invitation.role, invitedBy: invitation.invited_by ?? null };
 }
 
 // ─── Member management ────────────────────────────────────────────────────────

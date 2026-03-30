@@ -17,6 +17,10 @@ export interface ActivityMetadata {
   subject?: string;
   // session_updated
   fields?: string[];
+  /** Snapshot of field values before the update (only human-readable fields) */
+  before?: Record<string, unknown>;
+  /** Snapshot of field values after the update (only human-readable fields) */
+  after?: Record<string, unknown>;
   // deep_dive_message
   preview?: string;
   // invitation_created / member_joined

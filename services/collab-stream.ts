@@ -47,6 +47,7 @@ export function registerCollabStreamClient(sessionId: string, res: Response): ()
     clientsBySession.set(sessionId, clients);
   }
   clients.add(res);
+  logger.debug(`[collab-stream] client registered  sessionId=${sessionId}  total=${clients.size}`);
 
   const heartbeat = setInterval(() => {
     try {
@@ -66,6 +67,7 @@ export function registerCollabStreamClient(sessionId: string, res: Response): ()
     const set = clientsBySession.get(sessionId);
     if (!set) return;
     set.delete(res);
+    logger.debug(`[collab-stream] client removed  sessionId=${sessionId}  remaining=${set.size}`);
     if (set.size === 0) clientsBySession.delete(sessionId);
   };
 
@@ -80,6 +82,7 @@ export function publishCollabEvent(
   payload: unknown
 ): void {
   const clients = clientsBySession.get(sessionId);
+  logger.debug(`[collab-stream] publishCollabEvent  type=${type}  sessionId=${sessionId}  clients=${clients?.size ?? 0}`);
   if (!clients || clients.size === 0) return;
 
   const event: CollabEvent = {

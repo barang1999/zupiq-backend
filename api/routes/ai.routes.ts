@@ -208,7 +208,7 @@ router.post(
   "/chat",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { messages, subject, session_id } = req.body;
+      const { messages, subject, session_id, upload_id } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         throw new ValidationError("messages array is required");
@@ -217,7 +217,17 @@ router.post(
       const userId = req.user!.sub;
       const budget = await reserveTokenBudget(userId);
       const aiOptions = await resolveAIOptions(req, subject);
-      const chatResult = await chat(messages, aiOptions);
+
+      let imagePart: { data: string; mimeType: string } | undefined;
+      if (upload_id) {
+        const upload = await getUploadById(upload_id);
+        if (upload && upload.user_id === userId && upload.mime_type.startsWith("image/")) {
+          const read = await readUploadAsBase64(upload);
+          imagePart = { data: read.data, mimeType: read.mimeType };
+        }
+      }
+
+      const chatResult = await chat(messages, aiOptions, imagePart);
 
       // Persist last user message and AI response
       const sid = session_id ?? generateId();
@@ -225,11 +235,20 @@ router.post(
       const db = getSupabaseAdmin();
       await db.from("chat_messages").insert([
         { id: generateId(), user_id: userId, session_id: sid, role: "user", content: lastUserMsg.content, subject: subject ?? null, created_at: nowISO() },
-        { id: generateId(), user_id: userId, session_id: sid, role: "model", content: chatResult.text, subject: subject ?? null, created_at: nowISO() },
+        { 
+          id: generateId(), 
+          user_id: userId, 
+          session_id: sid, 
+          role: "model", 
+          content: chatResult.text, 
+          subject: subject ?? null, 
+          created_at: nowISO(),
+          metadata: chatResult.visualTable ? { visualTable: chatResult.visualTable } : {}
+        },
       ]);
 
       const usage = await consumeTokenBudget(budget, {
-        input: { messages, subject, session_id: sid },
+        input: { messages, subject, session_id: sid, upload_id: upload_id ?? null },
         output: chatResult.text,
         providerTotalTokens: chatResult.usage.totalTokens,
         promptTokens: chatResult.usage.promptTokens,
@@ -237,7 +256,13 @@ router.post(
         source: chatResult.usage.source,
       });
 
-      res.json({ response: chatResult.text, session_id: sid, usage });
+      res.json({
+        response: chatResult.text,
+        session_id: sid,
+        usage,
+        finish_reason: chatResult.finishReason,
+        visualTable: chatResult.visualTable,
+      });
     } catch (err) {
       next(err);
     }

@@ -22,6 +22,8 @@ export interface ChatUsage {
 export interface ChatResult {
   text: string;
   usage: ChatUsage;
+  finishReason?: string;
+  visualTable?: any;
 }
 
 export type { AIRequestOptions } from "./core/types.js";
@@ -94,7 +96,8 @@ function estimateChatUsage(messages: ChatMessage[], responseText: string): ChatU
 
 export async function chat(
   messages: ChatMessage[],
-  options: AIRequestOptions = {}
+  options: AIRequestOptions = {},
+  imagePart?: ImagePart
 ): Promise<ChatResult> {
   const client = getGeminiClient();
 
@@ -105,23 +108,67 @@ export async function chat(
 
   const lastMessage = messages[messages.length - 1];
 
+  const systemInstruction = buildSystemInstruction(options);
+  const tableInstruction = `\n\nIf the user asks for a table (Sign Analysis or Generic), or if you determine a table would be helpful to explain the concept, you MUST output your response as a JSON object with two fields:
+1. "text": Your conversational response text.
+2. "visualTable": A JSON object representing the table.
+
+Table Structure:
+- Sign Analysis: {"type": "sign_analysis", "parameterName": "m", "columns": ["Δ'", "P", "S"], "conclusionLabel": "Conclusion", "rows": [{"label": "+∞", "type": "value", "cells": ["", "", ""], "conclusion": ""}, ...]}
+- Generic: {"type": "generic", "headers": ["Col 1", "Col 2"], "rows": [{"cells": ["Val 1", "Val 2"]}, ...]}
+
+If no table is needed, you can just return plain text or a JSON object with only the "text" field.`;
+
   const chatSession = client.chats.create({
     model: env.GEMINI_MODEL,
     config: {
-      systemInstruction: buildSystemInstruction(options),
+      systemInstruction: systemInstruction + tableInstruction,
       temperature: 0.7,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 4096,
     },
     history,
   });
 
-  const response = await chatSession.sendMessage({ message: lastMessage.content });
-  const text = response.text ?? "";
+  const parts: Part[] = [{ text: lastMessage.content }];
+  if (imagePart) {
+    parts.unshift({
+      inlineData: {
+        data: imagePart.data,
+        mimeType: imagePart.mimeType,
+      },
+    });
+  }
+
+  const response = await chatSession.sendMessage({ message: parts });
+  const rawText = response.text ?? "";
   const providerUsage = extractProviderUsage(response);
+  const finishReason = extractFinishReason(response);
+  
+  let text = rawText;
+  let visualTable: any = undefined;
+
+  // Attempt to parse structured response (even if it's mid-text or in code fences)
+  const parsed = parseJsonLoose<{ text?: string; visualTable?: any }>(rawText);
+  if (parsed) {
+    if (parsed.text) text = parsed.text;
+    if (parsed.visualTable) visualTable = parsed.visualTable;
+
+    // If we extracted a table but the conversational text is still the original raw text
+    // (which includes the JSON block), try to clean it up.
+    if (text === rawText && visualTable) {
+      const jsonString = extractFirstJsonValue(rawText);
+      if (jsonString) {
+        // Remove the JSON block and its surrounding code fences if present
+        text = rawText.replace(jsonString, "").replace(/```json\s*|```/g, "").trim();
+      }
+    }
+  }
+
   const usage: ChatUsage = providerUsage
     ? { ...providerUsage, source: "provider" }
     : estimateChatUsage(messages, text);
-  return { text, usage };
+    
+  return { text, usage, finishReason, visualTable };
 }
 
 // ─── Explain a concept ────────────────────────────────────────────────────────

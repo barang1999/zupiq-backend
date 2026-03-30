@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { ValidationError, NotFoundError } from "../middlewares/error.middleware.js";
-import { createSession, getUserSessions, getSessionById, updateSession } from "../../services/session.service.js";
+import { createSession, getUserSessions, getSessionById, updateSession, deleteSession } from "../../services/session.service.js";
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
 
 const router = Router();
@@ -48,6 +48,16 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
     const session = await getSessionById(req.params.id, req.user!.sub);
     if (!session) throw new NotFoundError("Session");
     res.json({ session });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/sessions/:id
+router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await deleteSession(req.params.id, req.user!.sub);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

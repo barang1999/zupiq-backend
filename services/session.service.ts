@@ -262,6 +262,18 @@ export async function getUserSessions(userId: string): Promise<StudySession[]> {
   return ((data ?? []) as Record<string, unknown>[]).map((row) => normalizeSessionRow(row));
 }
 
+export async function deleteSession(id: string, userId: string): Promise<void> {
+  const db = getSupabaseAdmin();
+
+  const { error } = await db
+    .from("study_sessions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) throw new AppError(error.message, 500);
+}
+
 export async function getSessionById(id: string, userId: string): Promise<StudySession | null> {
   const db = getSupabaseAdmin();
 

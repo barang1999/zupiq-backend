@@ -28,6 +28,7 @@ import { ForbiddenError, ValidationError } from "../middlewares/error.middleware
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
+import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
 import {
@@ -222,7 +223,7 @@ router.post(
 
       const userId = req.user!.sub;
       const budget = await reserveTokenBudget(userId);
-      const aiOptions = await resolveAIOptions(req, subject);
+      let aiOptions = await resolveAIOptions(req, subject);
 
       let imagePart: { data: string; mimeType: string } | undefined;
       if (upload_id) {
@@ -232,6 +233,9 @@ router.post(
           imagePart = { data: read.data, mimeType: read.mimeType };
         }
       }
+
+      const knowledgeCtx = await buildUserKnowledgeContext(userId, subject).catch(() => null);
+      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
 
       const chatResult = await chat(messages, aiOptions, imagePart);
 
@@ -592,7 +596,9 @@ router.post(
       if (!problem) throw new ValidationError("problem is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      let aiOptions = await resolveAIOptions(req, subject);
+      const knowledgeCtx = await buildUserKnowledgeContext(req.user!.sub, subject).catch(() => null);
+      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
 
       let imagePart: { data: string; mimeType: string } | undefined;
       if (upload_id) {
@@ -727,7 +733,9 @@ router.post(
       if (!nodeLabel) throw new ValidationError("nodeLabel is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      let aiOptions = await resolveAIOptions(req, subject);
+      const knowledgeCtx = await buildUserKnowledgeContext(req.user!.sub, subject).catch(() => null);
+      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
       logger.info("[node-insight] request", {
         userId: req.user!.sub,
         level: level ?? "standard",

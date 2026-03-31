@@ -1,4 +1,4 @@
-import { Content, Part } from "@google/genai";
+import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 import { getGeminiClient } from "./core/client.js";
@@ -94,6 +94,9 @@ function estimateChatUsage(messages: ChatMessage[], responseText: string): ChatU
   };
 }
 
+/** Keywords that indicate the user is asking for a table in the chat. */
+const TABLE_REQUEST_PATTERN = /\b(table|sign\s*analysis|tableau|sign\s*chart|generate\s*a\s*table|fill\s*(the\s*)?.*table|តារាង|bảng)/i;
+
 export async function chat(
   messages: ChatMessage[],
   options: AIRequestOptions = {},
@@ -108,44 +111,15 @@ export async function chat(
 
   const lastMessage = messages[messages.length - 1];
 
-  const systemInstruction = buildSystemInstruction(options);
-  const tableInstruction = `\n\nIf the user asks for a table (Sign Analysis or Generic), or if you determine a table would be helpful to explain the concept, you MUST output your ENTIRE response as a single raw JSON object — no text before or after it.
-The JSON object must have two fields:
-1. "text": A VERY SHORT (1-2 sentences) summary of the findings. DO NOT write a long explanation here if a table is provided.
-2. "visualTable": A JSON object representing the table.
-
-CRITICAL: Do NOT write any text before the opening brace { or after the closing brace }. Your response must be valid JSON only.
-
-Table Structure for Sign Analysis:
-- Use "type": "sign_analysis".
-- Required fields: "parameterName" (the variable, e.g. "m"), "columns" (array of expression labels), "conclusionLabel".
-- Alternates between "interval" rows and "value" (boundary) rows.
-- example:
-  {
-    "text": "Here is the sign analysis table for the given expressions.",
-    "visualTable": {
-      "type": "sign_analysis",
-      "parameterName": "m",
-      "columns": ["2m-1", "m", "P"],
-      "conclusionLabel": "Result",
-      "rows": [
-        {"label": "(-∞, 0)", "type": "interval", "cells": ["-", "-", "+"], "conclusion": "P > 0"},
-        {"label": "0", "type": "value", "cells": ["", "0", ""], "conclusion": "Boundary"},
-        {"label": "(0, 1/2)", "type": "interval", "cells": ["-", "+", "-"], "conclusion": "P < 0"}
-      ]
-    }
-  }
-
-Table Structure for Generic:
-- Use "type": "generic".
-- "headers": ["Col 1", "Col 2"], "rows": [{"cells": ["Val 1", "Val 2"]}, ...]
-
-If no table is needed, you can return a JSON object with only the "text" field.`;
+  // Detect whether this message is asking for a sign/visual table.
+  // If so, we handle it with a dedicated structured call after the conversational reply,
+  // rather than asking the model to embed JSON in its prose (which is unreliable).
+  const wantsTable = TABLE_REQUEST_PATTERN.test(lastMessage.content);
 
   const chatSession = client.chats.create({
     model: env.GEMINI_MODEL,
     config: {
-      systemInstruction: systemInstruction + tableInstruction,
+      systemInstruction: buildSystemInstruction(options),
       temperature: 0.7,
       maxOutputTokens: 8192,
     },
@@ -163,34 +137,25 @@ If no table is needed, you can return a JSON object with only the "text" field.`
   }
 
   const response = await chatSession.sendMessage({ message: parts });
-  const rawText = response.text ?? "";
+  const text = (response.text ?? "").trim();
   const providerUsage = extractProviderUsage(response);
   const finishReason = extractFinishReason(response);
-  
-  let text = rawText;
+
+  // If the user asked for a table, generate it as a separate structured call
+  // using responseMimeType + responseSchema so the output is always valid JSON.
   let visualTable: any = undefined;
-
-  // Attempt to parse structured response (even if it's mid-text or in code fences)
-  const parsed = parseJsonLoose<{ text?: string; visualTable?: any }>(rawText);
-  if (parsed) {
-    if (parsed.text) text = parsed.text;
-    if (parsed.visualTable) visualTable = parsed.visualTable;
-
-    // If we extracted a table but the conversational text is still the original raw text
-    // (which includes the JSON block), try to clean it up.
-    if (text === rawText && visualTable) {
-      const jsonString = extractFirstJsonValue(rawText);
-      if (jsonString) {
-        // Remove the JSON block and its surrounding code fences if present
-        text = rawText.replace(jsonString, "").replace(/```json\s*|```/g, "").trim();
-      }
-    }
+  if (wantsTable) {
+    const subject = options.subject ?? "General";
+    // Build the problem description from the recent conversation context (last few turns)
+    const contextMessages = messages.slice(-4);
+    const problem = contextMessages.map((m) => m.content).join("\n");
+    visualTable = await generateVisualTable(problem, subject, options, imagePart).catch(() => null);
   }
 
   const usage: ChatUsage = providerUsage
     ? { ...providerUsage, source: "provider" }
     : estimateChatUsage(messages, text);
-    
+
   return { text, usage, finishReason, visualTable };
 }
 
@@ -289,6 +254,8 @@ interface JsonGenerationConfig<T> {
   imagePart?: ImagePart;
   /** When true, do not set responseMimeType=application/json — avoids truncation for complex outputs */
   noJsonMime?: boolean;
+  /** Optional JSON Schema passed to responseSchema for constrained structured output */
+  responseSchema?: object;
 }
 
 type StructuredJsonSource = "parsed" | "recovered" | "none";
@@ -1200,6 +1167,37 @@ If it's a Generic Data Table (for any other structured data, comparison, or list
 
 Return ONLY the JSON object. No markdown, no explanation.`;
 
+  // Row shape shared by both table types
+  const rowSchema = {
+    type: Type.OBJECT,
+    properties: {
+      label:      { type: Type.STRING },
+      type:       { type: Type.STRING, enum: ["value", "interval"] },
+      cells:      { type: Type.ARRAY, items: { type: Type.STRING } },
+      conclusion: { type: Type.STRING },
+    },
+    required: ["label", "type", "cells"],
+  };
+
+  const visualTableSchema = {
+    type: Type.OBJECT,
+    properties: {
+      type: {
+        type: Type.STRING,
+        enum: ["sign_analysis", "generic"],
+        description: "Table type",
+      },
+      // sign_analysis fields
+      parameterName:   { type: Type.STRING },
+      columns:         { type: Type.ARRAY, items: { type: Type.STRING } },
+      conclusionLabel: { type: Type.STRING },
+      rows:            { type: Type.ARRAY, items: rowSchema },
+      // generic fields
+      headers: { type: Type.ARRAY, items: { type: Type.STRING } },
+    },
+    required: ["type", "rows"],
+  };
+
   const { data } = await generateStructuredJson<VisualTable>({
     prompt,
     options,
@@ -1208,7 +1206,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     taskName: "generateVisualTable",
     maxAttempts: 3,
     imagePart: imagePart ?? undefined,
-    noJsonMime: true,
+    responseSchema: visualTableSchema,
   });
 
   if (!data || !['sign_analysis', 'generic'].includes(data.type) || !Array.isArray(data.rows) || data.rows.length === 0) {
@@ -1235,6 +1233,8 @@ function stripCodeFence(text: string): string {
   return text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
+    .replace(/^'''(?:json)?\s*/i, "")
+    .replace(/\s*'''$/i, "")
     .replace(/^\uFEFF/, "")
     .trim();
 }
@@ -1285,12 +1285,37 @@ function extractFirstJsonValue(text: string): string | null {
   return null;
 }
 
+/**
+ * Extract every top-level JSON object/array from a text by scanning forward
+ * from each { or [ position. Returns candidates in document order.
+ */
+function extractAllJsonCandidates(text: string): string[] {
+  const results: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const rel = text.slice(i).search(/[{[]/);
+    if (rel < 0) break;
+    const abs = i + rel;
+    const candidate = extractFirstJsonValue(text.slice(abs));
+    if (candidate) {
+      results.push(candidate);
+      i = abs + candidate.length;
+    } else {
+      i = abs + 1;
+    }
+  }
+  return results;
+}
+
 function parseJsonLoose<T>(raw: string): T | null {
   const stripped = stripCodeFence(raw).replace(/\u0000/g, "").trim();
   if (!stripped) return null;
 
-  const extracted = extractFirstJsonValue(stripped);
-  const candidates = [stripped, extracted]
+  // Collect all complete JSON objects/arrays found in the text.
+  // Reverse so the model's LAST (final/complete) output is tried before earlier partial drafts.
+  const allExtracted = extractAllJsonCandidates(stripped).reverse();
+
+  const candidates = [stripped, ...allExtracted]
     .filter((v): v is string => Boolean(v))
     .map((v) => v.replace(/,\s*([}\]])/g, "$1").replace(/\u2028|\u2029/g, " "));
 
@@ -1339,14 +1364,22 @@ function escapeInvalidBackslashesInsideJsonStrings(input: string): string {
       continue;
     }
 
+    // Literal newlines/CR/tabs inside a JSON string are invalid — escape them.
+    // Models frequently embed multi-line content directly inside string values.
+    if (ch === "\n") { out += "\\n"; continue; }
+    if (ch === "\r") { out += "\\r"; continue; }
+    if (ch === "\t") { out += "\\t"; continue; }
+
     if (ch === "\\") {
       const next = input[i + 1];
+      // Exclude \b (backspace) and \f (form-feed) from the valid-escape list:
+      // the model frequently writes LaTeX commands like \frac, \because that start
+      // with those letters, and they must be doubled to \\ so JSON.parse produces
+      // the literal backslash that math renderers need.
       const validEscape =
         next === "\"" ||
         next === "\\" ||
         next === "/" ||
-        next === "b" ||
-        next === "f" ||
         next === "n" ||
         next === "r" ||
         next === "t" ||
@@ -1712,6 +1745,7 @@ async function generateStructuredJson<T>(
         temperature: config.temperature,
         maxOutputTokens: config.maxOutputTokens,
         ...(config.noJsonMime ? {} : { responseMimeType: "application/json" }),
+        ...(config.responseSchema ? { responseSchema: config.responseSchema } : {}),
       },
       contents: [{
         role: "user",

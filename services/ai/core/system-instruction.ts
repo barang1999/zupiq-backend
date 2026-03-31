@@ -30,6 +30,10 @@ export function buildSystemInstruction(options: AIRequestOptions): string {
     ? `You are a specialized tutor for ${subject}.`
     : "You are a general science and math tutor.";
 
+  const knowledgeSection = options.userKnowledgeContext
+    ? `\n\n${options.userKnowledgeContext}`
+    : "";
+
   return `You are Zupiq, an expert AI tutor. ${subjectInfo}
 ${levelInfo}
 ${langInstruction}
@@ -46,6 +50,6 @@ Math formatting rules (CRITICAL — always follow these):
 - Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
 - NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.
 - If you need to label a variable in the local language, write it as plain text OUTSIDE the math block. Example: "$A = l \\times w$ (ដែល $A$ គឺជាក្រឡា, $l$ គឺជាប្រវែង, $w$ គឺជាទទឹង)"
-- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.`;
+- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.${knowledgeSection}`;
 }
 

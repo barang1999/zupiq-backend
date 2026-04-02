@@ -92,14 +92,37 @@ function normalizeSubjectName(subject: string | null | undefined): string {
   const normalized = String(subject ?? "")
     .replace(/\s+/g, " ")
     .trim();
-  return normalized || "General";
+  if (!normalized) return "General";
+
+  // Handle compound subjects like "Calculus, Physics" or "Physics & Math"
+  // Prefer the first part that maps to a canonical subject; otherwise use the first part.
+  const separatorPattern = /[,&\/|+]/;
+  if (separatorPattern.test(normalized)) {
+    const parts = normalized.split(separatorPattern).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      const canonical = detectCanonicalSubject(part);
+      if (canonical) return canonical.name;
+    }
+    return parts[0] || "General";
+  }
+
+  return normalized;
+}
+
+function deterministicSlug(text: string): string {
+  // Deterministic fallback slug for non-Latin text (e.g. Khmer) where slugify() returns "".
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return `subject-${Math.abs(hash).toString(16).padStart(8, "0")}`;
 }
 
 export async function resolveOrCreateSubjectId(rawSubject: string): Promise<string> {
   const db = getSupabaseAdmin();
   const subjectName = normalizeSubjectName(rawSubject);
   const canonical = detectCanonicalSubject(subjectName);
-  const subjectSlug = canonical?.slug ?? slugify(subjectName);
+  const subjectSlug = canonical?.slug ?? slugify(subjectName) || deterministicSlug(subjectName);
   const subjectDisplayName = canonical?.name ?? subjectName;
   const normalizedInput = normalizeSubjectKey(subjectName);
 

@@ -60,6 +60,31 @@ interface AttemptResult {
   answers: Array<Record<string, unknown>>;
 }
 
+export interface QuizHistoryStats {
+  quizzesCount: number;
+  attemptsCount: number;
+  gradedAttemptsCount: number;
+  totalScore: number;
+  baseScore: number;
+  practiceScoreGain: number;
+  lastEarnedScore: number;
+  totalMarks: number;
+  averagePercentage: number;
+  totalXp: number;
+  baseXp: number;
+  practiceXpGain: number;
+  lastEarnedXp: number;
+  streakDays: number;
+  streakByDay: QuizHistoryStreakDay[];
+}
+
+export interface QuizHistoryStreakDay {
+  date: string;
+  dayLabel: string;
+  completed: boolean;
+  inCurrentStreak: boolean;
+}
+
 let aiClient: GoogleGenAI | null = null;
 
 function getAIClient(): GoogleGenAI {
@@ -662,16 +687,195 @@ export async function listUserQuizzes(userId: string, limit = 10): Promise<Array
     .order("created_at", { ascending: false });
 
   const latestAttemptByQuiz = new Map<string, QuizAttempt>();
+  const attemptsByQuiz = new Map<string, QuizAttempt[]>();
   for (const row of (attempts ?? []) as QuizAttempt[]) {
+    if (!attemptsByQuiz.has(row.quiz_id)) {
+      attemptsByQuiz.set(row.quiz_id, []);
+    }
+    attemptsByQuiz.get(row.quiz_id)!.push(row);
+
     if (!latestAttemptByQuiz.has(row.quiz_id)) {
       latestAttemptByQuiz.set(row.quiz_id, row);
     }
   }
 
-  return quizRows.map((quiz) => ({
-    ...quiz,
-    latest_attempt: latestAttemptByQuiz.get(quiz.id) ?? null,
-  }));
+  return quizRows.map((quiz) => {
+    const quizAttempts = attemptsByQuiz.get(quiz.id) ?? [];
+    const gradedAttempts = quizAttempts.filter((attempt) => attempt.status === "graded");
+    const gradedAsc = [...gradedAttempts].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    const firstScore = Number(gradedAsc[0]?.score || 0);
+    const bestScore = gradedAttempts.reduce((best, attempt) => Math.max(best, Number(attempt.score || 0)), 0);
+    const bestPercentage = gradedAttempts.reduce((best, attempt) => Math.max(best, Number(attempt.percentage || 0)), 0);
+    const cumulativeScore = gradedAttempts.reduce((sum, attempt) => sum + Number(attempt.score || 0), 0);
+    const cumulativeXp = Math.round(cumulativeScore * 10);
+    const scoreGain = Number(Math.max(0, cumulativeScore - firstScore).toFixed(2));
+    const latestAttempt = latestAttemptByQuiz.get(quiz.id) ?? null;
+
+    return {
+      ...quiz,
+      latest_attempt: latestAttempt,
+      attempts_count: quizAttempts.length,
+      graded_attempts_count: gradedAttempts.length,
+      best_score: Number(bestScore.toFixed(2)),
+      best_percentage: Number(bestPercentage.toFixed(2)),
+      cumulative_score: Number(cumulativeScore.toFixed(2)),
+      cumulative_xp: cumulativeXp,
+      first_score: Number(firstScore.toFixed(2)),
+      score_gain: scoreGain,
+    };
+  });
+}
+
+function isoDateKey(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString().slice(0, 10);
+}
+
+function dateFromKey(key: string): Date {
+  const dt = new Date(`${key}T00:00:00.000Z`);
+  return dt;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function dayLabelFromUtcDate(date: Date): string {
+  const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return labels[date.getUTCDay()] ?? "Day";
+}
+
+function getCompletionDateKeys(attempts: QuizAttempt[]): string[] {
+  return attempts
+    .map((attempt) => {
+      if (attempt.status === "in_progress") return null;
+      return isoDateKey(attempt.graded_at || attempt.submitted_at || attempt.created_at);
+    })
+    .filter((key): key is string => Boolean(key));
+}
+
+function getCurrentStreakKeySetFromSortedKeys(sortedDescKeys: string[]): Set<string> {
+  const streakKeys = new Set<string>();
+  if (!sortedDescKeys.length) return streakKeys;
+
+  const latestKey = sortedDescKeys[0];
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const yesterdayKey = addUtcDays(dateFromKey(todayKey), -1).toISOString().slice(0, 10);
+
+  if (latestKey !== todayKey && latestKey !== yesterdayKey) {
+    return streakKeys;
+  }
+
+  streakKeys.add(latestKey);
+  let cursor = dateFromKey(latestKey);
+
+  for (let i = 1; i < sortedDescKeys.length; i += 1) {
+    const expectedPrev = addUtcDays(cursor, -1).toISOString().slice(0, 10);
+    if (sortedDescKeys[i] !== expectedPrev) break;
+    streakKeys.add(sortedDescKeys[i]);
+    cursor = dateFromKey(sortedDescKeys[i]);
+  }
+
+  return streakKeys;
+}
+
+function buildRecentStreakByDay(attempts: QuizAttempt[], days = 7): QuizHistoryStreakDay[] {
+  const safeDays = clampNumber(Number(days) || 7, 1, 14);
+  const completionKeyList = getCompletionDateKeys(attempts);
+  const completedSet = new Set<string>(completionKeyList);
+  const uniqueSorted = Array.from(completedSet).sort((a, b) => b.localeCompare(a));
+  const currentStreakSet = getCurrentStreakKeySetFromSortedKeys(uniqueSorted);
+  const today = new Date();
+  const todayKey = today.toISOString().slice(0, 10);
+  const startDate = addUtcDays(dateFromKey(todayKey), -(safeDays - 1));
+
+  return Array.from({ length: safeDays }, (_, index) => {
+    const date = addUtcDays(startDate, index);
+    const dateKey = date.toISOString().slice(0, 10);
+    return {
+      date: dateKey,
+      dayLabel: dayLabelFromUtcDate(date),
+      completed: completedSet.has(dateKey),
+      inCurrentStreak: currentStreakSet.has(dateKey),
+    };
+  });
+}
+
+function computeDailyStreak(attempts: QuizAttempt[]): number {
+  if (!attempts.length) return 0;
+  const completionDateKeys = getCompletionDateKeys(attempts);
+
+  if (completionDateKeys.length === 0) return 0;
+
+  const uniqueSorted = Array.from(new Set(completionDateKeys)).sort((a, b) => b.localeCompare(a));
+  return getCurrentStreakKeySetFromSortedKeys(uniqueSorted).size;
+}
+
+export async function getQuizHistoryStats(userId: string): Promise<QuizHistoryStats> {
+  const db = getSupabaseAdmin();
+  const { data: attempts, error } = await db
+    .from("quiz_attempts")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw new AppError(error.message, 500);
+
+  const rows = (attempts ?? []) as QuizAttempt[];
+  const graded = rows.filter((attempt) => attempt.status === "graded");
+  const totalScoreRaw = graded.reduce((sum, attempt) => sum + Number(attempt.score || 0), 0);
+  const totalMarksRaw = graded.reduce((sum, attempt) => sum + Number(attempt.total_marks || 0), 0);
+  const firstGradedAttemptByQuiz = new Map<string, QuizAttempt>();
+  const gradedAsc = [...graded].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  for (const attempt of gradedAsc) {
+    if (!attempt.quiz_id) continue;
+    if (!firstGradedAttemptByQuiz.has(attempt.quiz_id)) {
+      firstGradedAttemptByQuiz.set(attempt.quiz_id, attempt);
+    }
+  }
+  const baseScoreRaw = Array.from(firstGradedAttemptByQuiz.values()).reduce(
+    (sum, attempt) => sum + Number(attempt.score || 0),
+    0
+  );
+  const totalScore = Number(totalScoreRaw.toFixed(2));
+  const baseScore = Number(baseScoreRaw.toFixed(2));
+  const practiceScoreGain = Number(Math.max(0, totalScoreRaw - baseScoreRaw).toFixed(2));
+  const lastEarnedScore = Number((graded[0]?.score || 0).toFixed(2));
+  const totalMarks = Number(totalMarksRaw.toFixed(2));
+  const averagePercentageRaw = graded.length > 0
+    ? graded.reduce((sum, attempt) => sum + Number(attempt.percentage || 0), 0) / graded.length
+    : 0;
+  const averagePercentage = Number(averagePercentageRaw.toFixed(2));
+  const totalXp = Math.round(totalScore * 10);
+  const baseXp = Math.round(baseScore * 10);
+  const practiceXpGain = Math.max(0, totalXp - baseXp);
+  const lastEarnedXp = Math.round(lastEarnedScore * 10);
+  const quizzesCount = new Set(rows.map((attempt) => attempt.quiz_id).filter(Boolean)).size;
+  const streakDays = computeDailyStreak(rows);
+  const streakByDay = buildRecentStreakByDay(rows, 7);
+
+  return {
+    quizzesCount,
+    attemptsCount: rows.length,
+    gradedAttemptsCount: graded.length,
+    totalScore,
+    baseScore,
+    practiceScoreGain,
+    lastEarnedScore,
+    totalMarks,
+    averagePercentage,
+    totalXp,
+    baseXp,
+    practiceXpGain,
+    lastEarnedXp,
+    streakDays,
+    streakByDay,
+  };
 }
 
 async function getAttemptForUser(attemptId: string, userId: string): Promise<QuizAttempt> {

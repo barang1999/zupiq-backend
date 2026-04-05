@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from "../middlewares/error.middleware.
 import {
   createQuizAttempt,
   generateQuizForUser,
+  getQuizHistoryStats,
   getQuizForUser,
   listUserQuizzes,
 } from "../../services/quiz.service.js";
@@ -18,7 +19,8 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const limit = Number(req.query.limit ?? 10);
     const quizzes = await listUserQuizzes(req.user!.sub, Number.isFinite(limit) ? limit : 10);
-    res.json({ quizzes });
+    const stats = await getQuizHistoryStats(req.user!.sub);
+    res.json({ quizzes, stats });
   } catch (err) {
     next(err);
   }

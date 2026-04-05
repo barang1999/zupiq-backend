@@ -9,10 +9,12 @@ import {
   GenerateFlashcardsDTO,
   ReviewFlashcardDTO,
 } from "../../models/flashcard.model.js";
+import { Language, SUPPORTED_LANGUAGES } from "../../models/user.model.js";
 import { generateId, nowISO, addDays, getPaginationOffset } from "../../utils/helpers.js";
 import { NotFoundError, ForbiddenError, AppError } from "../../api/middlewares/error.middleware.js";
 import { logger } from "../../utils/logger.js";
-import { resolveOrCreateSubjectId } from "../session.service.js";
+import { getSessionById, resolveOrCreateSubjectId } from "../session.service.js";
+import { LANGUAGE_NAMES } from "./core/system-instruction.js";
 
 type DeckRow = {
   id: string;
@@ -26,6 +28,413 @@ type DeckRow = {
   created_at: string;
   updated_at: string;
 };
+
+type GeneratedFlashcard = {
+  front: string;
+  back: string;
+  hint?: string | null;
+};
+
+const SUPPORTED_LANGUAGE_SET = new Set<string>(SUPPORTED_LANGUAGES as readonly string[]);
+
+function normalizeLanguage(value: string | null | undefined): Language {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return (SUPPORTED_LANGUAGE_SET.has(normalized) ? normalized : "en") as Language;
+}
+
+async function resolveUserLanguage(userId: string): Promise<{ code: Language; name: string }> {
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from("users")
+    .select("language")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    logger.warn("[flashcards] failed to load user language, defaulting to English", {
+      userId,
+      message: error.message,
+    });
+  }
+
+  const code = normalizeLanguage((data as { language?: string | null } | null)?.language ?? null);
+  const name = LANGUAGE_NAMES[code] ?? "English";
+  return { code, name };
+}
+
+function parseJsonLooseContent(raw: unknown): unknown {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try {
+      const first = JSON.parse(raw);
+      if (typeof first === "string" && (first.startsWith("{") || first.startsWith("["))) {
+        return JSON.parse(first);
+      }
+      return first;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === "object") return raw;
+  return null;
+}
+
+function getBreakdownNodes(rawBreakdown: unknown): Array<Record<string, unknown>> {
+  const parsed = parseJsonLooseContent(rawBreakdown);
+  if (Array.isArray(parsed)) return parsed.filter((n) => n && typeof n === "object") as Array<Record<string, unknown>>;
+  if (parsed && typeof parsed === "object") {
+    const root = parsed as Record<string, unknown>;
+    const nestedNodes = (root.breakdown as Record<string, unknown> | undefined)?.nodes;
+    const nodes: unknown[] = Array.isArray(root.nodes)
+      ? root.nodes
+      : Array.isArray(nestedNodes)
+        ? (nestedNodes as unknown[])
+        : [];
+    return nodes.filter((n) => n && typeof n === "object") as Array<Record<string, unknown>>;
+  }
+  return [];
+}
+
+function isLikelyCodeOrMetadataLine(input: string): boolean {
+  const line = input.trim();
+  if (!line) return false;
+  if (/\/zupiq-(backend|web|mobile)|\/(src|app|models|services)\//i.test(line)) return true;
+  if (/\b[a-z0-9_-]+\/[a-z0-9_./-]+\.(ts|tsx|js|jsx|json|sql)\b/i.test(line)) return true;
+  if (/^\s*(import|export|interface|type|class|function|const|let|var)\b/.test(line)) return true;
+  if (/^\s*CREATE\s+TABLE\b|^\s*ALTER\s+TABLE\b|^\s*SELECT\s+/i.test(line)) return true;
+  if (/^\s*\/\/|^\s*\/\*/.test(line)) return true;
+  if (/[{};]{2,}/.test(line)) return true;
+  return false;
+}
+
+function sanitizeEducationalContent(raw: string): string {
+  const text = String(raw ?? "").replace(/\r\n/g, "\n").trim();
+  if (!text) return "";
+
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const filtered = lines.filter((line) => !isLikelyCodeOrMetadataLine(line));
+  const joinedFiltered = filtered.join("\n").trim();
+
+  // If filtering was too aggressive, keep original text.
+  if (joinedFiltered.length >= Math.min(120, Math.floor(text.length * 0.35))) {
+    return joinedFiltered;
+  }
+  return text;
+}
+
+function buildSessionStudyContent(session: { title?: string | null; subject?: string | null; problem?: string | null; breakdown_json?: string | null }): string {
+  const headerParts: string[] = [];
+  if (session.subject) headerParts.push(`Subject: ${String(session.subject).trim()}`);
+  if (session.title) headerParts.push(`Session title: ${String(session.title).trim()}`);
+  if (session.problem) headerParts.push(`Problem: ${String(session.problem).trim()}`);
+
+  const nodes = getBreakdownNodes(session.breakdown_json).slice(0, 30);
+  const nodeSections = nodes
+    .map((node, idx) => {
+      const label = String(node.label ?? "").trim();
+      const description = String(node.description ?? "").trim();
+      const math = String(node.mathContent ?? node.keyFormula ?? "").trim();
+      const parts = [
+        label ? `${idx + 1}. ${label}` : `${idx + 1}. Key point`,
+        description,
+        math ? `Formula: ${math}` : "",
+      ].filter(Boolean);
+      return parts.join("\n");
+    })
+    .filter(Boolean);
+
+  const content = [
+    headerParts.join("\n"),
+    nodeSections.length > 0 ? `Key concepts from the session:\n${nodeSections.join("\n\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+
+  return sanitizeEducationalContent(content);
+}
+
+async function resolveGenerationSourceContent(
+  userId: string,
+  dto: GenerateFlashcardsDTO
+): Promise<{ content: string; source: "session" | "payload"; subjectHint: string | null }> {
+  const payloadContent = sanitizeEducationalContent(String(dto.content ?? ""));
+  const sessionId = String(dto.session_id ?? "").trim();
+  if (!sessionId) {
+    return { content: payloadContent, source: "payload", subjectHint: null };
+  }
+
+  const session = await getSessionById(sessionId, userId).catch(() => null);
+  if (!session) {
+    logger.warn("[flashcards] session_id provided but session not found or not accessible", { userId, sessionId });
+    return { content: payloadContent, source: "payload", subjectHint: null };
+  }
+
+  const sessionContent = buildSessionStudyContent(session);
+  if (sessionContent.trim()) {
+    return {
+      content: sessionContent,
+      source: "session",
+      subjectHint: String(session.subject ?? "").trim() || null,
+    };
+  }
+
+  return {
+    content: payloadContent,
+    source: "payload",
+    subjectHint: String(session.subject ?? "").trim() || null,
+  };
+}
+
+function isSoftwareSubject(subject: string): boolean {
+  const s = String(subject ?? "").toLowerCase();
+  return /\b(computer|programming|coding|software|cs|algorithm|data structure|javascript|typescript|python|java)\b/.test(s);
+}
+
+function stripCodeFence(text: string): string {
+  return String(text ?? "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function extractFirstJsonValue(text: string): string | null {
+  const start = text.search(/[{[]/);
+  if (start < 0) return null;
+
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{" || ch === "[") {
+      stack.push(ch);
+      continue;
+    }
+
+    if (ch === "}" || ch === "]") {
+      const top = stack[stack.length - 1];
+      if ((ch === "}" && top === "{") || (ch === "]" && top === "[")) {
+        stack.pop();
+        if (stack.length === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function repairCommonJsonIssues(input: string): string {
+  return escapeInvalidBackslashesInsideJsonStrings(
+    input
+      .replace(/[\u0000-\u001F]/g, (ch) => {
+        if (ch === "\n" || ch === "\r" || ch === "\t") return ch;
+        return " ";
+      })
+      .replace(/,\s*([}\]])/g, "$1")
+  );
+}
+
+function escapeInvalidBackslashesInsideJsonStrings(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (!inString) {
+      out += ch;
+      if (ch === "\"") inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+
+    // JSON does not allow literal newlines/tabs inside strings.
+    if (ch === "\n") { out += "\\n"; continue; }
+    if (ch === "\r") { out += "\\r"; continue; }
+    if (ch === "\t") { out += "\\t"; continue; }
+
+    if (ch === "\\") {
+      const next = input[i + 1];
+      const validEscape =
+        next === "\"" ||
+        next === "\\" ||
+        next === "/" ||
+        next === "n" ||
+        next === "r" ||
+        next === "t" ||
+        next === "u";
+
+      if (validEscape) {
+        out += ch;
+        escaped = true;
+      } else {
+        // Common for math content (\Delta, \frac, \times ...).
+        out += "\\\\";
+      }
+      continue;
+    }
+
+    out += ch;
+    if (ch === "\"") inString = false;
+  }
+
+  return out;
+}
+
+function parseJsonLoose<T>(raw: string): T | null {
+  const cleaned = stripCodeFence(raw || "").trim();
+  if (!cleaned) return null;
+
+  const extracted = extractFirstJsonValue(cleaned);
+  const candidates = [cleaned, extracted]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.replace(/\u2028|\u2029/g, " "));
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      try {
+        return JSON.parse(repairCommonJsonIssues(candidate)) as T;
+      } catch {
+        // Try next candidate.
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeGeneratedCards(rawCards: unknown, limit: number): GeneratedFlashcard[] {
+  const source = Array.isArray(rawCards)
+    ? rawCards
+    : rawCards && typeof rawCards === "object"
+      ? (
+          (rawCards as Record<string, unknown>).cards ??
+          (rawCards as Record<string, unknown>).flashcards ??
+          (rawCards as Record<string, unknown>).items
+        )
+      : null;
+  if (!Array.isArray(source)) return [];
+
+  const normalized: GeneratedFlashcard[] = [];
+  for (const raw of source) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Record<string, unknown>;
+    const front = typeof item.front === "string" ? item.front.trim() : "";
+    const back = typeof item.back === "string" ? item.back.trim() : "";
+    const hint = item.hint == null ? null : String(item.hint).trim();
+    if (!front || !back) continue;
+    normalized.push({ front, back, hint: hint || null });
+    if (normalized.length >= limit) break;
+  }
+
+  return normalized;
+}
+
+function recoverCardsFromPartialArray(raw: string, limit: number): GeneratedFlashcard[] {
+  const text = stripCodeFence(raw || "");
+  const start = text.indexOf("[");
+  if (start < 0) return [];
+
+  const cards: GeneratedFlashcard[] = [];
+  let inString = false;
+  let escaped = false;
+  let objectStart = -1;
+  let objectDepth = 0;
+
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (objectStart < 0) {
+      if (ch === "{") {
+        objectStart = i;
+        objectDepth = 1;
+      } else if (ch === "]") {
+        break;
+      }
+      continue;
+    }
+
+    if (ch === "{") {
+      objectDepth++;
+      continue;
+    }
+
+    if (ch === "}") {
+      objectDepth--;
+      if (objectDepth === 0) {
+        const candidate = text.slice(objectStart, i + 1);
+        const parsed = parseJsonLoose<Record<string, unknown>>(candidate);
+        const normalized = normalizeGeneratedCards(parsed ? [parsed] : [], 1);
+        if (normalized.length > 0) cards.push(normalized[0]);
+        objectStart = -1;
+        if (cards.length >= limit) break;
+      }
+    }
+  }
+
+  return cards;
+}
+
+function parseGeneratedFlashcards(raw: string, requestedCount: number): GeneratedFlashcard[] {
+  const parsed = parseJsonLoose<unknown>(raw);
+  const normalized = normalizeGeneratedCards(parsed, requestedCount);
+  if (normalized.length > 0) return normalized;
+  return recoverCardsFromPartialArray(raw, requestedCount);
+}
 
 function normalizeDeckRow(row: DeckRow): FlashcardDeck {
   const joinedSubjectName = row.subjects?.name ?? null;
@@ -313,19 +722,33 @@ export async function generateFlashcardsFromContent(
 ): Promise<FlashcardDeck> {
   const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
   const count = dto.count ?? 10;
-  const { subjectId, subjectName } = await resolveDeckSubject(dto);
-  const fallbackSubjectName = String(dto.subject ?? "").trim();
+  const source = await resolveGenerationSourceContent(userId, dto);
+  const effectiveSubject = String(dto.subject ?? source.subjectHint ?? "").trim();
+  const { subjectId, subjectName } = await resolveDeckSubject({ subject_id: dto.subject_id, subject: effectiveSubject });
+  const fallbackSubjectName = effectiveSubject;
   const resolvedSubjectName = (subjectName ?? fallbackSubjectName) || "General";
+  const userLanguage = await resolveUserLanguage(userId);
+  const languageInstruction = userLanguage.code === "en"
+    ? "Respond entirely in English."
+    : `IMPORTANT: Respond entirely in ${userLanguage.name} (${userLanguage.code}).`;
+  const softwareSubject = isSoftwareSubject(resolvedSubjectName);
+  const generationContent = source.content.slice(0, 9000);
 
-  const prompt = `You are an expert educator. Generate exactly ${count} flashcards from the following educational content.
+  if (!generationContent.trim()) {
+    throw new AppError("Not enough educational content to generate flashcards", 400);
+  }
+
+  const basePrompt = `You are an expert educator. Generate exactly ${count} flashcards from the following educational content.
 
 Content:
 """
-${dto.content.slice(0, 8000)}
+${generationContent}
 """
 
 Subject: ${resolvedSubjectName}
 Difficulty: ${dto.difficulty ?? "medium"}
+Target language: ${userLanguage.name} (${userLanguage.code})
+Content source: ${source.source}
 
 Respond ONLY with a valid JSON array. No markdown, no extra text, just JSON:
 [
@@ -341,29 +764,61 @@ Requirements:
 - Cover key concepts, definitions, formulas, and facts
 - Make questions clear and specific
 - Keep answers concise but complete
-- Add hints for harder concepts`;
+- Add hints for harder concepts
+- Write front/back/hint in ${userLanguage.name} (${userLanguage.code})
+- Keep formulas and symbols in standard math notation
+- Focus on the actual lesson concepts, not metadata
+- Ignore file paths, API routes, table schemas, JSON keys, timestamps, and app/source-code boilerplate unless the subject is explicitly software/programming (${softwareSubject ? "software subject detected" : "non-software subject"})`;
 
-  let rawText = "";
-  try {
-    const response = await client.models.generateContent({
-      model: env.GEMINI_MODEL,
-      config: { temperature: 0.3, maxOutputTokens: 4096 },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
-    rawText = response.text ?? "";
-  } catch (err) {
-    logger.error("Gemini flashcard generation error:", err);
-    throw new AppError("AI service failed to generate flashcards", 502);
+  let cards: GeneratedFlashcard[] = [];
+  let lastRawText = "";
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const retrySuffix = attempt === 1
+      ? ""
+      : "\n\nIMPORTANT: Your previous response was invalid or incomplete JSON. Regenerate from scratch and return complete valid JSON only. Keep each back/hint concise.";
+    const prompt = `${basePrompt}${retrySuffix}`;
+
+    try {
+      const response = await client.models.generateContent({
+        model: env.GEMINI_MODEL,
+        config: {
+          systemInstruction: `You are Zupiq flashcard generator. ${languageInstruction} Never switch languages unless the user explicitly asks for translation.`,
+          responseMimeType: "application/json",
+          temperature: 0.25,
+          maxOutputTokens: 8192,
+        },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const rawText = response.text ?? "";
+      lastRawText = rawText;
+      cards = parseGeneratedFlashcards(rawText, count);
+      if (cards.length > 0) break;
+
+      if (attempt < maxAttempts) {
+        logger.warn(
+          `[flashcards] parse failed (attempt ${attempt}/${maxAttempts}) - retrying. Length:`,
+          rawText.length,
+          "Raw:",
+          rawText.slice(0, 500)
+        );
+      }
+    } catch (err) {
+      if (attempt >= maxAttempts) {
+        logger.error("Gemini flashcard generation error:", err);
+        throw new AppError("AI service failed to generate flashcards", 502);
+      }
+      logger.warn(
+        `[flashcards] generation failed (attempt ${attempt}/${maxAttempts}) - retrying`,
+        err instanceof Error ? err.message : String(err)
+      );
+    }
   }
 
-  // Parse JSON from response
-  let cards: Array<{ front: string; back: string; hint?: string }> = [];
-  try {
-    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error("No JSON array found in response");
-    cards = JSON.parse(jsonMatch[0]);
-  } catch (err) {
-    logger.error("Failed to parse flashcard JSON:", rawText.slice(0, 500));
+  if (cards.length === 0) {
+    logger.error("Failed to parse flashcard JSON:", lastRawText.slice(0, 500));
     throw new AppError("Failed to parse AI-generated flashcards", 500);
   }
 

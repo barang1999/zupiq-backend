@@ -229,6 +229,7 @@ export interface BreakdownNode {
   label: string;
   description: string;
   mathContent?: string;
+  keyFormula?: string;
   parentId?: string;
   tags?: string[];
 }
@@ -281,6 +282,7 @@ Return ONLY valid JSON with no markdown, no code blocks, no explanation outside 
       "label": "the exact equation or problem statement as given",
       "description": "one sentence describing the overall problem",
       "mathContent": "the original problem or equation, formatted clearly",
+      "keyFormula": "the core formula/rule used at this node (short LaTeX or compact math), or empty string",
       "tags": ["SUBJECT TAG", "TYPE TAG"]
     },
     {
@@ -289,6 +291,7 @@ Return ONLY valid JSON with no markdown, no code blocks, no explanation outside 
       "label": "Step name (3-5 words)",
       "description": "Step 01: one-line description of what this step does",
       "mathContent": "the actual equation or expression after applying this step (e.g. '3x - 2x = 17 - 5')",
+      "keyFormula": "short formula/rule used in this step, or empty string",
       "parentId": "root"
     },
     {
@@ -297,6 +300,7 @@ Return ONLY valid JSON with no markdown, no code blocks, no explanation outside 
       "label": "Step name (3-5 words)",
       "description": "Step 02: one-line description",
       "mathContent": "the equation after this step (e.g. 'x = 12')",
+      "keyFormula": "short formula/rule used in this step, or empty string",
       "parentId": "root"
     },
     {
@@ -305,6 +309,7 @@ Return ONLY valid JSON with no markdown, no code blocks, no explanation outside 
       "label": "Underlying rule or concept name",
       "description": "brief note on why this rule applies",
       "mathContent": "the formula or rule (e.g. 'aⁿ · aᵐ = aⁿ⁺ᵐ')",
+      "keyFormula": "short formula/rule used in this leaf node, or empty string",
       "parentId": "branch1"
     }
   ],
@@ -319,6 +324,7 @@ Important rules:
 - 2-4 branch nodes (one per meaningful solving step — include ALL necessary steps)
 - 1-3 leaf nodes (underlying concepts/rules that make the steps work)
 - mathContent MUST contain actual math notation for every node, not empty strings
+- keyFormula for each node MUST be short and formula-only (no prose); empty string if none
 - Keep labels concise; put the math in mathContent
 - CRITICAL JSON ESCAPING: any backslash in LaTeX must be escaped for JSON (write \\\\circ, \\\\times, \\\\frac, not \\circ, \\times, \\frac)
 - NEVER use LaTeX table environments (\\begin{tabular}, \\begin{array}, \\hline, &) in any field — sign/variation tables are rendered separately by the UI`;
@@ -373,6 +379,7 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
       label: stripLatexTabularEnv(node.label ?? ''),
       description: stripLatexTabularEnv(node.description ?? ''),
       mathContent: node.mathContent ? stripLatexTabularEnv(node.mathContent) : node.mathContent,
+      keyFormula: normalizeNodeKeyFormula(node.keyFormula ?? "", node.mathContent ?? ""),
     })),
   };
 }
@@ -1083,7 +1090,7 @@ Return ONLY this JSON:
   });
   return {
     simpleBreakdown: acceptedRescued || deterministicStandard,
-    keyFormula: normalizeKeyFormula(nodeMathContent || ""),
+    keyFormula: "",
   };
 }
 
@@ -1673,6 +1680,16 @@ function isLikelyCompactFormula(value: string): boolean {
   return /[=+\-*/^_\\(){}\[\]0-9]/.test(value);
 }
 
+function normalizeNodeKeyFormula(keyFormulaInput: string, mathContentInput: string): string {
+  const keyFormula = normalizeKeyFormula(keyFormulaInput);
+  if (keyFormula) return keyFormula;
+
+  const fallback = normalizeKeyFormula(mathContentInput);
+  if (!fallback) return "";
+  if (fallback.length > 80) return "";
+  return fallback;
+}
+
 function extractJsonStringFieldLoose(raw: string, key: string): string | null {
   const keyToken = `"${key}"`;
   const keyPos = raw.indexOf(keyToken);
@@ -1835,6 +1852,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
         label: problem,
         description: copy.rootDesc,
         mathContent: problem,
+        keyFormula: normalizeNodeKeyFormula("", problem),
         tags: [subject.toUpperCase(), "PROBLEM"],
       },
       {
@@ -1843,6 +1861,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
         label: copy.branch1Label,
         description: copy.branch1Desc,
         mathContent: copy.branch1Math,
+        keyFormula: normalizeNodeKeyFormula("", copy.branch1Math),
         parentId: "root",
       },
       {
@@ -1851,6 +1870,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
         label: copy.branch2Label,
         description: copy.branch2Desc,
         mathContent: copy.branch2Math,
+        keyFormula: normalizeNodeKeyFormula("", copy.branch2Math),
         parentId: "root",
       },
       {
@@ -1859,6 +1879,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
         label: copy.leafLabel,
         description: copy.leafDesc,
         mathContent: copy.leafMath,
+        keyFormula: normalizeNodeKeyFormula("", copy.leafMath),
         parentId: "branch2",
       },
     ],

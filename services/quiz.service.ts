@@ -12,6 +12,8 @@ import {
   QuizMode,
   QuizQuestion,
   SaveQuizAnswerDTO,
+  ValidateQuizAnswerDTO,
+  ValidateQuizAnswerResult,
 } from "../models/quiz.model.js";
 import { generateId, nowISO } from "../utils/helpers.js";
 import {
@@ -542,7 +544,7 @@ export async function generateQuizForUser(userId: string, dto: GenerateQuizDTO):
     questionCount,
   });
 
-  const totalMarks = normalized.questions.reduce((sum, question) => sum + Number(question.marks || 0), 0);
+  const totalMarks = normalized.questions.reduce((sum, question) => sum + getQuestionMarks(question), 0);
   const db = getSupabaseAdmin();
 
   const quizId = generateId();
@@ -744,37 +746,41 @@ export async function createQuizAttempt(userId: string, quizId: string): Promise
   return attempt as QuizAttempt;
 }
 
-export async function saveAttemptAnswer(userId: string, attemptId: string, dto: SaveQuizAnswerDTO) {
-  if (!dto.questionId) throw new ValidationError("questionId is required");
-
-  const attempt = await getAttemptForUser(attemptId, userId);
-  if (attempt.status === "graded") {
-    throw new ValidationError("Cannot modify a graded attempt");
-  }
-
-  const question = await getQuestionForAttempt(attempt, dto.questionId);
+async function upsertAnswerForAttempt(
+  attemptId: string,
+  questionId: string,
+  dto: SaveQuizAnswerDTO
+) {
   const db = getSupabaseAdmin();
   const now = nowISO();
 
+  const existing = await db
+    .from("quiz_answers")
+    .select("*")
+    .eq("attempt_id", attemptId)
+    .eq("question_id", questionId)
+    .single();
+
+  const base = existing.data as Record<string, unknown> | null;
   const answerText = typeof dto.answerText === "string" ? dto.answerText.trim() : null;
   const answerJson = dto.answerJson && typeof dto.answerJson === "object" ? dto.answerJson : {};
 
   const row = {
-    id: generateId(),
+    id: (base?.id as string | undefined) ?? generateId(),
     attempt_id: attemptId,
-    question_id: question.id,
+    question_id: questionId,
     answer_text: answerText,
     answer_json: answerJson,
-    answer_upload_id: null,
-    extracted_text: null,
-    extraction_confidence: null,
+    answer_upload_id: (base?.answer_upload_id as string | null | undefined) ?? null,
+    extracted_text: (base?.extracted_text as string | null | undefined) ?? null,
+    extraction_confidence: (base?.extraction_confidence as number | null | undefined) ?? null,
     grading_confidence: null,
     is_correct: null,
     awarded_marks: 0,
     ai_feedback: null,
     correction: null,
     review_required: false,
-    created_at: now,
+    created_at: (base?.created_at as string | undefined) ?? now,
     updated_at: now,
   };
 
@@ -785,6 +791,21 @@ export async function saveAttemptAnswer(userId: string, attemptId: string, dto: 
     .single();
 
   if (error || !data) throw new AppError(error?.message ?? "Failed to save answer", 500);
+  return data;
+}
+
+export async function saveAttemptAnswer(userId: string, attemptId: string, dto: SaveQuizAnswerDTO) {
+  if (!dto.questionId) throw new ValidationError("questionId is required");
+
+  const attempt = await getAttemptForUser(attemptId, userId);
+  if (attempt.status === "graded") {
+    throw new ValidationError("Cannot modify a graded attempt");
+  }
+
+  const question = await getQuestionForAttempt(attempt, dto.questionId);
+  const data = await upsertAnswerForAttempt(attemptId, question.id, dto);
+  const db = getSupabaseAdmin();
+  const now = nowISO();
 
   await db
     .from("quiz_attempts")
@@ -793,6 +814,136 @@ export async function saveAttemptAnswer(userId: string, attemptId: string, dto: 
     .eq("user_id", userId);
 
   return data;
+}
+
+export async function validateAttemptAnswer(
+  userId: string,
+  attemptId: string,
+  dto: ValidateQuizAnswerDTO
+): Promise<ValidateQuizAnswerResult> {
+  if (!dto.questionId) throw new ValidationError("questionId is required");
+
+  const attempt = await getAttemptForUser(attemptId, userId);
+  if (attempt.status === "graded") {
+    throw new ValidationError("Cannot validate a graded attempt");
+  }
+
+  const question = await getQuestionForAttempt(attempt, dto.questionId);
+  const db = getSupabaseAdmin();
+  const now = nowISO();
+
+  const answer = await upsertAnswerForAttempt(attemptId, question.id, dto);
+  const responseText = getAnswerText(answer as Record<string, unknown>);
+  const lockedZeroQuestionIds = getLockedZeroQuestionIds(attempt);
+
+  let evaluation: QuizQuestionEvaluation = !responseText.trim()
+    ? {
+      questionId: question.id,
+      isCorrect: false,
+      awardedMarks: 0,
+      gradingConfidence: 0.99,
+      feedback: "No answer submitted.",
+      correction: expectedAnswerCorrection(question),
+      source: "deterministic",
+    }
+    : (evaluateDeterministic(question, answer as Record<string, unknown>) ?? buildOpenEndedFallbackGrade(question, responseText));
+
+  if (!evaluation.isCorrect) {
+    lockedZeroQuestionIds.add(question.id);
+  }
+
+  if (lockedZeroQuestionIds.has(question.id) && evaluation.awardedMarks > 0) {
+    evaluation = {
+      ...evaluation,
+      isCorrect: false,
+      awardedMarks: 0,
+      feedback: "Correct now, but this question scores 0 because an earlier attempt was incorrect.",
+    };
+  }
+
+  const { data: updatedAnswer, error: answerUpdateError } = await db
+    .from("quiz_answers")
+    .update({
+      grading_confidence: evaluation.gradingConfidence,
+      is_correct: evaluation.isCorrect,
+      awarded_marks: evaluation.awardedMarks,
+      ai_feedback: evaluation.feedback,
+      correction: evaluation.correction,
+      review_required:
+        evaluation.gradingConfidence < 0.55 ||
+        ((answer as Record<string, unknown>).extraction_confidence as number | null | undefined ?? 1) < 0.55,
+      updated_at: now,
+    })
+    .eq("attempt_id", attemptId)
+    .eq("question_id", question.id)
+    .select("*")
+    .single();
+
+  if (answerUpdateError || !updatedAnswer) {
+    throw new AppError(answerUpdateError?.message ?? "Failed to update answer evaluation", 500);
+  }
+
+  const { data: scoreRows, error: scoreError } = await db
+    .from("quiz_answers")
+    .select("awarded_marks")
+    .eq("attempt_id", attemptId);
+
+  if (scoreError) throw new AppError(scoreError.message, 500);
+
+  const runningScoreRaw = (scoreRows ?? []).reduce((sum, row) => {
+    const marks = Number((row as Record<string, unknown>).awarded_marks ?? 0);
+    return sum + (Number.isFinite(marks) ? marks : 0);
+  }, 0);
+
+  const runningScore = Number(runningScoreRaw.toFixed(2));
+  const { data: questionRowsForTotal, error: questionTotalError } = await db
+    .from("quiz_questions")
+    .select("marks")
+    .eq("quiz_id", attempt.quiz_id);
+
+  if (questionTotalError) throw new AppError(questionTotalError.message, 500);
+
+  const computedTotalMarks = (questionRowsForTotal ?? []).reduce(
+    (sum, questionRow) => sum + getQuestionMarks(questionRow as { marks: unknown }),
+    0
+  );
+  const totalMarks = Number(computedTotalMarks.toFixed(2));
+  const percentage = totalMarks > 0 ? Number(((runningScore / totalMarks) * 100).toFixed(2)) : 0;
+  const previousAiEvaluation = toRecord(attempt.ai_evaluation);
+  const previousValidation = toRecord(previousAiEvaluation.validation);
+  const nextAiEvaluation = {
+    ...previousAiEvaluation,
+    validation: {
+      ...previousValidation,
+      locked_zero_question_ids: Array.from(lockedZeroQuestionIds),
+      updated_at: now,
+    },
+  };
+
+  const { error: attemptUpdateError } = await db
+    .from("quiz_attempts")
+    .update({
+      score: runningScore,
+      total_marks: totalMarks,
+      percentage,
+      ai_evaluation: nextAiEvaluation,
+      updated_at: now,
+    })
+    .eq("id", attemptId)
+    .eq("user_id", userId);
+
+  if (attemptUpdateError) throw new AppError(attemptUpdateError.message, 500);
+
+  return {
+    questionId: question.id,
+    isCorrect: evaluation.isCorrect,
+    awardedMarks: Number(evaluation.awardedMarks.toFixed(2)),
+    feedback: evaluation.feedback,
+    correction: evaluation.correction,
+    runningScore,
+    totalMarks: Number(totalMarks.toFixed(2)),
+    percentage,
+  };
 }
 
 function computeExtractionConfidence(text: string, warnings: string[]): number {
@@ -930,9 +1081,10 @@ export async function submitQuizAttempt(userId: string, attemptId: string): Prom
 
 function normalizeText(input: string): string {
   return input
+    .normalize("NFC")
     .toLowerCase()
     .replace(/\s+/g, " ")
-    .replace(/[^a-z0-9.+\-=/ ]+/g, "")
+    .replace(/[^\p{L}\p{N}.+\-=/ ]+/gu, "")
     .trim();
 }
 
@@ -965,6 +1117,39 @@ function parseNumericValue(value: unknown): number | null {
   return parsed;
 }
 
+function getQuestionMarks(question: { marks?: unknown }): number {
+  const parsed = Number(question.marks);
+  if (!Number.isFinite(parsed)) return 0;
+  return Number(parsed.toFixed(2));
+}
+
+function expectedAnswerCorrection(question: QuizQuestion): string | null {
+  const expected = question.expected_answer ?? {};
+  const value = expected.value;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getLockedZeroQuestionIds(attempt: QuizAttempt): Set<string> {
+  const aiEvaluation = toRecord(attempt.ai_evaluation);
+  const validation = toRecord(aiEvaluation.validation);
+  const raw = validation.locked_zero_question_ids;
+  if (!Array.isArray(raw)) return new Set<string>();
+  return new Set(
+    raw
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter(Boolean)
+  );
+}
+
 function evaluateDeterministic(
   question: QuizQuestion,
   answer: Record<string, unknown> | null
@@ -980,10 +1165,11 @@ function evaluateDeterministic(
     const normalizedResponse = normalizeText(responseText);
     const isCorrect = Boolean(normalizedExpected) && normalizedExpected === normalizedResponse;
 
+    const questionMarks = getQuestionMarks(question);
     return {
       questionId: question.id,
       isCorrect,
-      awardedMarks: isCorrect ? Number(question.marks) : 0,
+      awardedMarks: isCorrect ? questionMarks : 0,
       gradingConfidence: 0.99,
       feedback: isCorrect
         ? "Correct answer."
@@ -1018,10 +1204,11 @@ function evaluateDeterministic(
 
     const isCorrect = Math.abs(expected - response) <= tolerance;
 
+    const questionMarks = getQuestionMarks(question);
     return {
       questionId: question.id,
       isCorrect,
-      awardedMarks: isCorrect ? Number(question.marks) : 0,
+      awardedMarks: isCorrect ? questionMarks : 0,
       gradingConfidence: 0.97,
       feedback: isCorrect
         ? "Correct numeric answer."
@@ -1051,7 +1238,8 @@ function buildOpenEndedFallbackGrade(
   const matched = expectedTokens.filter((token) => answerNorm.includes(token)).length;
   const ratio = expectedTokens.length > 0 ? matched / expectedTokens.length : (answerText.length > 35 ? 0.6 : 0.2);
 
-  const awardedMarks = clampNumber(Number(question.marks) * ratio, 0, Number(question.marks));
+  const questionMarks = getQuestionMarks(question);
+  const awardedMarks = clampNumber(questionMarks * ratio, 0, questionMarks);
   const isCorrect = ratio >= 0.65;
 
   return {
@@ -1167,8 +1355,9 @@ ${JSON.stringify(
       if (!target) continue;
 
       const marks = Number(item.awardedMarks);
+      const maxMarks = getQuestionMarks(target.question);
       const cappedMarks = Number.isFinite(marks)
-        ? clampNumber(marks, 0, Number(target.question.marks))
+        ? clampNumber(marks, 0, maxMarks)
         : 0;
 
       byQuestion.set(item.questionId, {
@@ -1406,18 +1595,31 @@ export async function gradeQuizAttempt(userId: string, attemptId: string): Promi
 
   evaluations.push(...openEndedResult.evaluations);
 
+  const lockedZeroQuestionIds = getLockedZeroQuestionIds(attempt);
+  const finalEvaluations = evaluations.map((evaluation) => {
+    if (!lockedZeroQuestionIds.has(evaluation.questionId) || evaluation.awardedMarks <= 0) {
+      return evaluation;
+    }
+    return {
+      ...evaluation,
+      isCorrect: false,
+      awardedMarks: 0,
+      feedback: "Correct now, but this question scores 0 because an earlier attempt was incorrect.",
+    };
+  });
+
   const evaluationMap = new Map<string, QuizQuestionEvaluation>(
-    evaluations.map((evaluation) => [evaluation.questionId, evaluation])
+    finalEvaluations.map((evaluation) => [evaluation.questionId, evaluation])
   );
 
-  const totalMarks = questionRows.reduce((sum, question) => sum + Number(question.marks || 0), 0);
+  const totalMarks = questionRows.reduce((sum, question) => sum + getQuestionMarks(question), 0);
   const score = questionRows.reduce((sum, question) => {
     const awarded = evaluationMap.get(question.id)?.awardedMarks ?? 0;
     return sum + awarded;
   }, 0);
   const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
-  const summary = buildResultSummary(evaluations, questionRows, openEndedResult.summary);
+  const summary = buildResultSummary(finalEvaluations, questionRows, openEndedResult.summary);
 
   const now = nowISO();
 

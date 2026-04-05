@@ -113,6 +113,19 @@ export interface SaveQuizAnswerDTO {
   answerJson?: Record<string, unknown>;
 }
 
+export interface ValidateQuizAnswerDTO extends SaveQuizAnswerDTO {}
+
+export interface ValidateQuizAnswerResult {
+  questionId: string;
+  isCorrect: boolean;
+  awardedMarks: number;
+  feedback: string;
+  correction: string | null;
+  runningScore: number;
+  totalMarks: number;
+  percentage: number;
+}
+
 export interface QuizQuestionPayload {
   order: number;
   type: "mcq" | "short_answer" | "numeric" | "written";

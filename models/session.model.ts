@@ -9,7 +9,7 @@ export interface StudySession {
   problem: string;
   node_count: number;
   duration_seconds: number | null;
-  breakdown_json: string; // serialized ProblemBreakdown
+  breakdown_json: string; // serialized ProblemBreakdown (nodes include mathContent + keyFormula)
   visual_table_json?: string | null;
   created_at: string;
   /** Populated by getUserSessions — caller's access level for this session. */

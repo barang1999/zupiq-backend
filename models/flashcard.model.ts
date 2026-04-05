@@ -65,6 +65,7 @@ export interface ReviewFlashcardDTO {
 // ─── AI Generation Request ────────────────────────────────────────────────────
 
 export interface GenerateFlashcardsDTO {
+  session_id?: string;
   lesson_id?: string;
   content: string;
   subject_id?: string;

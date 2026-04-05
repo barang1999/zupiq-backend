@@ -8,8 +8,9 @@ import {
   gradeQuizAttempt,
   saveAttemptAnswer,
   submitQuizAttempt,
+  validateAttemptAnswer,
 } from "../../services/quiz.service.js";
-import type { SaveQuizAnswerDTO } from "../../models/quiz.model.js";
+import type { SaveQuizAnswerDTO, ValidateQuizAnswerDTO } from "../../models/quiz.model.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -50,6 +51,18 @@ router.post("/:attemptId/submit", async (req: Request, res: Response, next: Next
   try {
     const attempt = await submitQuizAttempt(req.user!.sub, req.params.attemptId);
     res.json({ attempt });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/quiz-attempts/:attemptId/answers/validate
+router.post("/:attemptId/answers/validate", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const dto = req.body as ValidateQuizAnswerDTO;
+    if (!dto.questionId) throw new ValidationError("questionId is required");
+    const evaluation = await validateAttemptAnswer(req.user!.sub, req.params.attemptId, dto);
+    res.json({ evaluation });
   } catch (err) {
     next(err);
   }

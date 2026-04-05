@@ -14,18 +14,88 @@ function relationCount(value: unknown): number {
   return typeof count === "number" && Number.isFinite(count) ? count : 0;
 }
 
+function normalizeSubjectKey(input: unknown): string {
+  return String(input ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectPreferredSubjectNames(preferences: unknown): string[] {
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) return [];
+  const prefs = preferences as Record<string, unknown>;
+  const direct = Array.isArray(prefs.subjects) ? prefs.subjects : [];
+  const preferred = Array.isArray(prefs.preferred_subjects) ? prefs.preferred_subjects : [];
+  return [...direct, ...preferred]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+}
+
 // ─── Subjects ─────────────────────────────────────────────────────────────────
 
 // GET /api/subjects
-router.get("/", optionalAuth, async (_req: Request, res: Response, next: NextFunction) => {
+router.get("/", optionalAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const db = getSupabaseAdmin();
+    const scope = String(req.query.scope ?? "").trim().toLowerCase();
+    const relatedOnly = scope === "quiz";
+
     const { data: subjects, error } = await db
       .from("subjects")
       .select("*, topics(count)")
       .order("name", { ascending: true });
     if (error) throw new Error(error.message);
-    const normalized = ((subjects ?? []) as Array<Record<string, unknown>>).map((row) => ({
+
+    let allowedSubjectIds: Set<string> | null = null;
+    if (relatedOnly && req.user?.sub) {
+      allowedSubjectIds = new Set<string>();
+
+      const { data: userRow } = await db
+        .from("users")
+        .select("preferences")
+        .eq("id", req.user.sub)
+        .maybeSingle();
+
+      const preferredNames = collectPreferredSubjectNames((userRow as Record<string, unknown> | null)?.preferences);
+
+      const { data: sessions, error: sessionsError } = await db
+        .from("study_sessions")
+        .select("subject_id, subject")
+        .eq("user_id", req.user.sub);
+      if (sessionsError) throw new Error(sessionsError.message);
+
+      const sessionSubjectNames = ((sessions ?? []) as Array<Record<string, unknown>>)
+        .map((row) => (typeof row.subject === "string" ? row.subject.trim() : ""))
+        .filter(Boolean);
+
+      ((sessions ?? []) as Array<Record<string, unknown>>).forEach((row) => {
+        if (typeof row.subject_id === "string" && row.subject_id.trim()) {
+          allowedSubjectIds!.add(row.subject_id);
+        }
+      });
+
+      const namesToResolve = [...preferredNames, ...sessionSubjectNames];
+      const subjectRows = (subjects ?? []) as Array<Record<string, unknown>>;
+      namesToResolve.forEach((name) => {
+        const normalizedName = normalizeSubjectKey(name);
+        if (!normalizedName) return;
+        const slugCandidate = slugify(name);
+        const match = subjectRows.find((row) => {
+          const rowName = normalizeSubjectKey(row.name);
+          const rowSlug = normalizeSubjectKey(row.slug);
+          return rowName === normalizedName || rowSlug === normalizedName || (slugCandidate && String(row.slug) === slugCandidate);
+        });
+        if (match?.id) {
+          allowedSubjectIds!.add(String(match.id));
+        }
+      });
+    }
+
+    const normalized = ((subjects ?? []) as Array<Record<string, unknown>>)
+      .filter((row) => !allowedSubjectIds || allowedSubjectIds.has(String(row.id)))
+      .map((row) => ({
       id: String(row.id),
       name: String(row.name),
       slug: String(row.slug),

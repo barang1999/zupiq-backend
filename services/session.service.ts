@@ -122,7 +122,8 @@ export async function resolveOrCreateSubjectId(rawSubject: string): Promise<stri
   const db = getSupabaseAdmin();
   const subjectName = normalizeSubjectName(rawSubject);
   const canonical = detectCanonicalSubject(subjectName);
-  const subjectSlug = canonical?.slug ?? slugify(subjectName) || deterministicSlug(subjectName);
+  const subjectSlug =
+    canonical?.slug ?? (slugify(subjectName) || deterministicSlug(subjectName));
   const subjectDisplayName = canonical?.name ?? subjectName;
   const normalizedInput = normalizeSubjectKey(subjectName);
 

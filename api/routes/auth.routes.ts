@@ -17,6 +17,86 @@ import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/s
 
 const router = Router();
 
+interface VerifiedOAuthIdentity {
+  uid: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+}
+
+function normalizeAudienceConfig(): string[] {
+  const candidates = [
+    process.env.GOOGLE_WEB_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_OAUTH_CLIENT_ID,
+  ];
+
+  return candidates
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+}
+
+async function verifyGoogleIdTokenViaTokenInfo(idToken: string): Promise<VerifiedOAuthIdentity | null> {
+  const response = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const tokenInfo = (await response.json()) as Record<string, string>;
+  const sub = tokenInfo.sub;
+  const email = tokenInfo.email;
+  const emailVerified = tokenInfo.email_verified;
+  const aud = tokenInfo.aud;
+  const name = tokenInfo.name ?? null;
+  const picture = tokenInfo.picture ?? null;
+
+  if (!sub || !email) {
+    return null;
+  }
+  if (emailVerified !== "true") {
+    throw new UnauthorizedError("Google account email is not verified");
+  }
+
+  const allowedAudiences = normalizeAudienceConfig();
+  if (allowedAudiences.length > 0 && aud && !allowedAudiences.includes(aud)) {
+    throw new UnauthorizedError("Invalid Google token audience");
+  }
+
+  return {
+    uid: sub,
+    email: email.toLowerCase(),
+    name,
+    picture,
+  };
+}
+
+async function verifyOAuthIdentity(idToken: string): Promise<VerifiedOAuthIdentity> {
+  // Preferred path: Firebase ID token (already issued by Firebase Auth).
+  try {
+    const decoded = await firebaseAdmin.verifyIdToken(idToken);
+    if (!decoded.email) {
+      throw new ValidationError("Google account has no email");
+    }
+    return {
+      uid: decoded.uid,
+      email: decoded.email.toLowerCase(),
+      name: decoded.name ?? null,
+      picture: decoded.picture ?? null,
+    };
+  } catch {
+    // Fallback path: raw Google ID token from Google Sign-In SDK.
+  }
+
+  const googleIdentity = await verifyGoogleIdTokenViaTokenInfo(idToken);
+  if (!googleIdentity) {
+    throw new UnauthorizedError("Invalid Google sign-in token");
+  }
+  return googleIdentity;
+}
+
 // ─── POST /api/auth/register ──────────────────────────────────────────────────
 
 router.post(
@@ -132,35 +212,28 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { idToken } = req.body;
-      console.log("[auth/google] received idToken:", idToken ? "present ✓" : "MISSING");
       if (!idToken) throw new ValidationError("idToken is required");
 
-      // Verify the Firebase ID token
-      console.log("[auth/google] verifying Firebase token...");
-      const decoded = await firebaseAdmin.verifyIdToken(idToken);
-      const { uid, email, name, picture } = decoded;
-      console.log("[auth/google] verified uid:", uid, "email:", email);
-
-      if (!email) throw new ValidationError("Google account has no email");
+      const { uid, email, name, picture } = await verifyOAuthIdentity(idToken);
 
       const db = getSupabaseAdmin();
 
-      // Check if user already exists (by email or firebase_uid)
+      // Check if user already exists by email
       let { data: existingUser } = await db
         .from("users")
         .select("*")
-        .eq("email", email.toLowerCase())
+        .eq("email", email)
         .single();
 
       if (!existingUser) {
-        // Create new user — no password needed for OAuth users
+        // Create new user — password hash placeholder for OAuth-only account.
         const id = generateId();
         const { data: newUser, error } = await db
           .from("users")
           .insert({
             id,
-            email: email.toLowerCase(),
-            password_hash: `firebase:${uid}`, // placeholder — can never be used to login with password
+            email,
+            password_hash: `oauth_google:${uid}`,
             full_name: name ?? email.split("@")[0],
             avatar_url: picture ?? null,
             education_level: "high_school",

@@ -16,6 +16,70 @@ type SubjectRow = {
   slug: string;
 };
 
+function parseJsonDeep(value: unknown, maxDepth = 3): unknown {
+  let current: unknown = value;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    if (typeof current !== "string") return current;
+    const trimmed = current.trim();
+    if (!trimmed) return current;
+    if (!/^[{\["]/.test(trimmed)) return current;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return current;
+    }
+  }
+  return current;
+}
+
+function toCanonicalJsonString(value: unknown, fallback: unknown): string {
+  const parsed = parseJsonDeep(value);
+  if (parsed && typeof parsed === "object") {
+    try {
+      return JSON.stringify(parsed);
+    } catch {
+      return JSON.stringify(fallback);
+    }
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length > 1) {
+      try {
+        JSON.parse(trimmed);
+        return trimmed;
+      } catch {
+        return JSON.stringify(fallback);
+      }
+    }
+  }
+  return JSON.stringify(fallback);
+}
+
+function toCanonicalNullableJsonString(value: unknown): string | null {
+  if (value == null) return null;
+  const parsed = parseJsonDeep(value);
+  if (parsed && typeof parsed === "object") {
+    try {
+      return JSON.stringify(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        JSON.parse(trimmed);
+        return trimmed;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 const CANONICAL_SUBJECTS: CanonicalSubject[] = [
   { slug: "physics", name: "Physics", aliases: ["physics", "រូបវិទ្យា", "រូប វិទ្យា"] },
   { slug: "mathematics", name: "Mathematics", aliases: ["mathematics", "math", "maths", "គណិតវិទ្យា", "គណិត វិទ្យា"] },
@@ -80,10 +144,8 @@ function normalizeSessionRow(row: Record<string, unknown>): StudySession {
     problem: String(row.problem),
     node_count: Number(row.node_count ?? 0),
     duration_seconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
-    breakdown_json: typeof row.breakdown_json === "string" ? row.breakdown_json : JSON.stringify(row.breakdown_json ?? {}),
-    visual_table_json: typeof row.visual_table_json === "string" 
-      ? row.visual_table_json 
-      : (row.visual_table_json ? JSON.stringify(row.visual_table_json) : null),
+    breakdown_json: toCanonicalJsonString(row.breakdown_json, {}),
+    visual_table_json: toCanonicalNullableJsonString(row.visual_table_json),
     created_at: String(row.created_at),
   };
 }
@@ -215,8 +277,8 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     problem: dto.problem,
     node_count: dto.node_count,
     duration_seconds: dto.duration_seconds ?? null,
-    breakdown_json: dto.breakdown_json,
-    visual_table_json: dto.visual_table_json ?? null,
+    breakdown_json: toCanonicalJsonString(dto.breakdown_json, {}),
+    visual_table_json: toCanonicalNullableJsonString(dto.visual_table_json),
     created_at: nowISO(),
   };
 
@@ -265,9 +327,17 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
   const canEdit = await canUserEditSession(id, userId);
   if (!canEdit) throw new AppError("Forbidden", 403);
 
+  const normalizedUpdates: UpdateSessionDTO = { ...updates };
+  if (Object.prototype.hasOwnProperty.call(updates, "breakdown_json")) {
+    normalizedUpdates.breakdown_json = toCanonicalJsonString(updates.breakdown_json, {});
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "visual_table_json")) {
+    normalizedUpdates.visual_table_json = toCanonicalNullableJsonString(updates.visual_table_json);
+  }
+
   const { data, error } = await db
     .from("study_sessions")
-    .update(updates)
+    .update(normalizedUpdates)
     .eq("id", id)
     .select()
     .single();

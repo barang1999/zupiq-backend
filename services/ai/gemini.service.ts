@@ -261,86 +261,231 @@ interface JsonGenerationConfig<T> {
 
 type StructuredJsonSource = "parsed" | "recovered" | "none";
 
+const GENERIC_BREAKDOWN_STEP_PATTERN = /(known values|target unknown|governing formula|problem relationship|substitute -> simplify|ទិន្នន័យដែលមាន|អថេរត្រូវរក|ប្រើទំនាក់ទំនងដើម្បីគណនា|ជំនួស -> សម្រួល)/i;
+
+function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as ProblemBreakdown;
+  if (!Array.isArray(candidate.nodes) || candidate.nodes.length < 5) return false;
+
+  const branchNodes = candidate.nodes.filter((node) => node?.type === "branch");
+  if (branchNodes.length < 2) return false;
+
+  const hasConcreteBranch = branchNodes.some((node) => {
+    const math = `${node?.mathContent ?? ""}`.trim();
+    const desc = `${node?.description ?? ""}`.trim();
+    if (!math && !desc) return false;
+    if (GENERIC_BREAKDOWN_STEP_PATTERN.test(math) || GENERIC_BREAKDOWN_STEP_PATTERN.test(desc)) return false;
+    return (math.length >= 8 || desc.length >= 18);
+  });
+
+  return hasConcreteBranch;
+}
+
 export async function breakdownProblem(
   problem: string,
   options: AIRequestOptions = {},
   imagePart?: ImagePart
 ): Promise<ProblemBreakdown> {
+  const targetLangCode = (options.language ?? "en").toLowerCase();
+  const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
+
   const imageContext = imagePart
-    ? `The problem text below was extracted from an attached image. Use both the image and the extracted text together to fully understand the problem — the image may contain diagrams, figures, or additional visual context.\n\n`
+    ? `The problem text was extracted from an attached image. Use both the image and the extracted text to build the tree.\n\n`
     : "";
-  const prompt = `${imageContext}Analyze and break down the following problem into a detailed step-by-step neural concept tree: "${problem}"
+  
+  const prompt = `${imageContext}Analyze and break down this problem into a detailed concept tree (5-8 nodes).
+  
+Problem: "${problem}"
 
-Return ONLY valid JSON with no markdown, no code blocks, no explanation outside the JSON. Use this exact structure:
-{
-  "title": "short descriptive title (4-6 words)",
-  "subject": "subject area (e.g. Calculus, Physics, Literature, Algebra)",
-  "nodes": [
-    {
-      "id": "root",
-      "type": "root",
-      "label": "the exact equation or problem statement as given",
-      "description": "one sentence describing the overall problem",
-      "mathContent": "the original problem or equation, formatted clearly",
-      "keyFormula": "the core formula/rule used at this node (short LaTeX or compact math), or empty string",
-      "tags": ["SUBJECT TAG", "TYPE TAG"]
-    },
-    {
-      "id": "branch1",
-      "type": "branch",
-      "label": "Step name (3-5 words)",
-      "description": "Step 01: one-line description of what this step does",
-      "mathContent": "the actual equation or expression after applying this step (e.g. '3x - 2x = 17 - 5')",
-      "keyFormula": "short formula/rule used in this step, or empty string",
-      "parentId": "root"
-    },
-    {
-      "id": "branch2",
-      "type": "branch",
-      "label": "Step name (3-5 words)",
-      "description": "Step 02: one-line description",
-      "mathContent": "the equation after this step (e.g. 'x = 12')",
-      "keyFormula": "short formula/rule used in this step, or empty string",
-      "parentId": "root"
-    },
-    {
-      "id": "leaf1",
-      "type": "leaf",
-      "label": "Underlying rule or concept name",
-      "description": "brief note on why this rule applies",
-      "mathContent": "the formula or rule (e.g. 'aⁿ · aᵐ = aⁿ⁺ᵐ')",
-      "keyFormula": "short formula/rule used in this leaf node, or empty string",
-      "parentId": "branch1"
-    }
-  ],
-  "insights": {
-    "simpleBreakdown": "2-3 sentence plain English explanation of the overall approach",
-    "keyFormula": "the single most important formula or rule used"
-  }
-}
+Rules:
+1. All text MUST be in ${targetLangName}.
+2. Use standard LaTeX for math ($...$).
+3. Hierarchy (STRICT): 
+   - 1 root node (parentId: null).
+   - 3-5 branch nodes (logical steps). ALL branch nodes MUST have parentId: "root".
+   - 1-2 leaf nodes (concepts/formulas). EACH leaf node MUST have parentId set to the specific "id" of the branch (step) it supports.
+4. The final branch node MUST show the definitive final answer.
+5. mathContent must contain the actual math transformation for each step.
+6. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.`;
 
-Important rules:
-- 1 root node (the original problem)
-- 2-4 branch nodes (one per meaningful solving step — include ALL necessary steps)
-- 1-3 leaf nodes (underlying concepts/rules that make the steps work)
-- mathContent MUST contain actual math notation for every node, not empty strings
-- keyFormula for each node MUST be short and formula-only (no prose); empty string if none
-- Keep labels concise; put the math in mathContent
-- CRITICAL JSON ESCAPING: any backslash in LaTeX must be escaped for JSON (write \\\\circ, \\\\times, \\\\frac, not \\circ, \\times, \\frac)
-- NEVER use LaTeX table environments (\\begin{tabular}, \\begin{array}, \\hline, &) in any field — sign/variation tables are rendered separately by the UI`;
+  const nodeSchema = {
+    type: Type.OBJECT,
+    properties: {
+      id: { type: Type.STRING },
+      type: { type: Type.STRING, enum: ["root", "branch", "leaf"] },
+      label: { type: Type.STRING },
+      description: { type: Type.STRING },
+      mathContent: { type: Type.STRING },
+      keyFormula: { type: Type.STRING },
+      parentId: { type: Type.STRING },
+    },
+    required: ["id", "type", "label", "description"],
+  };
 
-  const { data, raw } = await generateStructuredJson<ProblemBreakdown>({
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      title: { type: Type.STRING },
+      subject: { type: Type.STRING },
+      nodes: { 
+        type: Type.ARRAY, 
+        items: nodeSchema,
+        minItems: 5,
+        description: "List of at least 5 nodes covering the full solution"
+      },
+      insights: {
+        type: Type.OBJECT,
+        properties: {
+          simpleBreakdown: { type: Type.STRING },
+          keyFormula: { type: Type.STRING },
+        },
+        required: ["simpleBreakdown", "keyFormula"],
+      },
+    },
+    required: ["title", "subject", "nodes", "insights"],
+  };
+
+  const primary = await generateStructuredJson<ProblemBreakdown>({
     prompt,
     options,
     temperature: 0.2,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 4096,
     taskName: "breakdownProblem",
     maxAttempts: 3,
     imagePart,
+    responseSchema: schema,
   });
 
-  if (data) return sanitizeBreakdownNodes(data);
-  return buildFallbackBreakdown(problem, options.subject ?? "General", raw, options.language);
+  if (isUsableProblemBreakdown(primary.data)) {
+    return sanitizeBreakdownNodes(primary.data);
+  }
+
+  // Recovery pass: disable JSON mime/schema and force strict JSON object output.
+  const recovery = await generateStructuredJson<ProblemBreakdown>({
+    prompt: `${prompt}
+
+Return ONE complete JSON object only. Ensure every branch includes concrete math transformations for this exact problem.`,
+    options,
+    temperature: 0.15,
+    maxOutputTokens: 4096,
+    taskName: "breakdownProblemRecovery",
+    maxAttempts: 2,
+    imagePart,
+    noJsonMime: true,
+  });
+
+  if (isUsableProblemBreakdown(recovery.data)) {
+    return sanitizeBreakdownNodes(recovery.data);
+  }
+  
+  return buildFallbackBreakdown(
+    problem,
+    options.subject ?? "General",
+    recovery.raw || primary.raw,
+    options.language
+  );
+}
+
+export async function instantBreakdown(
+  imagePart: ImagePart,
+  options: AIRequestOptions = {}
+): Promise<ProblemBreakdown & { problemText: string }> {
+  const targetLangCode = (options.language ?? "en").toLowerCase();
+  const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
+
+  const prompt = `Extract and analyze the math/science problem from this image. 
+  1. Transcribe the full problem text into "problemText".
+  2. Create a comprehensive neural concept tree with 5-7 nodes.
+  3. Hierarchy (STRICT): 
+     - 1 root node (parentId: null).
+     - 3-4 branch nodes (logical steps). ALL branch nodes MUST have parentId: "root".
+     - 1-2 leaf nodes (concepts/formulas). EACH leaf node MUST have parentId set to the specific "id" of the branch (step) it supports.
+  4. Include ALL logical steps of the solution.
+  5. The final branch node MUST contain the final answer/result.
+  6. All text MUST be in ${targetLangName}.
+  7. Use standard LaTeX for math ($...$).`;
+
+  const nodeSchema = {
+    type: Type.OBJECT,
+    properties: {
+      id: { type: Type.STRING },
+      type: { type: Type.STRING, enum: ["root", "branch", "leaf"] },
+      label: { type: Type.STRING },
+      description: { type: Type.STRING },
+      mathContent: { type: Type.STRING },
+      keyFormula: { type: Type.STRING },
+      parentId: { type: Type.STRING },
+    },
+    required: ["id", "type", "label", "description"],
+  };
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      problemText: { type: Type.STRING },
+      title: { type: Type.STRING },
+      subject: { type: Type.STRING },
+      nodes: { 
+        type: Type.ARRAY, 
+        items: nodeSchema,
+        minItems: 5
+      },
+      insights: {
+        type: Type.OBJECT,
+        properties: {
+          simpleBreakdown: { type: Type.STRING },
+          keyFormula: { type: Type.STRING },
+        },
+        required: ["simpleBreakdown", "keyFormula"],
+      },
+    },
+    required: ["problemText", "title", "subject", "nodes", "insights"],
+  };
+
+  const primary = await generateStructuredJson<ProblemBreakdown & { problemText: string }>({
+    prompt,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 4096,
+    taskName: "instantBreakdown",
+    maxAttempts: 2,
+    imagePart,
+    responseSchema: schema,
+  });
+
+  if (primary.data && isUsableProblemBreakdown(primary.data)) {
+    const sanitized = sanitizeBreakdownNodes(primary.data);
+    return { ...sanitized, problemText: primary.data.problemText || sanitized.title };
+  }
+
+  const recovery = await generateStructuredJson<ProblemBreakdown & { problemText: string }>({
+    prompt: `${prompt}
+
+Return ONE complete JSON object only. Ensure all steps are concrete to the extracted problem.`,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 4096,
+    taskName: "instantBreakdownRecovery",
+    maxAttempts: 2,
+    imagePart,
+    noJsonMime: true,
+  });
+
+  if (recovery.data && isUsableProblemBreakdown(recovery.data)) {
+    const sanitized = sanitizeBreakdownNodes(recovery.data);
+    return { ...sanitized, problemText: recovery.data.problemText || sanitized.title };
+  }
+  
+  return {
+    ...buildFallbackBreakdown(
+      "Could not analyze image",
+      options.subject ?? "General",
+      recovery.raw || primary.raw,
+      options.language
+    ),
+    problemText: "Could not analyze image"
+  };
 }
 
 function stripLatexTabularEnv(text: string): string {
@@ -371,16 +516,54 @@ function stripLatexTabularEnv(text: string): string {
   return result;
 }
 
+const MATH_DELIMITER_REGEX = /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/;
+const LATEX_COMMAND_SIGNAL_REGEX = /\\(?:frac|sqrt|cdot|times|div|pm|mp|le|leq|ge|geq|neq|approx|propto|sum|int|lim|Delta|alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega|left|right|text|mathrm|mathbf|mathit|sin|cos|tan|log|ln|exp)\b|[A-Za-z0-9]\s*[\^_]\s*[A-Za-z0-9{(]/;
+
+function normalizeNodeMathContent(raw: string): string {
+  let text = normalizeMathExpression(stripLatexTabularEnv(raw ?? ""));
+  if (!text) return "";
+
+  text = text
+    .replace(/\\\[/g, "$$")
+    .replace(/\\\]/g, "$$")
+    .replace(/\\\(/g, "$")
+    .replace(/\\\)/g, "$")
+    .replace(/\\\$/g, "$")
+    .trim();
+
+  // Salvage malformed delimiter sequences by dropping stray dollars before re-wrapping.
+  const dollarCount = (text.match(/\$/g) ?? []).length;
+  if (dollarCount % 2 !== 0) {
+    text = text.replace(/\$/g, "").trim();
+  }
+
+  if (!MATH_DELIMITER_REGEX.test(text) && LATEX_COMMAND_SIGNAL_REGEX.test(text)) {
+    text = text.includes("\n") ? `$$${text}$$` : `$${text}$`;
+  }
+
+  return normalizeMathSegments(text);
+}
+
 function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
+  const nodes = Array.isArray(bd?.nodes) ? bd.nodes : [];
   return {
     ...bd,
-    nodes: bd.nodes.map((node) => ({
-      ...node,
-      label: stripLatexTabularEnv(node.label ?? ''),
-      description: stripLatexTabularEnv(node.description ?? ''),
-      mathContent: node.mathContent ? stripLatexTabularEnv(node.mathContent) : node.mathContent,
-      keyFormula: normalizeNodeKeyFormula(node.keyFormula ?? "", node.mathContent ?? ""),
-    })),
+    nodes: nodes.map((node) => {
+      const normalizedLabel = normalizeMathExpression(stripLatexTabularEnv(node.label ?? ""));
+      const normalizedDescription = normalizeMathExpression(stripLatexTabularEnv(node.description ?? ""));
+      const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
+
+      return {
+        ...node,
+        label: normalizedLabel,
+        description: normalizedDescription,
+        mathContent: normalizedMathContent,
+        keyFormula: normalizeNodeKeyFormula(
+          node.keyFormula ?? "",
+          normalizedMathContent || normalizedLabel || ""
+        ),
+      };
+    }),
   };
 }
 
@@ -592,8 +775,11 @@ function normalizeMathExpression(expr: string): string {
   if (!out) return out;
 
   out = out
-    // Collapse over-escaped LaTeX commands (e.g. \\\\mathrm -> \mathrm).
-    .replace(/\\{2,}(?=[A-Za-z])/g, "\\")
+    // Collapse over-escaped backslashes only if followed by a letter (command),
+    // but PRESERVE double backslashes (\\) which mean newline in LaTeX.
+    // We do this by collapsing 4 backslashes to 2, or 2 to 1 if not part of a pair.
+    .replace(/\\\\\\\\/g, "\\\\") 
+    .replace(/\\\\([a-zA-Z]+)/g, "\\$1")
     // OCR/model sometimes escapes dollar delimiters inside already-delimited math.
     .replace(/\\\$/g, "$")
     .replace(/[−–]/g, "-")
@@ -602,11 +788,6 @@ function normalizeMathExpression(expr: string): string {
     .replace(/⁴/g, "^4")
     .replace(/⁵/g, "^5")
     .replace(/\^(\s+)(\d+)/g, "^$2")
-    .replace(/([A-Za-z])\s*\/\s*([A-Za-z])/g, "$1/$2")
-    .replace(/\b([A-Za-z])\/([A-Za-z])\s*(\d)\b/g, "$1/$2^$3")
-    .replace(/\\text\s*\{\s*([^{}]*?)\s*\}/g, (_m, inner: string) => `\\mathrm{${inner.replace(/\s+/g, "")}}`)
-    .replace(/\\mathrm\s*\{\s*([^{}]*?)\s*\}/g, (_m, inner: string) => `\\mathrm{${inner.replace(/\s+/g, "")}}`)
-    .replace(/\s+/g, " ")
     .trim();
 
   return out;
@@ -1314,6 +1495,22 @@ function extractAllJsonCandidates(text: string): string[] {
   return results;
 }
 
+function unwrapNestedJsonValue(value: unknown, maxDepth = 3): unknown {
+  let current: unknown = value;
+  for (let depth = 0; depth < maxDepth; depth++) {
+    if (typeof current !== "string") return current;
+    const trimmed = current.trim();
+    if (!trimmed) return current;
+    if (!/^[{\["]/.test(trimmed)) return current;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return current;
+    }
+  }
+  return current;
+}
+
 function parseJsonLoose<T>(raw: string): T | null {
   const stripped = stripCodeFence(raw).replace(/\u0000/g, "").trim();
   if (!stripped) return null;
@@ -1328,12 +1525,14 @@ function parseJsonLoose<T>(raw: string): T | null {
 
   for (const candidate of candidates) {
     try {
-      return JSON.parse(candidate) as T;
+      const parsed = unwrapNestedJsonValue(JSON.parse(candidate));
+      if (parsed !== null && parsed !== undefined) return parsed as T;
     } catch {
       // Try repairs for common model JSON issues (invalid backslash escapes in LaTeX, control chars).
       const repaired = repairCommonJsonIssues(candidate);
       try {
-        return JSON.parse(repaired) as T;
+        const parsed = unwrapNestedJsonValue(JSON.parse(repaired));
+        if (parsed !== null && parsed !== undefined) return parsed as T;
       } catch {
         // Try next candidate
       }
@@ -1750,28 +1949,52 @@ async function generateStructuredJson<T>(
   const attempts = Math.max(1, config.maxAttempts ?? 2);
   let lastRaw = "";
 
+  // Use Pro model for structured breakdowns to ensure complete results for complex math
+  let modelName = config.taskName.toLowerCase().includes("breakdown")
+    ? "gemini-1.5-pro"
+    : env.GEMINI_MODEL;
+
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const retrySuffix = attempt === 1
       ? ""
-      : `\n\nIMPORTANT: Your previous response was invalid or incomplete JSON. Regenerate from scratch and return compact, complete valid JSON only.`;
+      : `\n\nIMPORTANT: Previous output was invalid or truncated. Return complete valid JSON only.`;
 
-    const response = await client.models.generateContent({
-      model: env.GEMINI_MODEL,
-      config: {
-        systemInstruction: buildSystemInstruction(config.options),
-        temperature: config.temperature,
-        maxOutputTokens: config.maxOutputTokens,
-        ...(config.noJsonMime ? {} : { responseMimeType: "application/json" }),
-        ...(config.responseSchema ? { responseSchema: config.responseSchema } : {}),
-      },
-      contents: [{
-        role: "user",
-        parts: [
-          ...(config.imagePart ? [{ inlineData: { data: config.imagePart.data, mimeType: config.imagePart.mimeType } } as Part] : []),
-          { text: `${config.prompt}${retrySuffix}` },
-        ],
-      }],
-    });
+    let response;
+    try {
+      response = await client.models.generateContent({
+        model: modelName,
+        config: {
+          systemInstruction: buildSystemInstruction(config.options),
+          temperature: config.temperature,
+          maxOutputTokens: config.maxOutputTokens,
+          responseMimeType: config.noJsonMime ? "text/plain" : "application/json",
+          // Relax safety settings for educational content
+          safetySettings: [
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          ] as any,
+          ...(config.responseSchema ? { responseSchema: config.responseSchema } : {}),
+        },
+        contents: [{
+          role: "user",
+          parts: [
+            ...(config.imagePart ? [{ inlineData: { data: config.imagePart.data, mimeType: config.imagePart.mimeType } } as Part] : []),
+            { text: `${config.prompt}${retrySuffix}` },
+          ],
+        }],
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (modelName !== env.GEMINI_MODEL && /(not found|permission|unsupported|invalid model)/i.test(message)) {
+        logger.warn(`[${config.taskName}] model ${modelName} unavailable; falling back to ${env.GEMINI_MODEL}`, { message });
+        modelName = env.GEMINI_MODEL;
+        attempt -= 1;
+        continue;
+      }
+      throw err;
+    }
 
     const raw = response.text ?? "";
     lastRaw = raw;
@@ -1808,6 +2031,19 @@ function debugPreview(input: string, max = 140): string {
   const s = (input ?? "").replace(/\s+/g, " ").trim();
   if (s.length <= max) return s;
   return `${s.slice(0, max)}...`;
+}
+
+function selectFallbackInsight(rawInsight: string, defaultInsight: string): string {
+  const cleaned = stripCodeFence(rawInsight ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return defaultInsight;
+  if (/^\[?\s*image(\s*#?\d+)?\s*\]?$/i.test(cleaned)) return defaultInsight;
+  if (/^<image[^>]*>$/i.test(cleaned)) return defaultInsight;
+  if (cleaned.length > 420) return defaultInsight;
+  if (cleaned.includes("\\\\") || /"nodes"|"title"|"insights"/.test(cleaned)) return defaultInsight;
+  return cleaned;
 }
 
 function buildFallbackBreakdown(problem: string, subject: string, rawInsight: string, language?: string): ProblemBreakdown {
@@ -1884,7 +2120,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
       },
     ],
     insights: {
-      simpleBreakdown: rawInsight?.trim() || copy.insight,
+      simpleBreakdown: selectFallbackInsight(rawInsight, copy.insight),
       keyFormula: "",
     },
   };

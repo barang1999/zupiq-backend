@@ -81,6 +81,10 @@ export async function createApp(): Promise<Express> {
     });
   });
 
+  app.get("/ping", (req, res) => {
+    res.send("pong");
+  });
+
   // ─── API Routes ───────────────────────────────────────────────────────────
 
   if (env.NODE_ENV !== "development") {

@@ -9,6 +9,7 @@ import {
   extractProblemFromImage,
   type ProblemOcrStructuredResult,
   breakdownProblem,
+  instantBreakdown,
   expandNode,
   regenerateBranchNode,
   getNodeInsight,
@@ -31,6 +32,9 @@ import { getUploadById } from "../../services/upload.service.js";
 import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
+import { createSession } from "../../services/session.service.js";
+import { logActivity } from "../../services/activity-log.service.js";
+import { registerProgressClient, emitProgress } from "../../services/progress.service.js";
 import {
   getEffectiveAccessState,
   hasEntitlement,
@@ -45,6 +49,17 @@ import { publishUsageUpdate } from "../../billing/usage-stream.js";
 
 const router = Router();
 const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
+
+// ─── PING TEST ───────────────────────────────────────────────────────────────
+router.get("/ping", (req, res) => {
+  res.json({ status: "ok", message: "AI routes are live", timestamp: new Date().toISOString() });
+});
+
+// ─── PROGRESS STREAM ─────────────────────────────────────────────────────────
+router.get("/progress/:traceId", (req, res) => {
+  registerProgressClient(req.params.traceId, res);
+});
+
 const TOKEN_ESTIMATE_CHARS_PER_TOKEN = 4;
 const GAME_PROBLEM_SUBJECTS: readonly GameProblemSubject[] = ["math", "physics", "logic", "bio"];
 const GAME_PROBLEM_MODES: readonly GameProblemMode[] = ["learn", "practice", "challenge"];
@@ -90,6 +105,15 @@ function endsWithSentenceTerminator(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
   return /[.!?។៕]\s*$/.test(t);
+}
+
+function looksLikeImagePlaceholder(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return true;
+  if (/^\[?\s*image(\s*#?\d+)?\s*\]?$/i.test(t)) return true;
+  if (/^<image[^>]*>$/i.test(t)) return true;
+  if (/^!\[.*\]\(.*\)$/.test(t)) return true;
+  return false;
 }
 
 interface TokenBudget {
@@ -610,6 +634,9 @@ router.post(
       }
 
       const trimmedProblem = (problem as string).trim();
+      if (looksLikeImagePlaceholder(trimmedProblem)) {
+        throw new ValidationError("The uploaded image could not be read clearly. Please retake the photo.");
+      }
       const heuristicResult = requiresVisualTable(trimmedProblem);
 
       logger.info("[breakdown] visual-table detection", {
@@ -658,6 +685,130 @@ router.post(
 
       res.json({ breakdown, usage, ...(visualTable ? { visualTable } : {}) });
     } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/instant-session ─────────────────────────────────────────────
+
+router.post(
+  "/instant-session",
+  async (req: Request, res: Response, next: NextFunction) => {
+    logger.info("[instant-session] request received", { userId: req.user?.sub, body: req.body });
+    const traceId = getAttachTraceId(req);
+    const startedAt = Date.now();
+    let stage = "init";
+    try {
+      const { upload_id, subject } = req.body;
+      const userId = req.user!.sub;
+      
+      emitProgress(traceId, { stage: "VALIDATING", progress: 5, message: "Validating upload..." });
+      
+      stage = "validate:body";
+      if (!upload_id) throw new ValidationError("upload_id is required");
+
+      stage = "lookup:upload";
+      const upload = await getUploadById(upload_id);
+      if (!upload) throw new ValidationError("Upload not found");
+      if (upload.user_id !== userId) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      
+      const budget = await reserveTokenBudget(userId);
+      const aiOptions = await resolveAIOptions(req, subject);
+
+      emitProgress(traceId, { stage: "READING", progress: 10, message: "Reading problem..." });
+
+      stage = "read:file";
+      const imagePartRead = await readUploadAsBase64(upload);
+      const imagePart = {
+        data: imagePartRead.data,
+        mimeType: imagePartRead.mimeType,
+      };
+
+      emitProgress(traceId, { stage: "TRANSCRIBING", progress: 25, message: "Transcribing math..." });
+
+      stage = "ocr:extract";
+      const structured = await extractProblemFromImage(imagePart, aiOptions);
+      const problemText = (structured.text || "").trim();
+      
+      if (!problemText || looksLikeImagePlaceholder(problemText)) {
+        throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
+      }
+
+      emitProgress(traceId, { stage: "ANALYZING", progress: 50, message: "Generating deep breakdown..." });
+
+      stage = "ai:breakdown";
+      const breakdown = await breakdownProblem(problemText, aiOptions, imagePart);
+      
+      logger.info("[instant-session] breakdown complete", { 
+        title: breakdown.title, 
+        problemTextLength: problemText.length,
+        nodeCount: breakdown.nodes?.length 
+      });
+
+      emitProgress(traceId, { stage: "BUILDING", progress: 75, message: "Finalizing neural map..." });
+
+      // Fire off visual table generation in parallel if likely needed
+      let visualTablePromise = Promise.resolve(null);
+      if (requiresVisualTable(problemText)) {
+        const tableSubject = (breakdown as { subject?: string }).subject ?? subject ?? "General";
+        visualTablePromise = generateVisualTable(problemText, tableSubject, aiOptions, imagePart).catch(() => null);
+      }
+
+      stage = "session:create";
+      const visualTable = await visualTablePromise;
+      
+      emitProgress(traceId, { stage: "SAVING", progress: 90, message: "Saving session..." });
+
+      const session = await createSession(userId, {
+        title: (breakdown.title || "New Session").trim(),
+        subject: (breakdown.subject || subject || "General").trim(),
+        problem: problemText,
+        node_count: breakdown.nodes.length,
+        breakdown_json: JSON.stringify(breakdown),
+        visual_table_json: visualTable ? JSON.stringify(visualTable) : null,
+      });
+
+      stage = "activity:log";
+      logActivity(session.id, userId, "session_created", {
+        title: session.title,
+        subject: session.subject,
+        source: "instant_photo",
+      });
+
+      stage = "usage:consume";
+      const usage = await consumeTokenBudget(budget, {
+        input: { upload_id, subject, source: "instant_photo" },
+        output: { session_id: session.id, problem: problemText },
+      });
+
+      emitProgress(traceId, { stage: "DONE", progress: 100, message: "Redirecting..." });
+
+      res.status(201).json({ 
+        session, 
+        usage,
+        ocr: {
+          text: problemText,
+          warnings: []
+        }
+      });
+
+      logger.info("[instant-session] trace:done", {
+        traceId,
+        sessionId: session.id,
+        elapsedMs: Date.now() - startedAt,
+      });
+    } catch (err) {
+      logger.error("[instant-session] trace:error", {
+        traceId,
+        stage,
+        userId: req.user?.sub ?? null,
+        message: err instanceof Error ? err.message : String(err),
+        elapsedMs: Date.now() - startedAt,
+      });
       next(err);
     }
   }

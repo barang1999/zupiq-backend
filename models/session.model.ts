@@ -9,7 +9,9 @@ export interface StudySession {
   problem: string;
   node_count: number;
   duration_seconds: number | null;
-  breakdown_json: string; // serialized ProblemBreakdown (nodes include mathContent + keyFormula)
+  // Serialized solution payload. Legacy sessions store ProblemBreakdown;
+  // solution-first sessions store ProblemSolutionFirst and defer explanation nodes.
+  breakdown_json: string;
   visual_table_json?: string | null;
   created_at: string;
   /** Populated by getUserSessions — caller's access level for this session. */
@@ -23,8 +25,8 @@ export interface CreateSessionDTO {
   problem: string;
   node_count: number;
   duration_seconds?: number;
-  breakdown_json: string;
-  visual_table_json?: string | null;
+  breakdown_json: unknown;
+  visual_table_json?: unknown | null;
 }
 
 export interface UpdateSessionDTO {
@@ -34,8 +36,8 @@ export interface UpdateSessionDTO {
   problem?: string;
   node_count?: number;
   duration_seconds?: number;
-  breakdown_json?: string;
-  visual_table_json?: string | null;
+  breakdown_json?: unknown;
+  visual_table_json?: unknown | null;
 }
 
 // ─── DB Schema SQL ────────────────────────────────────────────────────────────

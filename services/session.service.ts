@@ -55,6 +55,12 @@ function toCanonicalJsonString(value: unknown, fallback: unknown): string {
   return JSON.stringify(fallback);
 }
 
+function toCanonicalJsonValue(value: unknown, fallback: unknown): unknown {
+  const parsed = parseJsonDeep(value);
+  if (parsed && typeof parsed === "object") return parsed;
+  return fallback;
+}
+
 function toCanonicalNullableJsonString(value: unknown): string | null {
   if (value == null) return null;
   const parsed = parseJsonDeep(value);
@@ -77,6 +83,13 @@ function toCanonicalNullableJsonString(value: unknown): string | null {
       }
     }
   }
+  return null;
+}
+
+function toCanonicalNullableJsonValue(value: unknown): unknown | null {
+  if (value == null) return null;
+  const parsed = parseJsonDeep(value);
+  if (parsed && typeof parsed === "object") return parsed;
   return null;
 }
 
@@ -281,17 +294,22 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     visual_table_json: toCanonicalNullableJsonString(dto.visual_table_json),
     created_at: nowISO(),
   };
+  const sessionForDb = {
+    ...session,
+    breakdown_json: toCanonicalJsonValue(dto.breakdown_json, {}),
+    visual_table_json: toCanonicalNullableJsonValue(dto.visual_table_json),
+  };
 
   const { data, error } = await db
     .from("study_sessions")
-    .insert(session)
+    .insert(sessionForDb)
     .select()
     .single();
 
   if (error) {
     // Backward compatibility for environments where visual_table_json has not been added yet.
     if (error.message.includes("visual_table_json") && error.message.includes("does not exist")) {
-      const { visual_table_json: _omitVt, ...sessionWithoutVt } = session;
+      const { visual_table_json: _omitVt, ...sessionWithoutVt } = sessionForDb;
       const { data: vtData, error: vtError } = await db
         .from("study_sessions")
         .insert(sessionWithoutVt)
@@ -303,7 +321,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     }
     // Backward compatibility for environments where subject_id has not been added yet.
     if (error.message.includes("subject_id") && error.message.includes("does not exist")) {
-      const { subject_id: _omit, ...legacySession } = session;
+      const { subject_id: _omit, ...legacySession } = sessionForDb;
       const { data: legacyData, error: legacyError } = await db
         .from("study_sessions")
         .insert(legacySession)
@@ -327,12 +345,12 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
   const canEdit = await canUserEditSession(id, userId);
   if (!canEdit) throw new AppError("Forbidden", 403);
 
-  const normalizedUpdates: UpdateSessionDTO = { ...updates };
+  const normalizedUpdates: Record<string, unknown> = { ...updates };
   if (Object.prototype.hasOwnProperty.call(updates, "breakdown_json")) {
-    normalizedUpdates.breakdown_json = toCanonicalJsonString(updates.breakdown_json, {});
+    normalizedUpdates.breakdown_json = toCanonicalJsonValue(updates.breakdown_json, {});
   }
   if (Object.prototype.hasOwnProperty.call(updates, "visual_table_json")) {
-    normalizedUpdates.visual_table_json = toCanonicalNullableJsonString(updates.visual_table_json);
+    normalizedUpdates.visual_table_json = toCanonicalNullableJsonValue(updates.visual_table_json);
   }
 
   const { data, error } = await db

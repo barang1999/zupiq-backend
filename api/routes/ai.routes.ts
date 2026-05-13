@@ -9,6 +9,7 @@ import {
   extractProblemFromImage,
   type ProblemOcrStructuredResult,
   breakdownProblem,
+  solveProblemSolutionFirst,
   instantBreakdown,
   expandNode,
   regenerateBranchNode,
@@ -738,23 +739,24 @@ router.post(
         throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
       }
 
-      emitProgress(traceId, { stage: "ANALYZING", progress: 50, message: "Generating deep breakdown..." });
+      emitProgress(traceId, { stage: "SOLVING", progress: 50, message: "Writing solution..." });
 
-      stage = "ai:breakdown";
-      const breakdown = await breakdownProblem(problemText, aiOptions, imagePart);
+      stage = "ai:solution";
+      const solution = await solveProblemSolutionFirst(problemText, aiOptions, imagePart);
       
-      logger.info("[instant-session] breakdown complete", { 
-        title: breakdown.title, 
+      logger.info("[instant-session] solution complete", { 
+        title: solution.title, 
         problemTextLength: problemText.length,
-        nodeCount: breakdown.nodes?.length 
+        mode: solution.mode,
+        explanationStatus: solution.explanationStatus,
       });
 
-      emitProgress(traceId, { stage: "BUILDING", progress: 75, message: "Finalizing neural map..." });
+      emitProgress(traceId, { stage: "BUILDING", progress: 75, message: "Finalizing solution..." });
 
       // Fire off visual table generation in parallel if likely needed
       let visualTablePromise = Promise.resolve(null);
       if (requiresVisualTable(problemText)) {
-        const tableSubject = (breakdown as { subject?: string }).subject ?? subject ?? "General";
+        const tableSubject = solution.subject ?? subject ?? "General";
         visualTablePromise = generateVisualTable(problemText, tableSubject, aiOptions, imagePart).catch(() => null);
       }
 
@@ -764,12 +766,12 @@ router.post(
       emitProgress(traceId, { stage: "SAVING", progress: 90, message: "Saving session..." });
 
       const session = await createSession(userId, {
-        title: (breakdown.title || "New Session").trim(),
-        subject: (breakdown.subject || subject || "General").trim(),
+        title: (solution.title || "New Session").trim(),
+        subject: (solution.subject || subject || "General").trim(),
         problem: problemText,
-        node_count: breakdown.nodes.length,
-        breakdown_json: JSON.stringify(breakdown),
-        visual_table_json: visualTable ? JSON.stringify(visualTable) : null,
+        node_count: 0,
+        breakdown_json: solution,
+        visual_table_json: visualTable,
       });
 
       stage = "activity:log";

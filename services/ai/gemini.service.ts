@@ -244,6 +244,25 @@ export interface ProblemBreakdown {
   };
 }
 
+export interface ProblemSolutionFirst {
+  version: 2;
+  mode: "solution-first";
+  title: string;
+  subject: string;
+  problem: string;
+  finalAnswer: string;
+  solutionText: string;
+  solutionFormat: "markdown-latex";
+  explanationStatus: "not_generated" | "generated";
+  explanation?: {
+    nodes: BreakdownNode[];
+  } | null;
+  insights?: {
+    simpleBreakdown: string;
+    keyFormula: string;
+  };
+}
+
 interface JsonGenerationConfig<T> {
   prompt: string;
   options: AIRequestOptions;
@@ -262,6 +281,31 @@ interface JsonGenerationConfig<T> {
 type StructuredJsonSource = "parsed" | "recovered" | "none";
 
 const GENERIC_BREAKDOWN_STEP_PATTERN = /(known values|target unknown|governing formula|problem relationship|substitute -> simplify|ទិន្នន័យដែលមាន|អថេរត្រូវរក|ប្រើទំនាក់ទំនងដើម្បីគណនា|ជំនួស -> សម្រួល)/i;
+const FRACTION_PLACEHOLDER_PATTERN = /[☒□▢☐]\s*\((.*?)\)\s*\/\s*\(([^()\n]*(?:\([^()\n]*\)[^()\n]*)*)\)/g;
+const SUBSCRIPT_DIGITS: Record<string, string> = {
+  "₀": "0",
+  "₁": "1",
+  "₂": "2",
+  "₃": "3",
+  "₄": "4",
+  "₅": "5",
+  "₆": "6",
+  "₇": "7",
+  "₈": "8",
+  "₉": "9",
+};
+const SUPERSCRIPT_DIGITS: Record<string, string> = {
+  "⁰": "0",
+  "¹": "1",
+  "²": "2",
+  "³": "3",
+  "⁴": "4",
+  "⁵": "5",
+  "⁶": "6",
+  "⁷": "7",
+  "⁸": "8",
+  "⁹": "9",
+};
 
 function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
   if (!value || typeof value !== "object") return false;
@@ -280,6 +324,195 @@ function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
   });
 
   return hasConcreteBranch;
+}
+
+function isUsableProblemSolutionFirst(value: unknown): value is ProblemSolutionFirst {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as ProblemSolutionFirst;
+  return Boolean(
+    `${candidate.title ?? ""}`.trim()
+    && `${candidate.subject ?? ""}`.trim()
+    && `${candidate.finalAnswer ?? ""}`.trim()
+    && `${candidate.solutionText ?? ""}`.trim()
+  );
+}
+
+function buildFallbackSolutionFirst(
+  problem: string,
+  subject: string,
+  rawSolution: string,
+): ProblemSolutionFirst {
+  const cleaned = (rawSolution ?? "").trim();
+  const solutionText = cleaned && !/"nodes"|"title"|"insights"/.test(cleaned)
+    ? cleaned
+    : `We need to solve:\n\n$$${problem}$$\n\nA full written solution could not be generated automatically.`;
+
+  return {
+    version: 2,
+    mode: "solution-first",
+    title: problem.slice(0, 70) || "New Solution",
+    subject,
+    problem,
+    finalAnswer: "See solution",
+    solutionText,
+    solutionFormat: "markdown-latex",
+    explanationStatus: "not_generated",
+    explanation: null,
+    insights: {
+      simpleBreakdown: "",
+      keyFormula: "",
+    },
+  };
+}
+
+function repairGeneratedMathText(input: string): string {
+  const text = `${input ?? ""}`;
+  if (!text.trim()) return "";
+
+  return text
+    .split("\n")
+    .map((line) => {
+      const dollarCount = (line.match(/\$/g) ?? []).length;
+      if (line.trim() === "$") return "";
+      if (dollarCount === 1) return line.replace(/\$/g, "");
+      return line;
+    })
+    .join("\n")
+    .replace(/\f\s*(?:rac|frac)?/gi, "\\frac")
+    .replace(/\\?ext\s*pm\b/gi, "\\pm")
+    .replace(/\\?extpm\b/gi, "\\pm")
+    .replace(/\\?ext\s*radical\b/gi, "\\sqrt")
+    .replace(/\\?extradical\b/gi, "\\sqrt")
+    .replace(/\/(frac|sqrt|pm|Delta|times|div|cdot|neq|leq|geq|approx)\b/g, "\\$1")
+    .replace(/[A-Za-z][₀₁₂₃₄₅₆₇₈₉]+/g, (token) => `${token[0]}_{${token.slice(1).split("").map((ch) => SUBSCRIPT_DIGITS[ch] ?? ch).join("")}}`)
+    .replace(/([A-Za-z0-9)])([⁰¹²³⁴⁵⁶⁷⁸⁹]+)/g, (_match, base, power) => `${base}^{${`${power}`.split("").map((ch) => SUPERSCRIPT_DIGITS[ch] ?? ch).join("")}}`)
+    .replace(FRACTION_PLACEHOLDER_PATTERN, (_match, numerator, denominator) => `\\frac{${`${numerator}`.trim()}}{${`${denominator}`.trim()}}`)
+    .replace(/[☒□▢☐]\s*\{([^{}\n]+)\}\s*\{([^{}\n]+)\}/g, (_match, numerator, denominator) => `\\frac{${`${numerator}`.trim()}}{${`${denominator}`.trim()}}`)
+    .replace(/[☒□▢☐]/g, "\\frac")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeSolutionFirstPayload(
+  payload: ProblemSolutionFirst,
+  problem: string,
+  subject: string,
+): ProblemSolutionFirst {
+  return {
+    ...payload,
+    version: 2,
+    mode: "solution-first",
+    problem: payload.problem?.trim() || problem,
+    subject: payload.subject?.trim() || subject,
+    finalAnswer: repairGeneratedMathText(payload.finalAnswer),
+    solutionText: repairGeneratedMathText(payload.solutionText),
+    solutionFormat: "markdown-latex",
+    explanationStatus: "not_generated",
+    explanation: null,
+  };
+}
+
+export async function solveProblemSolutionFirst(
+  problem: string,
+  options: AIRequestOptions = {},
+  imagePart?: ImagePart
+): Promise<ProblemSolutionFirst> {
+  const targetLangCode = (options.language ?? "en").toLowerCase();
+  const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
+  const subject = options.subject ?? "General";
+  const imageContext = imagePart
+    ? `The problem text was extracted from an attached image. Use both the image and extracted text if needed.\n\n`
+    : "";
+
+  const prompt = `${imageContext}Solve this problem in a solution-first format.
+
+Problem: "${problem}"
+
+Return the result as JSON only.
+
+Rules:
+1. All prose MUST be in ${targetLangName}.
+2. Do NOT create a step-by-step explanation tree.
+3. solutionText should look like a clean student-written solution submitted to a teacher.
+4. solutionText may show mathematical working, transformations, and final answer, but avoid explanatory paragraphs unless needed.
+5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$".
+6. finalAnswer must be the final answer only.
+7. explanationStatus must be "not_generated" and explanation must be null.
+8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
+9. Never output placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
+10. Do not use single "$" inline delimiters unless they are correctly paired on the same line.`;
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      version: { type: Type.NUMBER },
+      mode: { type: Type.STRING, enum: ["solution-first"] },
+      title: { type: Type.STRING },
+      subject: { type: Type.STRING },
+      problem: { type: Type.STRING },
+      finalAnswer: { type: Type.STRING },
+      solutionText: { type: Type.STRING },
+      solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
+      explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
+      explanation: { type: Type.OBJECT, nullable: true },
+      insights: {
+        type: Type.OBJECT,
+        properties: {
+          simpleBreakdown: { type: Type.STRING },
+          keyFormula: { type: Type.STRING },
+        },
+      },
+    },
+    required: [
+      "version",
+      "mode",
+      "title",
+      "subject",
+      "problem",
+      "finalAnswer",
+      "solutionText",
+      "solutionFormat",
+      "explanationStatus",
+    ],
+  };
+
+  const primary = await generateStructuredJson<ProblemSolutionFirst>({
+    prompt,
+    options,
+    temperature: 0.15,
+    maxOutputTokens: 2048,
+    taskName: "solveProblemSolutionFirst",
+    maxAttempts: 2,
+    imagePart,
+    responseSchema: schema,
+  });
+
+  if (isUsableProblemSolutionFirst(primary.data)) {
+    return normalizeSolutionFirstPayload(primary.data, problem, subject);
+  }
+
+  const recovery = await generateStructuredJson<ProblemSolutionFirst>({
+    prompt: `${prompt}
+
+Return ONE complete JSON object only. Keep it compact and include a usable solutionText.`,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 2048,
+    taskName: "solveProblemSolutionFirstRecovery",
+    maxAttempts: 1,
+    imagePart,
+    noJsonMime: true,
+  });
+
+  if (isUsableProblemSolutionFirst(recovery.data)) {
+    return normalizeSolutionFirstPayload(recovery.data, problem, subject);
+  }
+
+  return normalizeSolutionFirstPayload(
+    buildFallbackSolutionFirst(problem, subject, recovery.raw || primary.raw),
+    problem,
+    subject,
+  );
 }
 
 export async function breakdownProblem(

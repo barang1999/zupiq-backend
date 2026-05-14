@@ -33,7 +33,7 @@ import { getUploadById } from "../../services/upload.service.js";
 import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
-import { createSession } from "../../services/session.service.js";
+import { createSession, getSessionById, updateSession } from "../../services/session.service.js";
 import { logActivity } from "../../services/activity-log.service.js";
 import { registerProgressClient, emitProgress } from "../../services/progress.service.js";
 import {
@@ -115,6 +115,21 @@ function looksLikeImagePlaceholder(text: string): boolean {
   if (/^<image[^>]*>$/i.test(t)) return true;
   if (/^!\[.*\]\(.*\)$/.test(t)) return true;
   return false;
+}
+
+function parseJsonDeep(value: unknown, maxDepth = 3): unknown {
+  let current: unknown = value;
+  for (let depth = 0; depth < maxDepth; depth += 1) {
+    if (typeof current !== "string") return current;
+    const trimmed = current.trim();
+    if (!trimmed || !/^[{\["]/.test(trimmed)) return current;
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return current;
+    }
+  }
+  return current;
 }
 
 interface TokenBudget {
@@ -685,6 +700,79 @@ router.post(
       });
 
       res.json({ breakdown, usage, ...(visualTable ? { visualTable } : {}) });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/explain-session ────────────────────────────────────────────
+
+router.post(
+  "/explain-session",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { session_id } = req.body;
+      if (typeof session_id !== "string" || !session_id.trim()) {
+        throw new ValidationError("session_id is required");
+      }
+
+      const userId = req.user!.sub;
+      const session = await getSessionById(session_id.trim(), userId);
+      if (!session) {
+        throw new ForbiddenError("Session is not available.");
+      }
+
+      const payload = parseJsonDeep(session.breakdown_json);
+      if (!payload || typeof payload !== "object") {
+        throw new ValidationError("Session solution data is not available.");
+      }
+
+      const solutionPayload = payload as Record<string, any>;
+      const existingNodes = solutionPayload.version === 2 && solutionPayload.mode === "solution-first"
+        ? solutionPayload.explanation?.nodes
+        : solutionPayload.nodes;
+
+      if (Array.isArray(existingNodes) && existingNodes.length > 0) {
+        res.json({
+          session,
+          explanation: { nodes: existingNodes },
+          cached: true,
+        });
+        return;
+      }
+
+      const budget = await reserveTokenBudget(userId);
+      let aiOptions = await resolveAIOptions(req, session.subject);
+      const knowledgeCtx = await buildUserKnowledgeContext(userId, session.subject).catch(() => null);
+      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
+
+      const explanation = await breakdownProblem(session.problem, aiOptions);
+      const nextPayload = solutionPayload.version === 2 && solutionPayload.mode === "solution-first"
+        ? {
+            ...solutionPayload,
+            explanationStatus: "generated",
+            explanation: { nodes: explanation.nodes },
+            insights: explanation.insights ?? solutionPayload.insights ?? {},
+          }
+        : explanation;
+
+      const updatedSession = await updateSession(session.id, userId, {
+        breakdown_json: nextPayload,
+        node_count: Array.isArray(explanation.nodes) ? explanation.nodes.length : 0,
+      });
+
+      const usage = await consumeTokenBudget(budget, {
+        input: { session_id: session.id, problem: session.problem, subject: session.subject },
+        output: explanation,
+      });
+
+      res.json({
+        session: updatedSession,
+        explanation: { nodes: explanation.nodes },
+        usage,
+        cached: false,
+      });
     } catch (err) {
       next(err);
     }

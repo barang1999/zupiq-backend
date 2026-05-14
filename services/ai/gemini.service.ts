@@ -434,13 +434,14 @@ Rules:
 1. All prose MUST be in ${targetLangName}.
 2. Do NOT create a step-by-step explanation tree.
 3. solutionText should look like a clean student-written solution submitted to a teacher.
-4. solutionText may show mathematical working, transformations, and final answer, but avoid explanatory paragraphs unless needed.
+4. solutionText should be mostly equations and short labels. Avoid explanatory sentences.
 5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$".
 6. finalAnswer must be the final answer only.
 7. explanationStatus must be "not_generated" and explanation must be null.
 8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
 9. Never output placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
-10. Do not use single "$" inline delimiters unless they are correctly paired on the same line.`;
+10. Do not put prose sentences inside $$...$$, \\begin{aligned}, or any math block. Words inside math blocks must be short labels wrapped as \\text{...}, such as \\text{Given} or \\text{Answer}.
+11. Do not use single "$" inline delimiters unless they are correctly paired on the same line.`;
 
   const schema = {
     type: Type.OBJECT,

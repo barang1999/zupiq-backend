@@ -17,6 +17,7 @@ import {
   requiresVisualTable,
   generateVisualTable,
 } from "../../services/ai/gemini.service.js";
+import { segmentMathContent } from "../../utils/math-segmenter.js";
 import {
   generateEducationalGameProblem,
   type GameProblemSubject,
@@ -255,7 +256,7 @@ router.post(
   "/chat",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { messages, subject, session_id, upload_id } = req.body;
+      const { messages, subject, session_id, upload_id, step_id } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         throw new ValidationError("messages array is required");
@@ -278,22 +279,35 @@ router.post(
       if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
 
       const chatResult = await chat(messages, aiOptions, imagePart);
+      const aiSegments = segmentMathContent(chatResult.text);
 
       // Persist last user message and AI response
       const sid = session_id ?? generateId();
       const lastUserMsg = messages[messages.length - 1];
       const db = getSupabaseAdmin();
       await db.from("chat_messages").insert([
-        { id: generateId(), user_id: userId, session_id: sid, role: "user", content: lastUserMsg.content, subject: subject ?? null, created_at: nowISO() },
         { 
           id: generateId(), 
           user_id: userId, 
           session_id: sid, 
+          step_id: step_id ?? null,
+          role: "user", 
+          content: { text: lastUserMsg.content, segments: segmentMathContent(lastUserMsg.content) },
+          subject: subject ?? null, 
+          created_at: nowISO() 
+        },
+        { 
+          id: generateId(), 
+          user_id: userId, 
+          session_id: sid, 
+          step_id: step_id ?? null,
           role: "model", 
-          content: chatResult.text, 
+          content: { text: chatResult.text, segments: aiSegments },
           subject: subject ?? null, 
           created_at: nowISO(),
-          metadata: chatResult.visualTable ? { visualTable: chatResult.visualTable } : {}
+          metadata: {
+            visualTable: chatResult.visualTable ?? null
+          }
         },
       ]);
 
@@ -1028,7 +1042,7 @@ router.get(
   "/history",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { session_id, limit = "50" } = req.query;
+      const { session_id, step_id, limit = "50" } = req.query;
       const db = getSupabaseAdmin();
       const limitNum = parseInt(limit as string);
 
@@ -1039,10 +1053,14 @@ router.get(
         .limit(limitNum);
 
       if (session_id) {
-        query = query.eq("session_id", session_id as string).order("created_at", { ascending: true });
-      } else {
-        query = query.order("created_at", { ascending: false });
+        query = query.eq("session_id", session_id as string);
       }
+
+      if (step_id) {
+        query = query.eq("step_id", step_id as string);
+      }
+
+      query = query.order("created_at", { ascending: session_id ? true : false });
 
       const { data: messages, error } = await query;
       if (error) throw new Error(error.message);

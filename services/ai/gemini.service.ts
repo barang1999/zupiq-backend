@@ -540,8 +540,10 @@ Rules:
    - 3-5 branch nodes (logical steps). ALL branch nodes MUST have parentId: "root".
    - 1-2 leaf nodes (concepts/formulas). EACH leaf node MUST have parentId set to the specific "id" of the branch (step) it supports.
 4. The final branch node MUST show the definitive final answer.
-5. mathContent must contain the actual math transformation for each step.
-6. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.`;
+5. mathContent MUST contain the actual math transformation, specific equation, or numerical expression for EVERY node. DO NOT leave it empty or null.
+6. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
+7. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
+8. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.`;
 
   const nodeSchema = {
     type: Type.OBJECT,
@@ -554,7 +556,7 @@ Rules:
       keyFormula: { type: Type.STRING },
       parentId: { type: Type.STRING },
     },
-    required: ["id", "type", "label", "description"],
+    required: ["id", "type", "label", "description", "mathContent"],
   };
 
   const schema = {

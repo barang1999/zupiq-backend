@@ -109,16 +109,22 @@ async function resolveAIOptions(req: Request, options: { subject?: string; sessi
 The student is currently working on this overall problem:
 "${session.problem}"
 
-They are specifically asking about this part of the solution:
+FULL SOLUTION REFERENCE:
+${session.solution_text || "Not available"}
+
+FINAL ANSWER:
+${session.final_answer || "Not available"}
+
+CURRENT FOCUS AREA (The student is specifically asking about this part):
 STEP TITLE: ${node.label || node.title || "Untitled Step"}
 SPECIFIC FORMULA/MATH: ${node.mathContent || "None"}
 STEP DESCRIPTION: ${node.description || "No description available."}
 
 INSTRUCTION: 
-1. Your primary focus is to explain the "SPECIFIC FORMULA/MATH" and "STEP DESCRIPTION" provided above in the context of the "OVERALL PROBLEM".
-2. If the student refers to "this step", "the formula", or "this part", they are talking about the math shown above.
-3. DO NOT tell the student you don't know the problem or previous steps. You have the necessary context above.
-4. Keep the explanation relevant to the current step while acknowledging how it fits into the overall problem.`;
+1. Your primary focus is to explain the "CURRENT FOCUS AREA" while staying consistent with the "FULL SOLUTION REFERENCE".
+2. If the student refers to "this step", "the formula", or "this part", they are strictly talking about the math shown in the FOCUS AREA above.
+3. Use the FULL SOLUTION context to explain WHY this step exists and HOW it leads to the FINAL ANSWER.
+4. DO NOT tell the student you don't know the problem or solution. You have everything you need above.`;
           } else {
             console.log(`[DEBUG] No node found matching id: ${step_id}. Available IDs: ${nodes.map((n: any) => n.id).join(', ')}`);
           }

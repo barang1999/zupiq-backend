@@ -168,8 +168,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   session_id TEXT NOT NULL,
+  step_id TEXT,
   role TEXT NOT NULL,
-  content TEXT NOT NULL,
+  content JSONB NOT NULL,
   subject TEXT,
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW()

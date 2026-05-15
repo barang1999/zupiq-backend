@@ -69,22 +69,69 @@ const GAME_PROBLEM_MODES: readonly GameProblemMode[] = ["learn", "practice", "ch
 router.use(requireAuth);
 router.use(aiRateLimit);
 
-async function resolveAIOptions(req: Request, subject?: string) {
+async function resolveAIOptions(req: Request, options: { subject?: string; session_id?: string; step_id?: string } = {}) {
+  const { subject, session_id, step_id } = options;
   const tokenUser = req.user!;
   const latestUser = await getUserById(tokenUser.sub);
 
   // Prefer DB profile (source of truth for language/grade), fall back to token.
-  if (latestUser) {
-    return buildAIOptions(latestUser, { subject });
+  let aiOptions = latestUser
+    ? buildAIOptions(latestUser, { subject })
+    : buildAIOptions(
+        {
+          education_level: tokenUser.education_level,
+          language: tokenUser.language,
+          grade: null,
+        },
+        { subject }
+      );
+
+  // Inject Step Context if available
+  if (session_id && step_id) {
+    try {
+      const session = await getSessionById(session_id, tokenUser.sub);
+      console.log(`[DEBUG] AI Context Lookup - session_id: ${session_id}, step_id: ${step_id}`);
+      
+      if (session) {
+        const breakdown = parseJsonDeep(session.breakdown_json) as any;
+        const nodes = Array.isArray(breakdown?.nodes) 
+          ? breakdown.nodes 
+          : (Array.isArray(breakdown?.explanation?.nodes) ? breakdown.explanation.nodes : []);
+        
+        console.log(`[DEBUG] Session Breakdown nodes count: ${nodes.length}`);
+
+        if (nodes.length > 0) {
+          const node = nodes.find((n: any) => String(n.id) === String(step_id));
+          
+          if (node) {
+            console.log(`[DEBUG] Found matching node: ${node.label || node.title}`);
+            aiOptions.stepContext = `CRITICAL TUTORING CONTEXT:
+The student is currently working on this overall problem:
+"${session.problem}"
+
+They are specifically asking about this part of the solution:
+STEP TITLE: ${node.label || node.title || "Untitled Step"}
+SPECIFIC FORMULA/MATH: ${node.mathContent || "None"}
+STEP DESCRIPTION: ${node.description || "No description available."}
+
+INSTRUCTION: 
+1. Your primary focus is to explain the "SPECIFIC FORMULA/MATH" and "STEP DESCRIPTION" provided above in the context of the "OVERALL PROBLEM".
+2. If the student refers to "this step", "the formula", or "this part", they are talking about the math shown above.
+3. DO NOT tell the student you don't know the problem or previous steps. You have the necessary context above.
+4. Keep the explanation relevant to the current step while acknowledging how it fits into the overall problem.`;
+          } else {
+            console.log(`[DEBUG] No node found matching id: ${step_id}. Available IDs: ${nodes.map((n: any) => n.id).join(', ')}`);
+          }
+        }
+      } else {
+        console.log(`[DEBUG] Session not found for id: ${session_id}`);
+      }
+    } catch (err) {
+      logger.error("Failed to fetch step context for AI options", err);
+    }
   }
-  return buildAIOptions(
-    {
-      education_level: tokenUser.education_level,
-      language: tokenUser.language,
-      grade: null,
-    },
-    { subject }
-  );
+
+  return aiOptions;
 }
 
 function clip(text: string, max = 180): string {
@@ -264,7 +311,7 @@ router.post(
 
       const userId = req.user!.sub;
       const budget = await reserveTokenBudget(userId);
-      let aiOptions = await resolveAIOptions(req, subject);
+      let aiOptions = await resolveAIOptions(req, { subject, session_id, step_id });
 
       let imagePart: { data: string; mimeType: string } | undefined;
       if (upload_id) {

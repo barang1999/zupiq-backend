@@ -34,9 +34,13 @@ export function buildSystemInstruction(options: AIRequestOptions): string {
     ? `\n\n${options.userKnowledgeContext}`
     : "";
 
+  const stepSection = options.stepContext
+    ? `\n\n[CONTEXT FOR CURRENT STEP]\n${options.stepContext}`
+    : "";
+
   return `You are Zupiq, an expert AI tutor. ${subjectInfo}
 ${levelInfo}
-${langInstruction}
+${langInstruction}${stepSection}
 
 Guidelines:
 - Explain concepts clearly with step-by-step reasoning.

@@ -9,5 +9,9 @@ export interface AIRequestOptions {
    * based on what the student has already saved and understood.
    */
   userKnowledgeContext?: string;
+  /**
+   * Specific tutoring context about the current step being discussed.
+   */
+  stepContext?: string;
 }
 

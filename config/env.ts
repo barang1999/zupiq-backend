@@ -45,6 +45,13 @@ export const env = {
   GEMINI_API_KEY: requireEnv("GEMINI_API_KEY", ""),
   GEMINI_MODEL: optionalEnv("GEMINI_MODEL", "gemini-2.5-flash"),
 
+  // Mathpix — math-specialized OCR (~500ms, outputs LaTeX)
+  // Get credentials at https://mathpix.com/ocr#pricing
+  MATHPIX_APP_ID: optionalEnv("MATHPIX_APP_ID", ""),
+  MATHPIX_APP_KEY: optionalEnv("MATHPIX_APP_KEY", ""),
+  // Minimum confidence threshold (0-1) below which we fall back to Gemini vision
+  MATHPIX_MIN_CONFIDENCE: parseFloat(optionalEnv("MATHPIX_MIN_CONFIDENCE", "0.85")),
+
   // Firebase Admin (for Google login verification)
   FIREBASE_PROJECT_ID: requireEnv("FIREBASE_PROJECT_ID", ""),
   FIREBASE_CLIENT_EMAIL: requireEnv("FIREBASE_CLIENT_EMAIL", ""),

@@ -516,10 +516,111 @@ Return ONE complete JSON object only. Keep it compact and include a usable solut
   );
 }
 
+// ─── Solve directly from image (OCR + solve in a single Gemini call) ─────────
+// Replaces the sequential extractProblemFromImage → solveProblemSolutionFirst
+// pattern used in /instant-session. One round-trip instead of 2-4.
+
+export async function solveFromImageDirect(
+  imagePart: ImagePart,
+  options: AIRequestOptions = {}
+): Promise<{ problemText: string; solution: ProblemSolutionFirst }> {
+  const targetLangCode = (options.language ?? "en").toLowerCase();
+  const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
+
+  const prompt = `You are a math and science tutor with vision capabilities.
+
+Look at this image carefully.
+1. Extract the problem text exactly as written, preserving all math notation using KaTeX-compatible LaTeX (use $...$ for inline, $$...$$ for display).
+2. Solve the problem completely in a solution-first format.
+
+ALL prose text (title, subject, problemText, solutionText, finalAnswer) MUST be in ${targetLangName}.
+
+Rules for solutionText:
+- Should look like a clean student-written solution submitted to a teacher.
+- Mostly equations and short labels, minimal explanatory prose.
+- For multi-line math, use one display block: $$\\begin{aligned} ... \\end{aligned}$$
+- Use exact KaTeX LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
+- Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
+- finalAnswer must be the final answer only.
+- explanationStatus must be "not_generated", explanation must be null.
+
+Return a single JSON object only.`;
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      problemText: { type: Type.STRING },
+      version: { type: Type.NUMBER },
+      mode: { type: Type.STRING, enum: ["solution-first"] },
+      title: { type: Type.STRING },
+      subject: { type: Type.STRING },
+      problem: { type: Type.STRING },
+      finalAnswer: { type: Type.STRING },
+      solutionText: { type: Type.STRING },
+      solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
+      explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
+      explanation: { type: Type.OBJECT, nullable: true },
+      insights: {
+        type: Type.OBJECT,
+        properties: {
+          simpleBreakdown: { type: Type.STRING },
+          keyFormula: { type: Type.STRING },
+        },
+      },
+    },
+    required: [
+      "problemText",
+      "version",
+      "mode",
+      "title",
+      "subject",
+      "problem",
+      "finalAnswer",
+      "solutionText",
+      "solutionFormat",
+      "explanationStatus",
+    ],
+  };
+
+  const result = await generateStructuredJson<{ problemText: string } & ProblemSolutionFirst>({
+    prompt,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 3072,
+    taskName: "solveFromImageDirect",
+    maxAttempts: 2,
+    imagePart,
+    responseSchema: schema,
+  });
+
+  const data = result.data;
+  const extractedProblemText = (data?.problemText ?? "").trim();
+
+  if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
+    const solution = normalizeSolutionFirstPayload(
+      data,
+      extractedProblemText,
+      data.subject ?? "General"
+    );
+    return { problemText: extractedProblemText, solution };
+  }
+
+  // Partial recovery: use whatever problem text was extracted
+  const fallbackProblem = extractedProblemText || "Problem could not be read from image";
+  const fallbackSubject = (data as any)?.subject ?? "General";
+  const solution = normalizeSolutionFirstPayload(
+    buildFallbackSolutionFirst(fallbackProblem, fallbackSubject, result.raw),
+    fallbackProblem,
+    fallbackSubject
+  );
+  return { problemText: fallbackProblem, solution };
+}
+
 export async function breakdownProblem(
   problem: string,
   options: AIRequestOptions = {},
-  imagePart?: ImagePart
+  imagePart?: ImagePart,
+  solutionContext?: string
 ): Promise<ProblemBreakdown> {
   const targetLangCode = (options.language ?? "en").toLowerCase();
   const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
@@ -528,9 +629,14 @@ export async function breakdownProblem(
     ? `The problem text was extracted from an attached image. Use both the image and the extracted text to build the tree.\n\n`
     : "";
   
+  const solutionRef = solutionContext 
+    ? `\n\nREFERENCE SOLUTION (Use this to build the steps):
+${solutionContext}`
+    : "";
+
   const prompt = `${imageContext}Analyze and break down this problem into a detailed concept tree (5-8 nodes).
   
-Problem: "${problem}"
+Problem: "${problem}"${solutionRef}
 
 Rules:
 1. All text MUST be in ${targetLangName}.
@@ -1024,6 +1130,11 @@ function normalizeMathExpression(expr: string): string {
     .replace(/⁴/g, "^4")
     .replace(/⁵/g, "^5")
     .replace(/\^(\s+)(\d+)/g, "^$2")
+    // Clean up common AI artifacts: stray leading/trailing punctuation/parens
+    .replace(/^[:.,\s]+/, "")
+    .replace(/^[(\[]\s*([\s\S]+?)\s*[)\]]$/, "$1") // Strip outer parens if they wrap the whole thing
+    .replace(/^[)]\s*/, "") // Remove stray leading closing paren
+    .replace(/\s*[(]$/, "") // Remove stray trailing opening paren
     .trim();
 
   return out;
@@ -2187,7 +2298,7 @@ async function generateStructuredJson<T>(
 
   // Use Pro model for structured breakdowns to ensure complete results for complex math
   let modelName = config.taskName.toLowerCase().includes("breakdown")
-    ? "gemini-1.5-pro"
+    ? "gemini-2.5-pro"
     : env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {

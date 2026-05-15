@@ -10,6 +10,7 @@ import {
   type ProblemOcrStructuredResult,
   breakdownProblem,
   solveProblemSolutionFirst,
+  solveFromImageDirect,
   instantBreakdown,
   expandNode,
   regenerateBranchNode,
@@ -32,6 +33,7 @@ import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
 import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
+import { extractWithMathpix } from "../../services/ai/mathpix.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
 import { createSession, getSessionById, updateSession } from "../../services/session.service.js";
@@ -110,10 +112,10 @@ The student is currently working on this overall problem:
 "${session.problem}"
 
 FULL SOLUTION REFERENCE:
-${session.solution_text || "Not available"}
+${(session as any).solution_text || "Not available"}
 
 FINAL ANSWER:
-${session.final_answer || "Not available"}
+${(session as any).final_answer || "Not available"}
 
 CURRENT FOCUS AREA (The student is specifically asking about this part):
 STEP TITLE: ${node.label || node.title || "Untitled Step"}
@@ -506,7 +508,7 @@ router.post(
         : 1;
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await resolveAIOptions(req, { subject });
       const problem = await generateEducationalGameProblem(subject, difficulty, mode, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { subject, difficulty, mode },
@@ -810,11 +812,16 @@ router.post(
       }
 
       const budget = await reserveTokenBudget(userId);
-      let aiOptions = await resolveAIOptions(req, session.subject);
+      let aiOptions = await resolveAIOptions(req, { subject: session.subject });
       const knowledgeCtx = await buildUserKnowledgeContext(userId, session.subject).catch(() => null);
       if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
 
-      const explanation = await breakdownProblem(session.problem, aiOptions);
+      const explanation = await breakdownProblem(
+        session.problem, 
+        aiOptions, 
+        undefined, 
+        solutionPayload.solutionText || undefined
+      );
       const nextPayload = solutionPayload.version === 2 && solutionPayload.mode === "solution-first"
         ? {
             ...solutionPayload,
@@ -851,65 +858,104 @@ router.post(
 router.post(
   "/instant-session",
   async (req: Request, res: Response, next: NextFunction) => {
-    logger.info("[instant-session] request received", { userId: req.user?.sub, body: req.body });
+    logger.info("[instant-session] request received", { userId: req.user?.sub, hasImageBase64: !!req.body.image_base64, hasUploadId: !!req.body.upload_id });
     const traceId = getAttachTraceId(req);
     const startedAt = Date.now();
     let stage = "init";
     try {
-      const { upload_id, subject } = req.body;
+      const { upload_id, subject, image_base64, image_mime_type, problem_text } = req.body;
       const userId = req.user!.sub;
-      
-      emitProgress(traceId, { stage: "VALIDATING", progress: 5, message: "Validating upload..." });
-      
-      stage = "validate:body";
-      if (!upload_id) throw new ValidationError("upload_id is required");
 
-      stage = "lookup:upload";
-      const upload = await getUploadById(upload_id);
-      if (!upload) throw new ValidationError("Upload not found");
-      if (upload.user_id !== userId) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+      emitProgress(traceId, { stage: "VALIDATING", progress: 5, message: "Validating..." });
+
+      stage = "validate:body";
+      if (!problem_text && !image_base64 && !upload_id) {
+        throw new ValidationError("problem_text, image_base64, or upload_id is required");
       }
-      
+
       const budget = await reserveTokenBudget(userId);
       const aiOptions = await resolveAIOptions(req, subject);
 
-      emitProgress(traceId, { stage: "READING", progress: 10, message: "Reading problem..." });
+      let problemText: string;
+      let solution: import("../../services/ai/gemini.service.js").ProblemSolutionFirst;
+      let ocrSource: "on-device" | "gemini-vision" = "gemini-vision";
+      let imagePart: { data: string; mimeType: string } | undefined;
 
-      stage = "read:file";
-      const imagePartRead = await readUploadAsBase64(upload);
-      const imagePart = {
-        data: imagePartRead.data,
-        mimeType: imagePartRead.mimeType,
-      };
+      if (problem_text) {
+        // ── Fast path: on-device OCR (ML Kit) already extracted the text ──────
+        // Skip all image handling and OCR — go straight to solve.
+        const text = (problem_text as string).trim();
+        if (!text || looksLikeImagePlaceholder(text)) {
+          throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
+        }
 
-      emitProgress(traceId, { stage: "TRANSCRIBING", progress: 25, message: "Transcribing math..." });
+        ocrSource = "on-device";
+        emitProgress(traceId, { stage: "SOLVING", progress: 30, message: "Solving problem..." });
 
-      stage = "ocr:extract";
-      const structured = await extractProblemFromImage(imagePart, aiOptions);
-      const problemText = (structured.text || "").trim();
-      
-      if (!problemText || looksLikeImagePlaceholder(problemText)) {
-        throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
+        stage = "ai:solve-text";
+        solution = await solveProblemSolutionFirst(text, aiOptions);
+        problemText = text;
+
+        logger.info("[instant-session] on-device-ocr+solve complete", {
+          traceId, ocrSource, problemTextLength: problemText.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+      } else {
+        // ── Image path: resolve bytes then run Gemini vision ──────────────────
+        let imagePart: { data: string; mimeType: string };
+
+        if (image_base64) {
+          stage = "image:inline";
+          imagePart = {
+            data: image_base64 as string,
+            mimeType: (image_mime_type as string | undefined) ?? "image/jpeg",
+          } as { data: string; mimeType: string };
+          logger.info("[instant-session] using inline image", {
+            traceId, mimeType: imagePart.mimeType, bytesApprox: imagePart.data.length,
+          });
+        } else {
+          stage = "lookup:upload";
+          emitProgress(traceId, { stage: "READING", progress: 10, message: "Reading problem..." });
+          const upload = await getUploadById(upload_id);
+          if (!upload) throw new ValidationError("Upload not found");
+          if (upload.user_id !== userId) {
+            res.status(403).json({ error: "Forbidden" });
+            return;
+          }
+          stage = "read:file";
+          const imagePartRead = await readUploadAsBase64(upload);
+          imagePart = { data: imagePartRead.data, mimeType: imagePartRead.mimeType } as { data: string; mimeType: string };
+          logger.info("[instant-session] using upload", {
+            traceId, uploadId: upload_id, source: imagePartRead.source,
+            bytesApprox: imagePart.data.length,
+          });
+        }
+
+        emitProgress(traceId, { stage: "SOLVING", progress: 30, message: "Reading & solving..." });
+        stage = "ai:solve-from-image";
+        const combined = await solveFromImageDirect(imagePart, aiOptions);
+        problemText = combined.problemText;
+        solution = combined.solution;
+
+        logger.info("[instant-session] gemini-vision solve complete", {
+          traceId, ocrSource, problemTextLength: problemText.length,
+          elapsedMs: Date.now() - startedAt,
+        });
+
+        if (!problemText || looksLikeImagePlaceholder(problemText)) {
+          throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
+        }
       }
 
-      emitProgress(traceId, { stage: "SOLVING", progress: 50, message: "Writing solution..." });
-
-      stage = "ai:solution";
-      const solution = await solveProblemSolutionFirst(problemText, aiOptions, imagePart);
-      
-      logger.info("[instant-session] solution complete", { 
-        title: solution.title, 
-        problemTextLength: problemText.length,
-        mode: solution.mode,
-        explanationStatus: solution.explanationStatus,
+      logger.info("[instant-session] solution ready", {
+        traceId, ocrSource, title: solution.title,
+        mode: solution.mode, elapsedMs: Date.now() - startedAt,
       });
 
       emitProgress(traceId, { stage: "BUILDING", progress: 75, message: "Finalizing solution..." });
 
-      // Fire off visual table generation in parallel if likely needed
-      let visualTablePromise = Promise.resolve(null);
+      // Fire off visual table generation in parallel if needed
+      let visualTablePromise = Promise.resolve<any>(null);
       if (requiresVisualTable(problemText)) {
         const tableSubject = solution.subject ?? subject ?? "General";
         visualTablePromise = generateVisualTable(problemText, tableSubject, aiOptions, imagePart).catch(() => null);
@@ -917,7 +963,7 @@ router.post(
 
       stage = "session:create";
       const visualTable = await visualTablePromise;
-      
+
       emitProgress(traceId, { stage: "SAVING", progress: 90, message: "Saving session..." });
 
       const session = await createSession(userId, {
@@ -938,31 +984,24 @@ router.post(
 
       stage = "usage:consume";
       const usage = await consumeTokenBudget(budget, {
-        input: { upload_id, subject, source: "instant_photo" },
+        input: { upload_id: upload_id ?? null, subject, source: "instant_photo" },
         output: { session_id: session.id, problem: problemText },
       });
 
       emitProgress(traceId, { stage: "DONE", progress: 100, message: "Redirecting..." });
 
-      res.status(201).json({ 
-        session, 
+      res.status(201).json({
+        session,
         usage,
-        ocr: {
-          text: problemText,
-          warnings: []
-        }
+        ocr: { text: problemText, source: ocrSource, warnings: [] },
       });
 
       logger.info("[instant-session] trace:done", {
-        traceId,
-        sessionId: session.id,
-        elapsedMs: Date.now() - startedAt,
+        traceId, sessionId: session.id, elapsedMs: Date.now() - startedAt,
       });
     } catch (err) {
       logger.error("[instant-session] trace:error", {
-        traceId,
-        stage,
-        userId: req.user?.sub ?? null,
+        traceId, stage, userId: req.user?.sub ?? null,
         message: err instanceof Error ? err.message : String(err),
         elapsedMs: Date.now() - startedAt,
       });

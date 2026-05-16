@@ -39,6 +39,7 @@ import { logger } from "../../utils/logger.js";
 import { createSession, getSessionById, updateSession } from "../../services/session.service.js";
 import { logActivity } from "../../services/activity-log.service.js";
 import { registerProgressClient, emitProgress } from "../../services/progress.service.js";
+import { verifyWithWolfram } from "../../services/ai/wolfram.service.js";
 import {
   getEffectiveAccessState,
   hasEntitlement,
@@ -53,6 +54,31 @@ import { publishUsageUpdate } from "../../billing/usage-stream.js";
 
 const router = Router();
 const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
+
+const FALLBACK_SESSION_PATTERNS = [
+  /problem could not be read/i,
+  /could not solve/i,
+  /^see solution$/i,
+  /^n\/a$/i,
+  /unable to (solve|determine|read)/i,
+  /cannot be determined/i,
+  /image could not be/i,
+];
+
+function isFallbackSession(
+  solution: { title?: string; finalAnswer?: string },
+  problemText: string
+): boolean {
+  const answer = (solution.finalAnswer ?? "").trim();
+  const title = (solution.title ?? "").trim();
+  const problem = (problemText ?? "").trim();
+  if (!problem || problem.length < 3) return true;
+  return (
+    FALLBACK_SESSION_PATTERNS.some((p) => p.test(answer)) ||
+    FALLBACK_SESSION_PATTERNS.some((p) => p.test(title)) ||
+    FALLBACK_SESSION_PATTERNS.some((p) => p.test(problem))
+  );
+}
 
 // ─── PING TEST ───────────────────────────────────────────────────────────────
 router.get("/ping", (req, res) => {
@@ -965,6 +991,28 @@ router.post(
       const visualTable = await visualTablePromise;
 
       emitProgress(traceId, { stage: "SAVING", progress: 90, message: "Saving session..." });
+
+      // Wolfram Alpha cross-check: verify or patch finalAnswer using a CAS
+      stage = "wolfram:verify";
+      const wolframAnswer = await verifyWithWolfram(problemText).catch(() => null);
+      if (wolframAnswer) {
+        logger.info("[instant-session] wolfram cross-check", {
+          traceId,
+          aiAnswer: solution.finalAnswer?.slice(0, 120),
+          wolframAnswer: wolframAnswer.slice(0, 120),
+        });
+        // Override AI answer only when AI produced a fallback/empty answer
+        if (!solution.finalAnswer || isFallbackSession(solution, problemText)) {
+          solution = { ...solution, finalAnswer: wolframAnswer };
+        }
+      }
+
+      // Quality gate: reject sessions with unreadable/unsolvable content
+      if (isFallbackSession(solution, problemText)) {
+        throw new ValidationError(
+          "Could not read or solve the problem from this image. Please try a clearer photo."
+        );
+      }
 
       const session = await createSession(userId, {
         title: (solution.title || "New Session").trim(),

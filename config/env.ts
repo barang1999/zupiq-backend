@@ -44,6 +44,8 @@ export const env = {
   // Google Gemini AI
   GEMINI_API_KEY: requireEnv("GEMINI_API_KEY", ""),
   GEMINI_MODEL: optionalEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+  GEMINI_PRO_MODEL: optionalEnv("GEMINI_PRO_MODEL", "gemini-2.5-flash"),
+  WOLFRAM_APP_ID: optionalEnv("WOLFRAM_APP_ID", ""),
 
   // Mathpix — math-specialized OCR (~500ms, outputs LaTeX)
   // Get credentials at https://mathpix.com/ocr#pricing

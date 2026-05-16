@@ -337,6 +337,22 @@ function isUsableProblemSolutionFirst(value: unknown): value is ProblemSolutionF
   );
 }
 
+const FALLBACK_CONTENT_PATTERNS = [
+  /problem could not be read/i,
+  /could not solve/i,
+  /^see solution$/i,
+  /^n\/a$/i,
+  /unable to (solve|determine|read)/i,
+  /cannot be determined/i,
+  /image could not be/i,
+];
+
+function isFallbackContent(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t || t.length < 2) return true;
+  return FALLBACK_CONTENT_PATTERNS.some((p) => p.test(t));
+}
+
 function buildFallbackSolutionFirst(
   problem: string,
   subject: string,
@@ -412,6 +428,125 @@ function normalizeSolutionFirstPayload(
   };
 }
 
+// ─── Two-phase generation helpers ────────────────────────────────────────────
+
+/**
+ * Phase 1: Generate a free-form solution as plain text.
+ * No JSON schema → no truncation risk.
+ */
+const PHASE1_TIMEOUT_MS = 40_000;
+
+async function generateRawSolution(
+  prompt: string,
+  options: AIRequestOptions,
+  imagePart?: ImagePart,
+): Promise<string> {
+  const client = getGeminiClient();
+  const parts: Part[] = [
+    ...(imagePart
+      ? [{ inlineData: { data: imagePart.data, mimeType: imagePart.mimeType } } as Part]
+      : []),
+    { text: prompt },
+  ];
+
+  const generatePromise = client.models.generateContent({
+    model: env.GEMINI_PRO_MODEL,
+    config: {
+      systemInstruction: buildSystemInstruction(options),
+      temperature: 0.1,
+      maxOutputTokens: 8192,
+      safetySettings: [
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      ] as any,
+    },
+    contents: [{ role: "user", parts }],
+  });
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`generateRawSolution timed out after ${PHASE1_TIMEOUT_MS}ms`)), PHASE1_TIMEOUT_MS)
+  );
+
+  const response = await Promise.race([generatePromise, timeoutPromise]);
+  return (response.text ?? "").trim();
+}
+
+interface SolutionMetadata {
+  title: string;
+  subject: string;
+  problem: string;
+  finalAnswer: string;
+  problemText?: string;
+}
+
+/**
+ * Phase 2: Extract compact metadata from a raw solution text.
+ * Only short string fields — output is always <512 tokens, never truncates.
+ */
+async function extractSolutionMetadata(
+  rawSolution: string,
+  problemHint: string,
+  options: AIRequestOptions,
+  includeProblemText = false,
+): Promise<SolutionMetadata> {
+  const schemaProperties: Record<string, object> = {
+    title: { type: Type.STRING },
+    subject: { type: Type.STRING },
+    problem: { type: Type.STRING },
+    finalAnswer: { type: Type.STRING },
+  };
+  const requiredFields = ["title", "subject", "problem", "finalAnswer"];
+
+  if (includeProblemText) {
+    (schemaProperties as any).problemText = { type: Type.STRING };
+    requiredFields.push("problemText");
+  }
+
+  const problemTextInstruction = includeProblemText
+    ? "\n- problemText: the original problem as extracted from the image, with proper LaTeX"
+    : "";
+
+  const prompt = `Extract metadata from this math solution.
+
+SOLUTION:
+${rawSolution.slice(0, 4000)}
+
+PROBLEM HINT: "${problemHint.slice(0, 200)}"
+
+Return JSON with:
+- title: short descriptive title (max 70 chars)
+- subject: academic subject (e.g. "Mathematics", "Physics", "Chemistry")
+- problem: the problem statement with proper LaTeX math notation
+- finalAnswer: only the final result (e.g. "x = 3", "$v = 12\\ \\text{m/s}$")${problemTextInstruction}`;
+
+  const { data } = await generateStructuredJson<SolutionMetadata>({
+    prompt,
+    options,
+    temperature: 0.1,
+    maxOutputTokens: 512,
+    taskName: "extractSolutionMetadata",
+    maxAttempts: 2,
+    responseSchema: {
+      type: Type.OBJECT,
+      properties: schemaProperties,
+      required: requiredFields,
+    },
+  });
+
+  const fallbackTitle = problemHint.slice(0, 70) || "New Solution";
+  return {
+    title: `${data?.title ?? ""}`.trim() || fallbackTitle,
+    subject: `${data?.subject ?? ""}`.trim() || options.subject || "Mathematics",
+    problem: `${data?.problem ?? ""}`.trim() || problemHint,
+    finalAnswer: `${data?.finalAnswer ?? ""}`.trim() || "",
+    ...(includeProblemText
+      ? { problemText: `${(data as any)?.problemText ?? ""}`.trim() || problemHint }
+      : {}),
+  };
+}
+
 export async function solveProblemSolutionFirst(
   problem: string,
   options: AIRequestOptions = {},
@@ -421,9 +556,55 @@ export async function solveProblemSolutionFirst(
   const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
   const subject = options.subject ?? "General";
   const imageContext = imagePart
-    ? `The problem text was extracted from an attached image. Use both the image and extracted text if needed.\n\n`
+    ? `The problem was extracted from an attached image. Refer to both image and text.\n\n`
     : "";
 
+  // ── Phase 1: Free-form solve — no JSON schema, no truncation risk ─────────
+  const phase1Prompt = `${imageContext}Solve this problem completely and write a professional solution.
+
+Problem: "${problem}"
+
+Requirements:
+- All prose MUST be in ${targetLangName}.
+- Use KaTeX-compatible LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
+- For multi-line derivations use: $$\\begin{aligned} ... \\end{aligned}$$
+- No "Step 1:", "Step 2:" headers. Let equations flow naturally.
+- No internal reasoning or self-corrections. Output only the final polished derivation.
+- End with: **Final Answer:** [result]`;
+
+  let rawSolution = "";
+  try {
+    rawSolution = await generateRawSolution(phase1Prompt, options, imagePart);
+  } catch (err) {
+    logger.warn("[solveProblemSolutionFirst] Phase 1 failed, falling back to single-phase", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (rawSolution && !isFallbackContent(rawSolution)) {
+    const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
+    if (!isFallbackContent(metadata.finalAnswer)) {
+      return normalizeSolutionFirstPayload(
+        {
+          version: 2,
+          mode: "solution-first",
+          title: metadata.title,
+          subject: metadata.subject,
+          problem: metadata.problem || problem,
+          finalAnswer: metadata.finalAnswer,
+          solutionText: rawSolution,
+          solutionFormat: "markdown-latex",
+          explanationStatus: "not_generated",
+          explanation: null,
+          insights: { simpleBreakdown: "", keyFormula: "" },
+        },
+        problem,
+        subject,
+      );
+    }
+  }
+
+  // ── Fallback: Single-phase with generous token budget ─────────────────────
   const prompt = `${imageContext}Solve this problem in a solution-first format.
 
 Problem: "${problem}"
@@ -433,16 +614,19 @@ Return the result as JSON only.
 Rules:
 1. All prose MUST be in ${targetLangName}.
 2. Do NOT create a step-by-step explanation tree.
-3. solutionText should look like a clean student-written solution submitted to a teacher.
+3. solutionText should look like a clean, professional, A+ student-written solution.
 4. solutionText should be mostly equations and short labels. Avoid explanatory sentences.
 5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$".
 6. finalAnswer must be the final answer only.
 7. explanationStatus must be "not_generated" and explanation must be null.
 8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
 9. Never output placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
-10. Do not put prose sentences inside $$...$$, \\begin{aligned}, or any math block. Words inside math blocks must be short labels wrapped as \\text{...}, such as \\text{Given} or \\text{Answer}.
+10. Do not put prose sentences inside $$...$$, \\begin{aligned}, or any math block.
 11. Do not use single "$" inline delimiters unless they are correctly paired on the same line.
-12. CRITICAL: Do NOT use "Step 1:", "Step 2:", or any numbered step headers in solutionText. The solution should flow naturally as a continuous mathematical derivation, just as a student or teacher would write on a piece of paper.`;
+12. CRITICAL: NEVER include your internal reasoning process, self-corrections, or conversational filler.
+13. ABSOLUTELY FORBIDDEN: Phrases like "Wait," "Let me recheck," "I made a mistake," "Let's recalculate," or "I found a different solution online."
+14. Finality: Perform all reasoning internally. Output ONLY the final, polished, and correct mathematical derivation. It should look like a finished exam paper, not a scratchpad.
+15. Do NOT use "Step 1:", "Step 2:", or any numbered step headers. The solution should flow naturally.`;
 
   const schema = {
     type: Type.OBJECT,
@@ -482,7 +666,7 @@ Rules:
     prompt,
     options,
     temperature: 0.15,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
     taskName: "solveProblemSolutionFirst",
     maxAttempts: 2,
     imagePart,
@@ -499,7 +683,7 @@ Rules:
 Return ONE complete JSON object only. Keep it compact and include a usable solutionText.`,
     options,
     temperature: 0.1,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 8192,
     taskName: "solveProblemSolutionFirstRecovery",
     maxAttempts: 1,
     imagePart,
@@ -528,6 +712,65 @@ export async function solveFromImageDirect(
   const targetLangCode = (options.language ?? "en").toLowerCase();
   const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
 
+  // ── Phase 1: Free-form vision solve — no JSON, no truncation risk ─────────
+  const phase1Prompt = `You are a math and science tutor with vision capabilities.
+
+Look at this image carefully.
+1. Extract the problem text exactly as written, using KaTeX-compatible LaTeX ($...$ inline, $$...$$ display).
+2. Solve the problem completely in a clean professional format.
+
+ALL prose MUST be in ${targetLangName}.
+
+Solution format:
+- Clean student-written style, mostly equations with short labels.
+- No "Step 1:", "Step 2:" headers. Let equations flow naturally.
+- For multi-line derivations: $$\\begin{aligned} ... \\end{aligned}$$
+- Use exact LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
+- No internal reasoning, no self-corrections. Output only the final polished derivation.
+
+End your response with:
+**Problem:** [the extracted problem statement with LaTeX]
+**Final Answer:** [the final result]`;
+
+  let rawSolution = "";
+  try {
+    rawSolution = await generateRawSolution(phase1Prompt, options, imagePart);
+  } catch (err) {
+    logger.warn("[solveFromImageDirect] Phase 1 failed, falling back to single-phase", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  if (rawSolution && !isFallbackContent(rawSolution)) {
+    const problemTextMatch = rawSolution.match(/\*\*Problem:\*\*\s*(.+?)(?:\n|$)/i);
+    const extractedHint = problemTextMatch?.[1]?.trim() || "";
+
+    const metadata = await extractSolutionMetadata(rawSolution, extractedHint, options, true);
+    const finalProblemText = (metadata.problemText || extractedHint || "").trim();
+
+    if (finalProblemText && !isFallbackContent(finalProblemText) && !isFallbackContent(metadata.finalAnswer)) {
+      const solution = normalizeSolutionFirstPayload(
+        {
+          version: 2,
+          mode: "solution-first",
+          title: metadata.title,
+          subject: metadata.subject,
+          problem: metadata.problem || finalProblemText,
+          finalAnswer: metadata.finalAnswer,
+          solutionText: rawSolution,
+          solutionFormat: "markdown-latex",
+          explanationStatus: "not_generated",
+          explanation: null,
+          insights: { simpleBreakdown: "", keyFormula: "" },
+        },
+        finalProblemText,
+        metadata.subject,
+      );
+      return { problemText: finalProblemText, solution };
+    }
+  }
+
+  // ── Fallback: Single-phase with generous token budget ─────────────────────
   const prompt = `You are a math and science tutor with vision capabilities.
 
 Look at this image carefully.
@@ -548,51 +791,15 @@ Rules for solutionText:
 
 Return a single JSON object only.`;
 
-  const schema = {
-    type: Type.OBJECT,
-    properties: {
-      problemText: { type: Type.STRING },
-      version: { type: Type.NUMBER },
-      mode: { type: Type.STRING, enum: ["solution-first"] },
-      title: { type: Type.STRING },
-      subject: { type: Type.STRING },
-      problem: { type: Type.STRING },
-      finalAnswer: { type: Type.STRING },
-      solutionText: { type: Type.STRING },
-      solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
-      explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
-      explanation: { type: Type.OBJECT, nullable: true },
-      insights: {
-        type: Type.OBJECT,
-        properties: {
-          simpleBreakdown: { type: Type.STRING },
-          keyFormula: { type: Type.STRING },
-        },
-      },
-    },
-    required: [
-      "problemText",
-      "version",
-      "mode",
-      "title",
-      "subject",
-      "problem",
-      "finalAnswer",
-      "solutionText",
-      "solutionFormat",
-      "explanationStatus",
-    ],
-  };
-
   const result = await generateStructuredJson<{ problemText: string } & ProblemSolutionFirst>({
     prompt,
     options,
     temperature: 0.1,
-    maxOutputTokens: 3072,
+    maxOutputTokens: 8192,
     taskName: "solveFromImageDirect",
     maxAttempts: 2,
     imagePart,
-    responseSchema: schema,
+    noJsonMime: true,
   });
 
   const data = result.data;
@@ -607,7 +814,6 @@ Return a single JSON object only.`;
     return { problemText: extractedProblemText, solution };
   }
 
-  // Partial recovery: use whatever problem text was extracted
   const fallbackProblem = extractedProblemText || "Problem could not be read from image";
   const fallbackSubject = (data as any)?.subject ?? "General";
   const solution = normalizeSolutionFirstPayload(
@@ -694,7 +900,7 @@ Rules:
     prompt,
     options,
     temperature: 0.2,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     taskName: "breakdownProblem",
     maxAttempts: 3,
     imagePart,
@@ -712,7 +918,7 @@ Rules:
 Return ONE complete JSON object only. Ensure every branch includes concrete math transformations for this exact problem.`,
     options,
     temperature: 0.15,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     taskName: "breakdownProblemRecovery",
     maxAttempts: 2,
     imagePart,
@@ -791,7 +997,7 @@ export async function instantBreakdown(
     prompt,
     options,
     temperature: 0.1,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     taskName: "instantBreakdown",
     maxAttempts: 2,
     imagePart,
@@ -809,7 +1015,7 @@ export async function instantBreakdown(
 Return ONE complete JSON object only. Ensure all steps are concrete to the extracted problem.`,
     options,
     temperature: 0.1,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     taskName: "instantBreakdownRecovery",
     maxAttempts: 2,
     imagePart,
@@ -890,11 +1096,15 @@ function normalizeNodeMathContent(raw: string): string {
 
 function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
   const nodes = Array.isArray(bd?.nodes) ? bd.nodes : [];
-  return {
+  logger.info(`[DEBUG:AI:BEFORE_SANITIZE] Task: breakdown`, { 
+    nodes: nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent })) 
+  });
+  
+  const sanitized = {
     ...bd,
     nodes: nodes.map((node) => {
-      const normalizedLabel = normalizeMathExpression(stripLatexTabularEnv(node.label ?? ""));
-      const normalizedDescription = normalizeMathExpression(stripLatexTabularEnv(node.description ?? ""));
+      const normalizedLabel = deepNormalizeMathProse(stripLatexTabularEnv(node.label ?? ""));
+      const normalizedDescription = deepNormalizeMathProse(stripLatexTabularEnv(node.description ?? ""));
       const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
 
       return {
@@ -909,6 +1119,12 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
       };
     }),
   };
+
+  logger.info(`[DEBUG:AI:AFTER_SANITIZE] Task: breakdown`, { 
+    nodes: sanitized.nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent })) 
+  });
+
+  return sanitized;
 }
 
 // ─── Expand a single node into sub-steps ──────────────────────────────────────
@@ -1112,6 +1328,63 @@ function fixKhmerSpacingArtifacts(text: string): string {
 
 function countMathSegments(text: string): number {
   return (text.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? []).length;
+}
+
+const BARE_MATH_COMMANDS = 'begin|end|cases|matrix|aligned|align|frac|sqrt|text|mathrm|Delta|times|div|cdot|pm|neq|leq|geq|approx|Rightarrow|rightarrow|leftarrow|leftrightarrow|int|sum|lim|log|ln|sin|cos|tan';
+const BARE_MATH_COMMAND_REGEX = new RegExp(`(?<!\\\\)\\b(${BARE_MATH_COMMANDS})\\b`, 'g');
+const MATH_EXPRESSION_REGEX = /((?:\\[A-Za-z]+|Δ|∂|(?:\d+(?:\.\d+)?)?[A-Za-z])[\dA-Za-z\\Δ∂^_+\-*/=().,|[\]:;{} \t]*=[\dA-Za-z\\Δ∂^_+\-*/=().,|[\]:;{} \t]*)/g;
+
+/**
+ * Robustly detects and repairs "bare" math notation (math without backslashes or delimiters)
+ * into standard LaTeX that the frontend can reliably render.
+ */
+function repairBareMath(input: string): string {
+  const text = String(input || '').trim();
+  if (!text) return text;
+
+  return text
+    .replace(/\\\$/g, '$') // Unescape dollar signs so they can be identified as segments
+    .replace(BARE_MATH_COMMAND_REGEX, '\\$1')
+    .replace(/±/g, '\\pm')
+    .replace(/√\(([^)\n]+)\)/g, '\\sqrt{$1}')
+    .replace(/√\{([^}\n]+)\}/g, '\\sqrt{$1}')
+    .replace(/(\d+(?:\.\d+)?)°/g, '$1^\\circ');
+}
+
+/**
+ * Finds mathematical expressions that are missing LaTeX delimiters and wraps them in $...$.
+ */
+function wrapBareMathInDelimiters(input: string): string {
+  const text = String(input || '').trim();
+  if (!text) return text;
+
+  // Split by existing delimiters to avoid double-wrapping
+  const parts = text.split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/);
+  const processed = parts.map((part, idx) => {
+    // If it's a delimited segment, leave it alone
+    if (idx % 2 === 1) return part;
+    
+    // Otherwise, find math-like segments (e.g. expressions with '=') and wrap them
+    return part.replace(MATH_EXPRESSION_REGEX, (match) => {
+      const trimmed = match.trim();
+      // Ensure it doesn't look like a prose sentence and has some math "heavier" than just 'a=b'
+      const words = trimmed.match(/\b[A-Za-z]{4,}\b/g) || [];
+      if (words.length > 2) return match; // Likely prose
+      
+      return ` $${trimmed}$ `;
+    });
+  });
+
+  return processed.join('').replace(/\s{2,}/g, ' ').trim();
+}
+
+/**
+ * Entry point for "deep" normalization of math/prose mixed strings.
+ */
+function deepNormalizeMathProse(input: string): string {
+  let text = repairBareMath(input);
+  text = wrapBareMathInDelimiters(text);
+  return normalizeMathSegments(text);
 }
 
 function normalizeMathExpression(expr: string): string {
@@ -2299,14 +2572,16 @@ async function generateStructuredJson<T>(
   let lastRaw = "";
 
   // Use Pro model for structured breakdowns to ensure complete results for complex math
-  let modelName = config.taskName.toLowerCase().includes("breakdown")
-    ? "gemini-2.5-pro"
+  let modelName = config.taskName.toLowerCase().includes("breakdown") || config.taskName.toLowerCase().includes("solve")
+    ? env.GEMINI_PRO_MODEL
     : env.GEMINI_MODEL;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const retrySuffix = attempt === 1
       ? ""
-      : `\n\nIMPORTANT: Previous output was invalid or truncated. Return complete valid JSON only.`;
+      : attempt === 2
+        ? `\n\nIMPORTANT: Previous output was invalid or truncated. Return complete valid JSON only. Keep solutionText concise — use aligned equations, minimal prose.`
+        : `\n\nCRITICAL: Return the shortest possible valid JSON. Keep solutionText under 600 characters. Focus on accuracy over completeness.`;
 
     let response;
     try {
@@ -2347,6 +2622,7 @@ async function generateStructuredJson<T>(
 
     const raw = response.text ?? "";
     lastRaw = raw;
+    logger.info(`[DEBUG:AI:RAW_RESPONSE] Task: ${config.taskName}`, { raw });
     const parsed = parseJsonLoose<T>(raw);
     if (parsed !== null) {
       return { data: parsed, raw, source: "parsed" };

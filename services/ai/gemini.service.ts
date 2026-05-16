@@ -913,10 +913,12 @@ Rules:
    - 3-5 branch nodes (logical steps). ALL branch nodes MUST have parentId: "root".
    - 1-2 leaf nodes (concepts/formulas). EACH leaf node MUST have parentId set to the specific "id" of the branch (step) it supports.
 4. The final branch node MUST show the definitive final answer.
-5. mathContent MUST contain the actual math transformation, specific equation, or numerical expression for EVERY node. DO NOT leave it empty or null.
-6. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
-7. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
-8. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.`;
+5. mathContent MUST be math only, never prose. It must be valid KaTeX-compatible LaTeX wrapped in $...$ or $$...$$.
+6. For multi-step mathContent, use one display block with \\begin{aligned} ... \\end{aligned}. Example: "$$\\begin{aligned} f'(x)&=e^x+\\sin x-\\cos x \\\\ g'(x)&=2x \\\\ \\lim_{x\\to 0}\\frac{f'(x)}{g'(x)}&=\\lim_{x\\to 0}\\frac{e^x+\\sin x-\\cos x}{2x} \\end{aligned}$$".
+7. Never write plain-text fake math in mathContent, such as "ex", "limx o_0", "(f'(x))/(g'(x))", or "=>". Use $e^x$, $\\lim_{x\\to 0}$, $\\frac{f'(x)}{g'(x)}$, and $\\Rightarrow$.
+8. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
+9. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
+10. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.`;
 
   const nodeSchema = {
     type: Type.OBJECT,
@@ -1127,6 +1129,38 @@ function stripLatexTabularEnv(text: string): string {
 
 const MATH_DELIMITER_REGEX = /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/;
 const LATEX_COMMAND_SIGNAL_REGEX = /\\[a-zA-Z]+|[A-Za-z0-9]\s*[\^_]\s*[A-Za-z0-9{(]/;
+const PLAIN_MATH_SIGNAL_REGEX = /(?:=>|⇒|->|→|=|\/|\^|_|\bf\s*'\s*\(|\bg\s*'\s*\(|\blim\s*x|\blimx|\bcos\b|\bsin\b|\btan\b)/i;
+
+function looksLikePlainMathContent(text: string): boolean {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return false;
+  if (MATH_DELIMITER_REGEX.test(trimmed)) return false;
+  if (!PLAIN_MATH_SIGNAL_REGEX.test(trimmed)) return false;
+
+  const proseWords = trimmed.match(/\b[A-Za-z]{5,}\b/g) ?? [];
+  if (proseWords.length > 2) return false;
+  return /[=+\-*/^_()']|=>|⇒|->|→/.test(trimmed);
+}
+
+function normalizePlainMathContent(text: string): string {
+  return (text ?? "")
+    .replace(/[−–]/g, "-")
+    .replace(/⇒|=>/g, "\\Rightarrow")
+    .replace(/→|->/g, "\\to")
+    .replace(/\blimx\s*(?:o(?:_\{?0\}?)?|0|to)?\s*[₀0]?\b/gi, "\\lim_{x \\to 0}")
+    .replace(/\blim\s*x\s*(?:\\to|to)?\s*([₀0])\b/gi, "\\lim_{x \\to 0}")
+    .replace(/\blim\s*x\s*\\to\s*([A-Za-z0-9]+)/gi, "\\lim_{x \\to $1}")
+    .replace(/\bex\b/g, "e^x")
+    .replace(/(?<!\\)\bcos\s*x\b/g, "\\cos x")
+    .replace(/(?<!\\)\bsin\s*x\b/g, "\\sin x")
+    .replace(/(?<!\\)\btan\s*x\b/g, "\\tan x")
+    .replace(/(?<!\\)\bcos\s*\(/g, "\\cos(")
+    .replace(/(?<!\\)\bsin\s*\(/g, "\\sin(")
+    .replace(/(?<!\\)\btan\s*\(/g, "\\tan(")
+    .replace(/(\\lim_\{x \\to 0\})\}+/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function normalizeNodeMathContent(raw: string): string {
   let text = normalizeMathExpression(stripLatexTabularEnv(raw ?? ""));
@@ -1144,6 +1178,11 @@ function normalizeNodeMathContent(raw: string): string {
   const dollarCount = (text.match(/\$/g) ?? []).length;
   if (dollarCount % 2 !== 0) {
     text = text.replace(/\$/g, "").trim();
+  }
+
+  if (looksLikePlainMathContent(text)) {
+    text = normalizePlainMathContent(text);
+    return normalizeMathSegments(`$$${text}$$`);
   }
 
   if (!MATH_DELIMITER_REGEX.test(text) && LATEX_COMMAND_SIGNAL_REGEX.test(text)) {

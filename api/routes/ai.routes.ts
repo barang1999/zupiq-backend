@@ -122,9 +122,7 @@ async function resolveAIOptions(req: Request, options: { subject?: string; sessi
       
       if (session) {
         const breakdown = parseJsonDeep(session.breakdown_json) as any;
-        const nodes = Array.isArray(breakdown?.nodes) 
-          ? breakdown.nodes 
-          : (Array.isArray(breakdown?.explanation?.nodes) ? breakdown.explanation.nodes : []);
+        const nodes = collectExplanationNodes(breakdown);
         
         console.log(`[DEBUG] Session Breakdown nodes count: ${nodes.length}`);
 
@@ -172,6 +170,95 @@ function clip(text: string, max = 180): string {
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max)}...`;
+}
+
+function collectExplanationNodes(payload: any): any[] {
+  const directNodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
+  const explanationNodes = Array.isArray(payload?.explanation?.nodes) ? payload.explanation.nodes : [];
+  const nodes = explanationNodes.length > 0 ? explanationNodes : directNodes;
+  const collected: any[] = [];
+
+  const visit = (node: any) => {
+    if (!node || typeof node !== "object") return;
+    collected.push(node);
+    if (Array.isArray(node.subSteps)) node.subSteps.forEach(visit);
+  };
+
+  nodes.forEach(visit);
+  return collected;
+}
+
+function getMutableExplanationNodes(payload: any): any[] {
+  if (payload?.version === 2 && payload?.mode === "solution-first") {
+    if (!payload.explanation || typeof payload.explanation !== "object") {
+      payload.explanation = {};
+    }
+    if (!Array.isArray(payload.explanation.nodes)) {
+      payload.explanation.nodes = [];
+    }
+    return payload.explanation.nodes;
+  }
+
+  if (!Array.isArray(payload.nodes)) payload.nodes = [];
+  return payload.nodes;
+}
+
+function findNodeById(nodes: any[], nodeId: string): any | null {
+  for (const node of nodes) {
+    if (!node || typeof node !== "object") continue;
+    if (String(node.id) === String(nodeId)) return node;
+    const child = Array.isArray(node.subSteps) ? findNodeById(node.subSteps, nodeId) : null;
+    if (child) return child;
+  }
+  return null;
+}
+
+function summarizeNodeForExpansion(node: any): string {
+  if (!node || typeof node !== "object") return "";
+  return [
+    String(node.label || node.title || "").trim(),
+    String(node.description || "").trim(),
+    String(node.mathContent || node.math || "").trim(),
+  ].filter(Boolean).join(" | ");
+}
+
+function buildExpansionSolutionReference(payload: Record<string, any>, nodes: any[]): string {
+  const solutionText = String(payload.solutionText || "").trim();
+  if (solutionText) return solutionText;
+
+  return nodes
+    .map((node, index) => {
+      const summary = summarizeNodeForExpansion(node);
+      return summary ? `${index + 1}. ${summary}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizeExpansionMath(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/\$\$?/g, "")
+    .replace(/\\\(|\\\)|\\\[|\\\]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function hasUsefulCachedSubSteps(targetNode: any): boolean {
+  const subSteps = Array.isArray(targetNode?.subSteps) ? targetNode.subSteps : [];
+  if (subSteps.length < 3) return false;
+
+  const parentMath = normalizeExpansionMath(targetNode?.mathContent || targetNode?.math || targetNode?.label);
+  if (!parentMath) return true;
+
+  const distinctIntermediateCount = subSteps.filter((step: any, index: number) => {
+    const math = normalizeExpansionMath(step?.mathContent || step?.math || step?.label);
+    if (!math) return false;
+    const isFinal = index === subSteps.length - 1;
+    return !isFinal && math !== parentMath;
+  }).length;
+
+  return distinctIntermediateCount >= Math.ceil(subSteps.length / 2);
 }
 
 function getAttachTraceId(req: Request): string {
@@ -1068,13 +1155,108 @@ router.post(
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await resolveAIOptions(req, { subject });
       const nodes = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { nodeLabel, nodeMathContent: nodeMathContent ?? nodeLabel, parentProblem, subject },
         output: nodes,
       });
       res.json({ nodes, usage });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/expand-session-node ────────────────────────────────────────
+
+router.post(
+  "/expand-session-node",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { session_id, node_id } = req.body;
+      if (typeof session_id !== "string" || !session_id.trim()) {
+        throw new ValidationError("session_id is required");
+      }
+      if (typeof node_id !== "string" || !node_id.trim()) {
+        throw new ValidationError("node_id is required");
+      }
+
+      const userId = req.user!.sub;
+      const session = await getSessionById(session_id.trim(), userId);
+      if (!session) throw new ForbiddenError("Session is not available.");
+
+      const payload = parseJsonDeep(session.breakdown_json);
+      if (!payload || typeof payload !== "object") {
+        throw new ValidationError("Session solution data is not available.");
+      }
+
+      const solutionPayload = payload as Record<string, any>;
+      const nodes = getMutableExplanationNodes(solutionPayload);
+      const targetNode = findNodeById(nodes, node_id.trim());
+      if (!targetNode) throw new ValidationError("Step is not available in this session.");
+      const targetIndex = nodes.findIndex((node) => String(node?.id) === String(targetNode.id));
+      const previousStep = targetIndex > 0 ? summarizeNodeForExpansion(nodes[targetIndex - 1]) : "";
+      const nextStep = targetIndex >= 0 && targetIndex < nodes.length - 1
+        ? summarizeNodeForExpansion(nodes[targetIndex + 1])
+        : "";
+
+      if (hasUsefulCachedSubSteps(targetNode)) {
+        res.json({
+          session,
+          node: targetNode,
+          nodes: targetNode.subSteps,
+          cached: true,
+        });
+        return;
+      }
+
+      const budget = await reserveTokenBudget(userId);
+      const aiOptions = await resolveAIOptions(req, {
+        subject: session.subject,
+        session_id: session.id,
+        step_id: String(targetNode.id),
+      });
+      const generated = await expandNode(
+        String(targetNode.label || targetNode.title || `Step ${targetNode.id}`),
+        String(targetNode.mathContent || targetNode.math || targetNode.label || ""),
+        session.problem,
+        aiOptions,
+        {
+          nodeDescription: String(targetNode.description || targetNode.why || "").trim(),
+          previousStep,
+          nextStep,
+          fullSolution: buildExpansionSolutionReference(solutionPayload, nodes),
+        }
+      );
+
+      const subSteps = generated.map((node, index) => ({
+        ...node,
+        id: `${targetNode.id}_sub_${index + 1}`,
+        parentId: String(targetNode.id),
+        type: node.type || "branch",
+      }));
+
+      targetNode.subSteps = subSteps;
+      targetNode.expandedAt = nowISO();
+
+      const updatedSession = await updateSession(session.id, userId, {
+        breakdown_json: solutionPayload,
+        node_count: collectExplanationNodes(solutionPayload).length,
+      });
+
+      const usage = await consumeTokenBudget(budget, {
+        input: { session_id: session.id, node_id: targetNode.id, subject: session.subject },
+        output: subSteps,
+      });
+
+      res.json({
+        session: updatedSession,
+        node: targetNode,
+        nodes: subSteps,
+        usage,
+        cached: false,
+      });
     } catch (err) {
       next(err);
     }
@@ -1091,7 +1273,7 @@ router.post(
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await resolveAIOptions(req, { subject });
       const node = await regenerateBranchNode(
         nodeLabel,
         nodeDescription ?? "",

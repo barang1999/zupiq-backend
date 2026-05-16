@@ -1227,17 +1227,39 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
 
 // ─── Expand a single node into sub-steps ──────────────────────────────────────
 
+type ExpandNodeContext = {
+  nodeDescription?: string;
+  previousStep?: string;
+  nextStep?: string;
+  fullSolution?: string;
+};
+
 export async function expandNode(
   nodeLabel: string,
   nodeMathContent: string,
   parentProblem: string,
-  options: AIRequestOptions = {}
+  options: AIRequestOptions = {},
+  context: ExpandNodeContext = {}
 ): Promise<Omit<BreakdownNode, 'parentId'>[]> {
+  const contextBlock = [
+    context.nodeDescription ? `Parent step explanation: ${context.nodeDescription}` : "",
+    context.previousStep ? `Previous visible step: ${context.previousStep}` : "",
+    context.nextStep ? `Next visible step: ${context.nextStep}` : "",
+    context.fullSolution ? `Full solution reference:\n${context.fullSolution}` : "",
+  ].filter(Boolean).join("\n\n");
+
   const prompt = `A student is solving this problem: "${parentProblem}"
 
-They are stuck on this specific step: "${nodeLabel}" (${nodeMathContent})
+They are stuck on this exact calculation step:
+- Step title: "${nodeLabel}"
+- Step math/result: "${nodeMathContent}"
+${contextBlock ? `\nHelpful context:\n${contextBlock}\n` : ""}
 
-Break THIS STEP into 2-3 smaller, simpler sub-steps that are easier to understand. Each sub-step should be more granular than the parent.
+Break THIS STEP into the actual smaller calculation moves used to arrive at the parent step.
+
+This is NOT a place to generate random hints, definitions, motivational text, or neighboring solution steps.
+The sub-steps must reconstruct the parent step's math/result from the prior known expression or from the operation named by the parent step.
+Do not merely rewrite the parent step as multiple sub-steps. The student needs the missing intermediate calculation path.
 
 Return ONLY a valid JSON array (no markdown, no code blocks):
 [
@@ -1254,14 +1276,30 @@ Return ONLY a valid JSON array (no markdown, no code blocks):
     "label": "Sub-step name",
     "description": "Simple one-line explanation",
     "mathContent": "actual math expression"
+  },
+  {
+    "id": "sub_3",
+    "type": "branch",
+    "label": "Sub-step name",
+    "description": "Simple one-line explanation",
+    "mathContent": "actual math expression"
   }
 ]
 
 Rules:
-- 2-3 sub-steps only
-- Each must be simpler and more specific than the parent step
-- mathContent must have real math notation, not empty
-- Labels must be short (3-5 words)`;
+- Return 3-6 sub-steps. Use 4-6 when the parent step hides multiple algebra/calculation moves
+- Each sub-step must be one concrete algebra/calculation/transformation used inside the parent step
+- Sub-step mathContent must form a chain: each line should naturally follow from the previous sub-step
+- Start from the previous visible expression when provided; otherwise start from the smallest expression required by the parent step
+- The final sub-step MUST reach, equal, or directly justify the parent step math/result: "${nodeMathContent}"
+- Do NOT make every sub-step repeat "${nodeMathContent}". Only the final sub-step may match the parent result
+- At least half of the sub-steps must show intermediate math that is different from the parent step math/result
+- Do NOT introduce a new method, new formula, or unrelated concept unless it is explicitly required by this parent step
+- Do NOT jump to the next main step or repeat the whole problem
+- mathContent must contain the exact expression/equation/transformation for that small move, not prose
+- Use standard LaTeX wrapped in $...$ or $$...$$ when math is present
+- Labels must be short action phrases (3-5 words), such as "Substitute known values" or "Cancel common factor"
+- Descriptions must explain why that one small calculation move is valid`;
 
   const { data } = await generateStructuredJson<Omit<BreakdownNode, "parentId">[]>({
     prompt,

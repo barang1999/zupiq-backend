@@ -52,7 +52,7 @@ export const STUDY_SESSIONS_TABLE_SQL = `
     problem TEXT NOT NULL,
     node_count INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER,
-    breakdown_json TEXT NOT NULL DEFAULT '{}',
+    breakdown_json JSONB NOT NULL DEFAULT '{}',
     visual_table_json TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )

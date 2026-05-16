@@ -9,10 +9,11 @@ const WOLFRAM_TIMEOUT_MS = 8000;
  */
 function toPlainQuery(latex: string): string {
   return (latex ?? "")
-    // Strip leading problem numbers/labels: "4.", "(a)", "Q3:", etc.
-    .replace(/^\s*(?:\d+\.|\([a-zA-Z]\)|\bQ\d+\b)[:\s]*/i, "")
-    // Strip "Solve for x:", "Find:", "Calculate:" prefixes — Wolfram handles equations natively
-    .replace(/^\s*(?:solve\s+for\s+\w+|find|calculate|evaluate|simplify|determine)[:\s]+/i, "")
+    // Strip leading problem numbers/labels: "4.", "4)", "(a)", "Q3:", etc.
+    .replace(/^\s*(?:\d+[.)]\s*|\([a-zA-Z]\)\s*|\bQ\d+[.:]\s*)/i, "")
+    // Strip instruction prefixes — everything up to and including the first colon
+    // e.g. "Solve the differential equation:", "Find:", "Calculate:", "Evaluate:"
+    .replace(/^\s*(?:solve|find|calculate|evaluate|simplify|determine|compute|integrate|differentiate|prove|verify|show\s+that)[\s\w,()]*:/i, "")
     .replace(/\$\$?/g, "")
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)")
     .replace(/\\sqrt\{([^}]+)\}/g, "sqrt($1)")
@@ -23,6 +24,10 @@ function toPlainQuery(latex: string): string {
     .replace(/\\left|\\right/g, "")
     .replace(/\\[a-zA-Z]+/g, " ")
     .replace(/[{}]/g, "")
+    // Convert "given that" / "where" / "with" into comma-separated Wolfram constraints
+    .replace(/\s*,?\s*given\s+that\s*/gi, ", ")
+    .replace(/\s*,?\s*\bwhere\b\s*/gi, ", ")
+    .replace(/\s*,?\s*\bwith\b\s+([a-zA-Z])/gi, ", $1")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

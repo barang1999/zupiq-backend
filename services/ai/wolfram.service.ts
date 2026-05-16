@@ -6,9 +6,21 @@ const WOLFRAM_TIMEOUT_MS = 8000;
 
 /**
  * Strip LaTeX delimiters and commands to produce a plain-text query suitable for Wolfram Alpha.
+ * Only the first (natural-language) line is used — any formula hint lines are dropped,
+ * since they turn into gibberish after LaTeX stripping and cause Wolfram 501 errors.
  */
 function toPlainQuery(latex: string): string {
-  return (latex ?? "")
+  // Use only the first non-empty line — drop formula/context lines after it
+  const firstLine = (latex ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? "";
+
+  // Strip any inline formula appended to the natural-language question, e.g.:
+  // "Find the probability... $P(X=k) = \binom{n}{k}...$"  →  "Find the probability..."
+  const questionOnly = firstLine.replace(/\s*\$[\s\S]*$/, "").trim() || firstLine;
+
+  return questionOnly
     // Strip leading problem numbers/labels: "4.", "4)", "(a)", "Q3:", etc.
     .replace(/^\s*(?:\d+[.)]\s*|\([a-zA-Z]\)\s*|\bQ\d+[.:]\s*)/i, "")
     // Strip instruction prefixes — everything up to and including the first colon

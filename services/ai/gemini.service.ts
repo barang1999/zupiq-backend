@@ -381,6 +381,48 @@ function buildFallbackSolutionFirst(
   };
 }
 
+/**
+ * Strips a "Problem: ..." preamble that Phase 1 sometimes prepends to its output,
+ * and wraps any lines containing bare LaTeX commands (not already inside $ delimiters)
+ * in $$...$$ so the frontend renderer can handle them correctly.
+ */
+function sanitizeSolutionText(raw: string): string {
+  let text = (raw ?? "").trim();
+  if (!text) return text;
+
+  // Strip "Problem:" or "**Problem:**" preamble at the START (up to first blank line)
+  text = text.replace(/^\s*(?:\*{0,2}Problem:?\*{0,2})[^\n]*\n+/i, "").trim();
+
+  // Strip trailing "Problem:" / "Final Answer:" tail that Phase 1 sometimes appends
+  // e.g. "\n\n**Problem:** ...\n**Final Answer:** ..."
+  text = text.replace(/\n+\s*\*{0,2}(?:Problem|Final Answer):?\*{0,2}[\s\S]*$/i, "").trim();
+
+  // Wrap lines that contain bare LaTeX commands but no $ delimiters
+  const BARE_LATEX_LINE = /\\[a-zA-Z]+/;
+  const HAS_DELIMITER = /\$/;
+  const lines = text.split("\n");
+  let insideAligned = false;
+  let insideDisplayMath = false; // Track bare $$ open/close lines
+  const processed = lines.map((line) => {
+    const trimmed = line.trim();
+    // Track standalone $$ delimiter lines (multi-line display math blocks)
+    if (trimmed === "$$") {
+      insideDisplayMath = !insideDisplayMath;
+      return line;
+    }
+    // Track \begin{...} / \end{...} blocks
+    if (/\\begin\{/.test(trimmed)) insideAligned = true;
+    if (/\\end\{/.test(trimmed)) { insideAligned = false; return line; }
+    if (insideAligned || insideDisplayMath) return line;
+    // If line has LaTeX but no delimiters, wrap as display math
+    if (BARE_LATEX_LINE.test(trimmed) && !HAS_DELIMITER.test(trimmed) && trimmed.length > 1) {
+      return `$$${trimmed}$$`;
+    }
+    return line;
+  });
+  return processed.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function repairGeneratedMathText(input: string): string {
   const text = `${input ?? ""}`;
   if (!text.trim()) return "";
@@ -414,6 +456,18 @@ function normalizeSolutionFirstPayload(
   problem: string,
   subject: string,
 ): ProblemSolutionFirst {
+  const raw = payload.solutionText ?? "";
+  const afterSanitize = sanitizeSolutionText(raw);
+  const afterRepair = repairGeneratedMathText(afterSanitize);
+
+  // Debug: trace every stage of solutionText pipeline to catch corruption early
+  logger.info("[solutionText:pipeline]", {
+    rawLength: raw.length,
+    raw: raw.slice(0, 600),
+    afterSanitize: afterSanitize.slice(0, 600),
+    afterRepair: afterRepair.slice(0, 600),
+  });
+
   return {
     ...payload,
     version: 2,
@@ -421,7 +475,7 @@ function normalizeSolutionFirstPayload(
     problem: payload.problem?.trim() || problem,
     subject: payload.subject?.trim() || subject,
     finalAnswer: repairGeneratedMathText(payload.finalAnswer),
-    solutionText: repairGeneratedMathText(payload.solutionText),
+    solutionText: afterRepair,
     solutionFormat: "markdown-latex",
     explanationStatus: "not_generated",
     explanation: null,
@@ -566,8 +620,13 @@ Problem: "${problem}"
 
 Requirements:
 - All prose MUST be in ${targetLangName}.
-- Use KaTeX-compatible LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
+- CRITICAL: Every mathematical expression MUST be inside LaTeX delimiters.
+  - Inline (short, inside a sentence): $expression$
+  - Display (standalone equation on its own line): $$expression$$
+  - NEVER write LaTeX commands such as \\binom, \\frac, \\sqrt, \\times, \\begin directly in prose without $ or $$ delimiters.
+- Use KaTeX-compatible LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2, \\binom{n}{k}
 - For multi-line derivations use: $$\\begin{aligned} ... \\end{aligned}$$
+- Do NOT repeat or restate the problem. Begin directly with the solution.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - No internal reasoning or self-corrections. Output only the final polished derivation.
 - End with: **Final Answer:** [result]`;

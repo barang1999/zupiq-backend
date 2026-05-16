@@ -848,7 +848,7 @@ Problem: "${problem}"${solutionRef}
 
 Rules:
 1. All text MUST be in ${targetLangName}.
-2. Use standard LaTeX for math ($...$).
+2. Use standard LaTeX for math ($...$). In 'description' and 'label' fields, write plain English sentences — never use bare LaTeX commands (like \\matrix, \\vec, \\frac) outside of $...$ delimiters.
 3. Hierarchy (STRICT): 
    - 1 root node (parentId: null).
    - 3-5 branch nodes (logical steps). ALL branch nodes MUST have parentId: "root".
@@ -1067,7 +1067,7 @@ function stripLatexTabularEnv(text: string): string {
 }
 
 const MATH_DELIMITER_REGEX = /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/;
-const LATEX_COMMAND_SIGNAL_REGEX = /\\(?:frac|sqrt|cdot|times|div|pm|mp|le|leq|ge|geq|neq|approx|propto|sum|int|lim|Delta|alpha|beta|gamma|theta|lambda|mu|pi|sigma|omega|left|right|text|mathrm|mathbf|mathit|sin|cos|tan|log|ln|exp)\b|[A-Za-z0-9]\s*[\^_]\s*[A-Za-z0-9{(]/;
+const LATEX_COMMAND_SIGNAL_REGEX = /\\[a-zA-Z]+|[A-Za-z0-9]\s*[\^_]\s*[A-Za-z0-9{(]/;
 
 function normalizeNodeMathContent(raw: string): string {
   let text = normalizeMathExpression(stripLatexTabularEnv(raw ?? ""));
@@ -1104,7 +1104,7 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
     ...bd,
     nodes: nodes.map((node) => {
       const normalizedLabel = deepNormalizeMathProse(stripLatexTabularEnv(node.label ?? ""));
-      const normalizedDescription = deepNormalizeMathProse(stripLatexTabularEnv(node.description ?? ""));
+      const normalizedDescription = normalizeDescriptionText(stripLatexTabularEnv(node.description ?? ""));
       const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
 
       return {
@@ -1385,6 +1385,45 @@ function deepNormalizeMathProse(input: string): string {
   let text = repairBareMath(input);
   text = wrapBareMathInDelimiters(text);
   return normalizeMathSegments(text);
+}
+
+/**
+ * Normalizes a description/label field that mixes prose with $...$-delimited math.
+ *
+ * The fundamental difference from deepNormalizeMathProse:
+ *  - deepNormalizeMathProse calls repairBareMath() which injects \backslash into
+ *    plain English words that happen to be LaTeX command names (e.g. "matrix" → "\matrix").
+ *    That is correct for pure-math strings but corrupts prose descriptions.
+ *  - This function NEVER adds backslashes to prose words. It only:
+ *      1. Normalizes math that is already inside $...$ delimiters.
+ *      2. Strips any stray \word that may have leaked in through other paths.
+ *      3. Applies basic unicode/whitespace cleanup to prose segments.
+ *
+ * e.g. "The $2 \times 2$ matrix is..." stays "The $2 \times 2$ matrix is..."
+ *      (not "The $2 \times 2$ \matrix is...")
+ */
+function normalizeDescriptionText(input: string): string {
+  const text = String(input || "").trim();
+  if (!text) return text;
+
+  const DELIM_RE = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/;
+  const parts = text.split(DELIM_RE);
+
+  return parts
+    .map((part, idx) => {
+      if (idx % 2 === 1) {
+        // Math segment — apply standard math normalization (safe; only touches content inside delimiters)
+        return normalizeMathSegments(part);
+      }
+      // Prose segment — minimal, non-destructive cleanup only
+      return part
+        .replace(/\\([a-zA-Z]+)/g, "$1")   // strip any stray \word (e.g. \matrix → matrix)
+        .replace(/[−–]/g, "-")              // normalize unicode minus/dash
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, "") // strip zero-width artifacts
+        .replace(/\s{2,}/g, " ");           // collapse extra whitespace
+    })
+    .join("")
+    .trim();
 }
 
 function normalizeMathExpression(expr: string): string {

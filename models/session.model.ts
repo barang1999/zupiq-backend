@@ -1,5 +1,57 @@
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
+export type RenderBlock =
+  | {
+      type: 'text';
+      content: string;
+      lang?: string;
+    }
+  | {
+      type: 'math';
+      mode: 'inline' | 'display';
+      latex: string;
+      normalizedLatex: string;
+      valid: boolean;
+      warnings?: string[];
+    };
+
+export interface SessionBreakdownNode {
+  id: string;
+  type?: 'root' | 'branch' | 'leaf' | string;
+  label: string;
+  description: string;
+  mathContent?: string;
+  keyFormula?: string;
+  labelBlocks?: RenderBlock[];
+  descriptionBlocks?: RenderBlock[];
+  mathBlocks?: RenderBlock[];
+  parentId?: string;
+  subSteps?: SessionBreakdownNode[];
+  [key: string]: unknown;
+}
+
+export interface SolutionFirstSessionPayload {
+  version: 2 | 3;
+  mode: 'solution-first';
+  title: string;
+  subject: string;
+  topic?: string;
+  problem: string;
+  finalAnswer: string;
+  finalAnswerBlocks?: RenderBlock[];
+  solutionText: string;
+  solutionFormat: 'markdown-latex';
+  solutionBlocks?: RenderBlock[];
+  explanationStatus: 'not_generated' | 'generated';
+  explanation?: {
+    nodes: SessionBreakdownNode[];
+  } | null;
+  insights?: {
+    simpleBreakdown?: string;
+    keyFormula?: string;
+  };
+}
+
 export interface StudySession {
   id: string;
   user_id: string;
@@ -15,7 +67,7 @@ export interface StudySession {
   node_count: number;
   duration_seconds: number | null;
   // Serialized solution payload. Legacy sessions store ProblemBreakdown;
-  // solution-first sessions store ProblemSolutionFirst and defer explanation nodes.
+  // solution-first sessions store SolutionFirstSessionPayload and defer explanation nodes.
   breakdown_json: string;
   visual_table_json?: string | null;
   /** Public URL of the image uploaded to create this session, if any. */

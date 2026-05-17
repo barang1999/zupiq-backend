@@ -1,6 +1,7 @@
 import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
+import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
 import { getGeminiClient } from "./core/client.js";
 import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
 import type { AIRequestOptions } from "./core/types.js";
@@ -230,6 +231,9 @@ export interface BreakdownNode {
   description: string;
   mathContent?: string;
   keyFormula?: string;
+  labelBlocks?: RenderBlock[];
+  descriptionBlocks?: RenderBlock[];
+  mathBlocks?: RenderBlock[];
   parentId?: string;
   tags?: string[];
 }
@@ -246,7 +250,7 @@ export interface ProblemBreakdown {
 }
 
 export interface ProblemSolutionFirst {
-  version: 2;
+  version: 2 | 3;
   mode: "solution-first";
   title: string;
   subject: string;
@@ -255,6 +259,8 @@ export interface ProblemSolutionFirst {
   finalAnswer: string;
   solutionText: string;
   solutionFormat: "markdown-latex";
+  solutionBlocks?: RenderBlock[];
+  finalAnswerBlocks?: RenderBlock[];
   explanationStatus: "not_generated" | "generated";
   explanation?: {
     nodes: BreakdownNode[];
@@ -484,13 +490,15 @@ function normalizeSolutionFirstPayload(
 
   return {
     ...payload,
-    version: 2,
+    version: 3,
     mode: "solution-first",
     problem: payload.problem?.trim() || problem,
     subject: payload.subject?.trim() || subject,
     finalAnswer: repairGeneratedMathText(payload.finalAnswer),
     solutionText: afterRepair,
     solutionFormat: "markdown-latex",
+    solutionBlocks: buildRenderBlocks(afterRepair),
+    finalAnswerBlocks: buildRenderBlocks(repairGeneratedMathText(payload.finalAnswer), { defaultDisplay: false }),
     explanationStatus: "not_generated",
     explanation: null,
   };
@@ -1305,6 +1313,10 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
       const normalizedLabel = deepNormalizeMathProse(stripLatexTabularEnv(node.label ?? ""));
       const normalizedDescription = normalizeDescriptionText(stripLatexTabularEnv(node.description ?? ""));
       const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
+      const normalizedKeyFormula = normalizeNodeKeyFormula(
+        node.keyFormula ?? "",
+        normalizedMathContent || normalizedLabel || ""
+      );
 
       // Infer missing type: recovery responses often omit it.
       const inferredType: BreakdownNode["type"] =
@@ -1317,10 +1329,10 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
         label: normalizedLabel,
         description: normalizedDescription,
         mathContent: normalizedMathContent,
-        keyFormula: normalizeNodeKeyFormula(
-          node.keyFormula ?? "",
-          normalizedMathContent || normalizedLabel || ""
-        ),
+        keyFormula: normalizedKeyFormula,
+        labelBlocks: buildRenderBlocks(normalizedLabel),
+        descriptionBlocks: buildRenderBlocks(normalizedDescription),
+        mathBlocks: buildMathBlocks(normalizedMathContent || normalizedKeyFormula, { defaultDisplay: true }),
       };
     }),
   };

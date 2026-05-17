@@ -20,6 +20,7 @@ import {
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
+import { buildMathBlocks, buildRenderBlocks } from "../../utils/render-blocks.js";
 import {
   generateEducationalGameProblem,
   type GameProblemSubject,
@@ -238,8 +239,50 @@ function collectExplanationNodes(payload: any): any[] {
   return collected;
 }
 
+function isSolutionFirstPayload(payload: any): boolean {
+  return payload?.mode === "solution-first";
+}
+
+function attachRenderBlocksToNode(node: any): any {
+  if (!node || typeof node !== "object") return node;
+
+  const label = String(node.label || node.title || "").trim();
+  const description = String(node.description || node.why || "").trim();
+  const mathContent = String(node.mathContent || node.math || node.keyFormula || "").trim();
+
+  if (label && !Array.isArray(node.labelBlocks)) node.labelBlocks = buildRenderBlocks(label);
+  if (description && !Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = buildRenderBlocks(description);
+  if (mathContent && !Array.isArray(node.mathBlocks)) node.mathBlocks = buildMathBlocks(mathContent, { defaultDisplay: true });
+  if (Array.isArray(node.subSteps)) node.subSteps = node.subSteps.map(attachRenderBlocksToNode);
+
+  return node;
+}
+
+function attachRenderBlocksToPayload(payload: any): any {
+  if (!payload || typeof payload !== "object") return payload;
+
+  if (isSolutionFirstPayload(payload)) {
+    payload.version = 3;
+    if (payload.solutionText && !Array.isArray(payload.solutionBlocks)) {
+      payload.solutionBlocks = buildRenderBlocks(String(payload.solutionText));
+    }
+    if (payload.finalAnswer) {
+      payload.finalAnswerBlocks = buildRenderBlocks(String(payload.finalAnswer), { defaultDisplay: false });
+    }
+    if (Array.isArray(payload.explanation?.nodes)) {
+      payload.explanation.nodes = payload.explanation.nodes.map(attachRenderBlocksToNode);
+    }
+    return payload;
+  }
+
+  if (Array.isArray(payload.nodes)) {
+    payload.nodes = payload.nodes.map(attachRenderBlocksToNode);
+  }
+  return payload;
+}
+
 function getMutableExplanationNodes(payload: any): any[] {
-  if (payload?.version === 2 && payload?.mode === "solution-first") {
+  if (isSolutionFirstPayload(payload)) {
     if (!payload.explanation || typeof payload.explanation !== "object") {
       payload.explanation = {};
     }
@@ -967,12 +1010,16 @@ router.post(
         throw new ValidationError("Session solution data is not available.");
       }
 
-      const solutionPayload = payload as Record<string, any>;
-      const existingNodes = solutionPayload.version === 2 && solutionPayload.mode === "solution-first"
+      const solutionPayload = attachRenderBlocksToPayload(payload as Record<string, any>);
+      const existingNodes = isSolutionFirstPayload(solutionPayload)
         ? solutionPayload.explanation?.nodes
         : solutionPayload.nodes;
 
       if (Array.isArray(existingNodes) && existingNodes.length > 0) {
+        await updateSession(session.id, userId, {
+          breakdown_json: solutionPayload,
+          node_count: existingNodes.length,
+        }).catch(() => null);
         res.json({
           session,
           explanation: { nodes: existingNodes },
@@ -993,18 +1040,22 @@ router.post(
         undefined, 
         solutionPayload.solutionText || undefined
       );
-      const nextPayload = solutionPayload.version === 2 && solutionPayload.mode === "solution-first"
+      const explanationNodes = Array.isArray(explanation.nodes)
+        ? explanation.nodes.map(attachRenderBlocksToNode)
+        : [];
+      const nextPayload = isSolutionFirstPayload(solutionPayload)
         ? {
             ...solutionPayload,
+            version: 3,
             explanationStatus: "generated",
-            explanation: { nodes: explanation.nodes },
+            explanation: { nodes: explanationNodes },
             insights: explanation.insights ?? solutionPayload.insights ?? {},
           }
-        : explanation;
+        : attachRenderBlocksToPayload({ ...explanation, nodes: explanationNodes });
 
       const updatedSession = await updateSession(session.id, userId, {
         breakdown_json: nextPayload,
-        node_count: Array.isArray(explanation.nodes) ? explanation.nodes.length : 0,
+        node_count: explanationNodes.length,
       });
 
       const usage = await consumeTokenBudget(budget, {
@@ -1014,7 +1065,7 @@ router.post(
 
       res.json({
         session: updatedSession,
-        explanation: { nodes: explanation.nodes },
+        explanation: { nodes: explanationNodes },
         usage,
         cached: false,
       });
@@ -1180,6 +1231,7 @@ router.post(
       });
 
       stage = "session:create";
+      solution = attachRenderBlocksToPayload(solution) as typeof solution;
       const session = await createSession(userId, {
         title: (solution.title || "New Session").trim(),
         subject: (solution.subject || subject || "General").trim(),
@@ -1275,7 +1327,7 @@ router.post(
         throw new ValidationError("Session solution data is not available.");
       }
 
-      const solutionPayload = payload as Record<string, any>;
+      const solutionPayload = attachRenderBlocksToPayload(payload as Record<string, any>);
       const nodes = getMutableExplanationNodes(solutionPayload);
       const targetNode = findNodeById(nodes, node_id.trim());
       if (!targetNode) throw new ValidationError("Step is not available in this session.");
@@ -1320,7 +1372,7 @@ router.post(
         }
       );
 
-      const subSteps = generated.map((node, index) => ({
+      const subSteps = generated.map((node, index) => attachRenderBlocksToNode({
         ...node,
         id: `${targetNode.id}_sub_${index + 1}`,
         parentId: String(targetNode.id),

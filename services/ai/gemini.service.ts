@@ -314,7 +314,14 @@ function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
   const candidate = value as ProblemBreakdown;
   if (!Array.isArray(candidate.nodes) || candidate.nodes.length < 5) return false;
 
-  const branchNodes = candidate.nodes.filter((node) => node?.type === "branch");
+  // Prefer explicitly typed branch nodes; recovery responses often omit `type`,
+  // so fall back to non-root nodes (parentId === "root" or id !== "root") as branch candidates.
+  let branchNodes = candidate.nodes.filter((node) => node?.type === "branch");
+  if (branchNodes.length < 2) {
+    branchNodes = candidate.nodes.filter(
+      (node) => node?.parentId === "root" || (node?.id !== "root" && !node?.type)
+    );
+  }
   if (branchNodes.length < 2) return false;
 
   const hasConcreteBranch = branchNodes.some((node) => {
@@ -1299,8 +1306,14 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
       const normalizedDescription = normalizeDescriptionText(stripLatexTabularEnv(node.description ?? ""));
       const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
 
+      // Infer missing type: recovery responses often omit it.
+      const inferredType: BreakdownNode["type"] =
+        node.type ||
+        (node.id === "root" || node.parentId == null ? "root" : "branch");
+
       return {
         ...node,
+        type: inferredType,
         label: normalizedLabel,
         description: normalizedDescription,
         mathContent: normalizedMathContent,

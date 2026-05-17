@@ -34,6 +34,10 @@ export function buildSystemInstruction(options: AIRequestOptions): string {
     ? `\n\n${options.userKnowledgeContext}`
     : "";
 
+  const referenceSection = options.referenceContext
+    ? `\n\n${options.referenceContext}`
+    : "";
+
   const stepSection = options.stepContext
     ? `\n\n[CONTEXT FOR CURRENT STEP]\n${options.stepContext}`
     : "";
@@ -49,11 +53,11 @@ Guidelines:
 - If a student seems stuck, offer a hint before giving the full answer.
 - Encourage curiosity and critical thinking.
 - Keep answers focused and avoid unnecessary verbosity.
+- If reference response patterns are provided, use them to shape the explanation style and structure, but do not copy source text verbatim.
 
 Math formatting rules (CRITICAL — always follow these):
 - Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
 - NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.
 - If you need to label a variable in the local language, write it as plain text OUTSIDE the math block. Example: "$A = l \\times w$ (ដែល $A$ គឺជាក្រឡា, $l$ គឺជាប្រវែង, $w$ គឺជាទទឹង)"
-- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.${knowledgeSection}`;
+- Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.${knowledgeSection}${referenceSection}`;
 }
-

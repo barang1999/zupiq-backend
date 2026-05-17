@@ -10,8 +10,13 @@ export interface AIRequestOptions {
    */
   userKnowledgeContext?: string;
   /**
+   * Retrieved textbook/source snippets for grounding the current answer.
+   * This is separate from userKnowledgeContext because it is curriculum/reference
+   * material, not the student's personal saved memory.
+   */
+  referenceContext?: string;
+  /**
    * Specific tutoring context about the current step being discussed.
    */
   stepContext?: string;
 }
-

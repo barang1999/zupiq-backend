@@ -6,7 +6,13 @@ dist/
 !.env.example
 uploads/
 data/
+!data/
+data/*
+!data/reference/
+data/reference/*
+!data/reference/*.reference.json
 *.json
 !package.json
 !tsconfig.json
 !database/schema.sql
+!data/reference/*.reference.json

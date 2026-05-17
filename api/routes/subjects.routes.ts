@@ -62,13 +62,9 @@ router.get("/", optionalAuth, async (req: Request, res: Response, next: NextFunc
 
       const { data: sessions, error: sessionsError } = await db
         .from("study_sessions")
-        .select("subject_id, subject")
+        .select("subject_id")
         .eq("user_id", req.user.sub);
       if (sessionsError) throw new Error(sessionsError.message);
-
-      const sessionSubjectNames = ((sessions ?? []) as Array<Record<string, unknown>>)
-        .map((row) => (typeof row.subject === "string" ? row.subject.trim() : ""))
-        .filter(Boolean);
 
       ((sessions ?? []) as Array<Record<string, unknown>>).forEach((row) => {
         if (typeof row.subject_id === "string" && row.subject_id.trim()) {
@@ -76,7 +72,7 @@ router.get("/", optionalAuth, async (req: Request, res: Response, next: NextFunc
         }
       });
 
-      const namesToResolve = [...preferredNames, ...sessionSubjectNames];
+      const namesToResolve = [...preferredNames];
       const subjectRows = (subjects ?? []) as Array<Record<string, unknown>>;
       namesToResolve.forEach((name) => {
         const normalizedName = normalizeSubjectKey(name);

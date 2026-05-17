@@ -17,6 +17,7 @@ import {
   getNodeInsight,
   requiresVisualTable,
   generateVisualTable,
+  type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
 import {
@@ -33,6 +34,7 @@ import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
 import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
+import { buildReferenceContext } from "../../services/reference-corpus.service.js";
 import { extractWithMathpix } from "../../services/ai/mathpix.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
@@ -97,8 +99,23 @@ const GAME_PROBLEM_MODES: readonly GameProblemMode[] = ["learn", "practice", "ch
 router.use(requireAuth);
 router.use(aiRateLimit);
 
-async function resolveAIOptions(req: Request, options: { subject?: string; session_id?: string; step_id?: string } = {}) {
-  const { subject, session_id, step_id } = options;
+interface ResolveAIOptionsOptions {
+  subject?: string | null;
+  session_id?: string;
+  step_id?: string;
+}
+
+interface ContextualAIOptionsOptions extends ResolveAIOptionsOptions {
+  referenceQuery?: string;
+}
+
+async function resolveAIOptions(
+  req: Request,
+  options: ResolveAIOptionsOptions | string = {}
+): Promise<AIRequestOptions> {
+  const normalizedOptions = typeof options === "string" ? { subject: options } : options;
+  const { session_id, step_id } = normalizedOptions;
+  const subject = normalizedOptions.subject ?? undefined;
   const tokenUser = req.user!;
   const latestUser = await getUserById(tokenUser.sub);
 
@@ -163,6 +180,39 @@ INSTRUCTION:
     }
   }
 
+  return aiOptions;
+}
+
+async function buildContextualAIOptions(
+  req: Request,
+  options: ContextualAIOptionsOptions = {}
+): Promise<AIRequestOptions> {
+  let aiOptions = await resolveAIOptions(req, options);
+  const subject = options.subject;
+  const query = [
+    options.referenceQuery,
+    subject,
+    aiOptions.grade ? `grade ${aiOptions.grade}` : "",
+  ].filter(Boolean).join("\n");
+
+  const [knowledgeCtx, referenceCtx] = await Promise.all([
+    buildUserKnowledgeContext(req.user!.sub, subject).catch((err) => {
+      logger.error("Failed to build user knowledge context", err);
+      return null;
+    }),
+    buildReferenceContext({
+      subject,
+      grade: aiOptions.grade,
+      language: aiOptions.language,
+      query,
+    }).catch((err) => {
+      logger.error("Failed to build reference context", err);
+      return null;
+    }),
+  ]);
+
+  if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
+  if (referenceCtx) aiOptions = { ...aiOptions, referenceContext: referenceCtx };
   return aiOptions;
 }
 
@@ -432,7 +482,13 @@ router.post(
 
       const userId = req.user!.sub;
       const budget = await reserveTokenBudget(userId);
-      let aiOptions = await resolveAIOptions(req, { subject, session_id, step_id });
+      const lastUserMessage = messages[messages.length - 1];
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        session_id,
+        step_id,
+        referenceQuery: typeof lastUserMessage?.content === "string" ? lastUserMessage.content : "",
+      });
 
       let imagePart: { data: string; mimeType: string } | undefined;
       if (upload_id) {
@@ -443,15 +499,12 @@ router.post(
         }
       }
 
-      const knowledgeCtx = await buildUserKnowledgeContext(userId, subject).catch(() => null);
-      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
-
       const chatResult = await chat(messages, aiOptions, imagePart);
       const aiSegments = segmentMathContent(chatResult.text);
 
       // Persist last user message and AI response
       const sid = session_id ?? generateId();
-      const lastUserMsg = messages[messages.length - 1];
+      const lastUserMsg = lastUserMessage;
       const db = getSupabaseAdmin();
       await db.from("chat_messages").insert([
         { 
@@ -511,7 +564,7 @@ router.post(
       if (!concept) throw new ValidationError("concept is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, { subject, referenceQuery: concept });
       const explanation = await explainConcept(concept, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { concept, subject },
@@ -535,7 +588,7 @@ router.post(
       if (!problem) throw new ValidationError("problem is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, { subject, referenceQuery: problem });
       const solution = await solveProblem(problem, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { problem, subject },
@@ -559,7 +612,7 @@ router.post(
       if (!problem) throw new ValidationError("problem is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, { subject, referenceQuery: problem });
       const hint = await giveHint(problem, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { problem, subject },
@@ -583,7 +636,7 @@ router.post(
       if (!content) throw new ValidationError("content is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, { subject, referenceQuery: content });
       const summary = await summarizeContent(content, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { content, subject },
@@ -621,7 +674,10 @@ router.post(
         : 1;
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, { subject });
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: `${subject} ${mode} difficulty ${difficulty}`,
+      });
       const problem = await generateEducationalGameProblem(subject, difficulty, mode, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { subject, difficulty, mode },
@@ -692,7 +748,10 @@ router.post(
       });
 
       stage = "resolve:ai-options";
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: `${subject ?? ""} ${mode ?? ""} ${upload.original_name ?? ""}`,
+      });
       logger.info("[analyze-image] request", {
         traceId,
         userId: req.user!.sub,
@@ -818,9 +877,7 @@ router.post(
       if (!problem) throw new ValidationError("problem is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      let aiOptions = await resolveAIOptions(req, subject);
-      const knowledgeCtx = await buildUserKnowledgeContext(req.user!.sub, subject).catch(() => null);
-      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
+      const aiOptions = await buildContextualAIOptions(req, { subject, referenceQuery: problem });
 
       let imagePart: { data: string; mimeType: string } | undefined;
       if (upload_id) {
@@ -925,9 +982,10 @@ router.post(
       }
 
       const budget = await reserveTokenBudget(userId);
-      let aiOptions = await resolveAIOptions(req, { subject: session.subject });
-      const knowledgeCtx = await buildUserKnowledgeContext(userId, session.subject).catch(() => null);
-      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject: session.subject,
+        referenceQuery: session.problem,
+      });
 
       const explanation = await breakdownProblem(
         session.problem, 
@@ -987,12 +1045,16 @@ router.post(
       }
 
       const budget = await reserveTokenBudget(userId);
-      const aiOptions = await resolveAIOptions(req, subject);
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: typeof problem_text === "string" ? problem_text : subject,
+      });
 
       let problemText: string;
       let solution: import("../../services/ai/gemini.service.js").ProblemSolutionFirst;
       let ocrSource: "on-device" | "gemini-vision" = "gemini-vision";
       let imagePart: { data: string; mimeType: string } | undefined;
+      let uploadRecord: any = null;
 
       if (problem_text) {
         // ── Fast path: on-device OCR (ML Kit) already extracted the text ──────
@@ -1029,14 +1091,14 @@ router.post(
         } else {
           stage = "lookup:upload";
           emitProgress(traceId, { stage: "READING", progress: 10, message: "Reading problem..." });
-          const upload = await getUploadById(upload_id);
-          if (!upload) throw new ValidationError("Upload not found");
-          if (upload.user_id !== userId) {
+          uploadRecord = await getUploadById(upload_id);
+          if (!uploadRecord) throw new ValidationError("Upload not found");
+          if (uploadRecord.user_id !== userId) {
             res.status(403).json({ error: "Forbidden" });
             return;
           }
           stage = "read:file";
-          const imagePartRead = await readUploadAsBase64(upload);
+          const imagePartRead = await readUploadAsBase64(uploadRecord);
           imagePart = { data: imagePartRead.data, mimeType: imagePartRead.mimeType } as { data: string; mimeType: string };
           logger.info("[instant-session] using upload", {
             traceId, uploadId: upload_id, source: imagePartRead.source,
@@ -1101,13 +1163,32 @@ router.post(
         );
       }
 
+      // Resolve image_url from the upload (if it came via upload_id path)
+      let sessionImageUrl: string | null = null;
+      if (uploadRecord?.storage_url) {
+        sessionImageUrl = uploadRecord.storage_url;
+      } else if (upload_id) {
+        const up = await getUploadById(upload_id).catch(() => null);
+        if (up?.storage_url) sessionImageUrl = up.storage_url;
+      }
+
+      logger.info("[instant-session] resolved session image url", {
+        traceId,
+        uploadId: upload_id,
+        sessionImageUrl,
+        uploadRecordStorageUrl: uploadRecord?.storage_url ?? null,
+      });
+
+      stage = "session:create";
       const session = await createSession(userId, {
         title: (solution.title || "New Session").trim(),
         subject: (solution.subject || subject || "General").trim(),
+        topic: solution.topic || null,
         problem: problemText,
         node_count: 0,
         breakdown_json: solution,
         visual_table_json: visualTable,
+        image_url: sessionImageUrl,
       });
 
       stage = "activity:log";
@@ -1155,7 +1236,10 @@ router.post(
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, { subject });
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: [nodeLabel, nodeMathContent, parentProblem].filter(Boolean).join("\n"),
+      });
       const nodes = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { nodeLabel, nodeMathContent: nodeMathContent ?? nodeLabel, parentProblem, subject },
@@ -1212,10 +1296,16 @@ router.post(
       }
 
       const budget = await reserveTokenBudget(userId);
-      const aiOptions = await resolveAIOptions(req, {
+      const aiOptions = await buildContextualAIOptions(req, {
         subject: session.subject,
         session_id: session.id,
         step_id: String(targetNode.id),
+        referenceQuery: [
+          session.problem,
+          targetNode.label,
+          targetNode.description,
+          targetNode.mathContent,
+        ].filter(Boolean).join("\n"),
       });
       const generated = await expandNode(
         String(targetNode.label || targetNode.title || `Step ${targetNode.id}`),
@@ -1273,7 +1363,10 @@ router.post(
       if (!nodeLabel || !parentProblem) throw new ValidationError("nodeLabel and parentProblem are required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      const aiOptions = await resolveAIOptions(req, { subject });
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: [nodeLabel, nodeDescription, nodeMathContent, parentProblem].filter(Boolean).join("\n"),
+      });
       const node = await regenerateBranchNode(
         nodeLabel,
         nodeDescription ?? "",
@@ -1310,9 +1403,10 @@ router.post(
       if (!nodeLabel) throw new ValidationError("nodeLabel is required");
 
       const budget = await reserveTokenBudget(req.user!.sub);
-      let aiOptions = await resolveAIOptions(req, subject);
-      const knowledgeCtx = await buildUserKnowledgeContext(req.user!.sub, subject).catch(() => null);
-      if (knowledgeCtx) aiOptions = { ...aiOptions, userKnowledgeContext: knowledgeCtx };
+      const aiOptions = await buildContextualAIOptions(req, {
+        subject,
+        referenceQuery: [nodeLabel, nodeDescription, nodeMathContent].filter(Boolean).join("\n"),
+      });
       logger.info("[node-insight] request", {
         userId: req.user!.sub,
         level: level ?? "standard",

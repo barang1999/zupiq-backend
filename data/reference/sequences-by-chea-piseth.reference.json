@@ -1,0 +1,580 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "sequences-chea-piseth",
+    "title": "Sequences",
+    "titleKh": "ពិភពជម្រើស លំហាត់ស្វ៊ីត",
+    "author": "Chea Piseth",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": [
+      "10",
+      "11",
+      "12"
+    ],
+    "sourceType": "book",
+    "topics": [
+      "sequences",
+      "arithmetic_sequence",
+      "geometric_sequence",
+      "sequence_sum",
+      "mathematical_induction"
+    ],
+    "metadata": {
+      "pageCount": 100,
+      "originalFile": "Sequences by Chea Piseth.pdf",
+      "rawExtractionFile": "frontend/src/assets/design/sequences-by-chea-piseth.json"
+    },
+    "quality": {
+      "textExtraction": "medium",
+      "formulaExtraction": "partial",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "worked_example",
+        "formula_rule",
+        "problem_solution"
+      ],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": [
+        "យើងមានៈ",
+        "នាំអោយ",
+        "តាមរូបមន្ត",
+        "តាមទំនាក់ទំនង",
+        "ដូចនេះ",
+        "ចម្លើយ"
+      ],
+      "avoid": [
+        "កុំចម្លងប្រយោគយาวៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "concept_explanation"
+      ],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": [
+        "មានន័យថា",
+        "លុះត្រាតែ",
+        "សម្គាល់ៈ",
+        "ឧទាហរណ៍",
+        "ដូចនេះ"
+      ],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "sequences-chea-piseth-p004-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 4,
+      "pageEnd": 4,
+      "topic": "sequence_definition",
+      "topicKh": "សញ្ញាណស្វ៊ីត",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "ស្វ៊ីតចំនួនពិត គឺជាអនុគមន៍ដែលកំណត់តួតាមលេខរៀងធម្មជាតិ។ តួទី n នៃស្វ៊ីតត្រូវបានហៅថាតួទូទៅ។",
+      "normalizedText": "A real sequence is a function from natural-number indices to real numbers. The nth term is the general term of the sequence.",
+      "formulas": [
+        {
+          "latex": "u_n",
+          "meaning": "តួទី n នៃស្វ៊ីត",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីត",
+        "តួទី n",
+        "តួទូទៅ",
+        "sequence",
+        "general term",
+        "u_n"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p004-c002",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 4,
+      "pageEnd": 5,
+      "topic": "sequence_monotonicity",
+      "topicKh": "អថេរភាពនៃស្វ៊ីត",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "ដើម្បីសិក្សាថាស្វ៊ីតកើន ចុះ ឬថេរ គេប្រៀបធៀបតួបន្ទាប់ជាមួយតួមុន។ បើផលដកតួបន្ទាប់និងតួមុនវិជ្ជមាន ស្វ៊ីតកើន។ បើអវិជ្ជមាន ស្វ៊ីតចុះ។ បើស្មើសូន្យ ស្វ៊ីតថេរ។ បើគ្រប់តួវិជ្ជមាន គេអាចប្រើផលធៀបតួបន្ទាប់និងតួមុន។",
+      "normalizedText": "To study monotonicity, compare consecutive terms. If u_{n+1}-u_n > 0, the sequence is increasing. If u_{n+1}-u_n < 0, it is decreasing. If u_{n+1}-u_n = 0, it is constant. For positive terms, the ratio u_{n+1}/u_n can also be used.",
+      "formulas": [
+        {
+          "latex": "u_{n+1}-u_n > 0",
+          "meaning": "ស្វ៊ីតកើន",
+          "confidence": 0.95
+        },
+        {
+          "latex": "u_{n+1}-u_n < 0",
+          "meaning": "ស្វ៊ីតចុះ",
+          "confidence": 0.95
+        },
+        {
+          "latex": "u_{n+1}-u_n = 0",
+          "meaning": "ស្វ៊ីតថេរ",
+          "confidence": 0.95
+        },
+        {
+          "latex": "\\frac{u_{n+1}}{u_n}",
+          "meaning": "ផលធៀបសម្រាប់សិក្សាអថេរភាពនៅពេលតួវិជ្ជមាន",
+          "confidence": 0.9
+        }
+      ],
+      "keywords": [
+        "អថេរភាព",
+        "ស្វ៊ីតកើន",
+        "ស្វ៊ីតចុះ",
+        "ស្វ៊ីតថេរ",
+        "monotonic",
+        "increasing",
+        "decreasing"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p005-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 5,
+      "pageEnd": 5,
+      "topic": "bounded_sequence",
+      "topicKh": "ស្វ៊ីតទាល់",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "ស្វ៊ីតទាល់លើមានចំនួនពិតមួយជាគោលលើ ដែលគ្រប់តួរបស់ស្វ៊ីតមិនលើសពីវា។ ស្វ៊ីតទាល់ក្រោមមានចំនួនពិតមួយជាគោលក្រោម ដែលគ្រប់តួរបស់ស្វ៊ីតមិនតិចជាងវា។ ស្វ៊ីតទាល់ គឺជាស្វ៊ីតដែលទាល់លើផង និងទាល់ក្រោមផង។",
+      "normalizedText": "An upper-bounded sequence has a real upper bound M such that u_n <= M for all n. A lower-bounded sequence has a real lower bound m such that u_n >= m for all n. A bounded sequence is both upper- and lower-bounded.",
+      "formulas": [
+        {
+          "latex": "u_n \\le M",
+          "meaning": "គោលលើ",
+          "confidence": 0.9
+        },
+        {
+          "latex": "u_n \\ge m",
+          "meaning": "គោលក្រោម",
+          "confidence": 0.9
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតទាល់",
+        "គោលលើ",
+        "គោលក្រោម",
+        "bounded sequence",
+        "upper bound",
+        "lower bound"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p005-c002",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 5,
+      "pageEnd": 6,
+      "topic": "arithmetic_sequence",
+      "topicKh": "ស្វ៊ីតនព្វន្ត",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-concept-explanation",
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ស្វ៊ីតនព្វន្ត គឺជាស្វ៊ីតដែលតួក្រោយនីមួយៗស្មើនឹងតួមុនបូកនឹងចំនួនថេរ d។ d ហៅថាផលសងរួម ឬរេសុង។ តួទី n របស់ស្វ៊ីតនព្វន្តអាចរកបានពីតួទី១ និងផលសងរួម។",
+      "normalizedText": "An arithmetic sequence is a sequence where each term after the first is obtained by adding a constant difference d to the previous term. The nth term is u_n = u_1 + (n - 1)d.",
+      "formulas": [
+        {
+          "latex": "u_{n+1}=u_n+d",
+          "meaning": "ទំនាក់ទំនងកំណើននៃស្វ៊ីតនព្វន្ត",
+          "confidence": 0.95
+        },
+        {
+          "latex": "u_n=u_1+(n-1)d",
+          "meaning": "តួទី n នៃស្វ៊ីតនព្វន្ត",
+          "confidence": 0.98
+        },
+        {
+          "latex": "u_n=u_p+(n-p)d",
+          "meaning": "តួទី n បើស្គាល់តួទី p",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតនព្វន្ត",
+        "ផលសងរួម",
+        "រេសុង",
+        "arithmetic sequence",
+        "common difference",
+        "u_n"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p006-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 6,
+      "pageEnd": 6,
+      "topic": "arithmetic_sequence_sum",
+      "topicKh": "ផលបូកស្វ៊ីតនព្វន្ត",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ផលបូក n តួដំបូងនៃស្វ៊ីតនព្វន្តអាចគណនាដោយយកចំនួនតួ គុណនឹងមធ្យមនៃតួដំបូងនិងតួចុងក្រោយ។ បើស្គាល់តួទី១ និងផលសងរួម d អាចប្រើរូបមន្តទម្រង់ទីពីរ។",
+      "normalizedText": "The sum of the first n terms of an arithmetic sequence is S_n = n(u_1+u_n)/2. If u_1 and d are known, S_n = n[2u_1+(n-1)d]/2.",
+      "formulas": [
+        {
+          "latex": "S_n=\\frac{n(u_1+u_n)}{2}",
+          "meaning": "ផលបូក n តួដំបូង",
+          "confidence": 0.98
+        },
+        {
+          "latex": "S_n=\\frac{n\\left(2u_1+(n-1)d\\right)}{2}",
+          "meaning": "ផលបូក n តួដំបូងដោយប្រើ u_1 និង d",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "ផលបូក",
+        "ស្វ៊ីតនព្វន្ត",
+        "S_n",
+        "arithmetic series",
+        "sum"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p006-c002",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 6,
+      "pageEnd": 7,
+      "topic": "geometric_sequence",
+      "topicKh": "ស្វ៊ីតធរណីមាត្រ",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-concept-explanation",
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ស្វ៊ីតធរណីមាត្រ គឺជាស្វ៊ីតដែលតួក្រោយនីមួយៗស្មើនឹងតួមុនគុណនឹងចំនួនថេរ q។ q ហៅថាផលធៀបរួម ឬរេសុង។ តួទី n អាចរកបានពីតួទី១ និងផលធៀបរួម។",
+      "normalizedText": "A geometric sequence is a sequence where each term after the first is obtained by multiplying the previous term by a constant ratio q. The nth term is u_n = u_1 q^{n-1}.",
+      "formulas": [
+        {
+          "latex": "u_{n+1}=q u_n",
+          "meaning": "ទំនាក់ទំនងកំណើននៃស្វ៊ីតធរណីមាត្រ",
+          "confidence": 0.95
+        },
+        {
+          "latex": "u_n=u_1q^{n-1}",
+          "meaning": "តួទី n នៃស្វ៊ីតធរណីមាត្រ",
+          "confidence": 0.98
+        },
+        {
+          "latex": "u_n=u_pq^{n-p}",
+          "meaning": "តួទី n បើស្គាល់តួទី p",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតធរណីមាត្រ",
+        "ផលធៀបរួម",
+        "រេសុង",
+        "geometric sequence",
+        "common ratio",
+        "q"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p007-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 7,
+      "pageEnd": 8,
+      "topic": "geometric_sequence_sum",
+      "topicKh": "ផលបូកស្វ៊ីតធរណីមាត្រ",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ផលបូក n តួដំបូងនៃស្វ៊ីតធរណីមាត្រអាចគណនាដោយប្រើតួទី១ និងផលធៀបរួម q។ សម្រាប់ស្វ៊ីតធរណីមាត្រអនន្តតួ ផលបូកកំណត់បានតែពេលតម្លៃដាច់ខាតនៃ q តូចជាង 1។",
+      "normalizedText": "The sum of the first n terms of a geometric sequence is S_n = u_1(1-q^n)/(1-q), for q != 1. The infinite sum exists when |q| < 1 and equals S_infinity = u_1/(1-q).",
+      "formulas": [
+        {
+          "latex": "S_n=\\frac{u_1(1-q^n)}{1-q}",
+          "meaning": "ផលបូក n តួដំបូងនៃស្វ៊ីតធរណីមាត្រ",
+          "confidence": 0.95
+        },
+        {
+          "latex": "S_\\infty=\\frac{u_1}{1-q},\\quad |q|<1",
+          "meaning": "ផលបូកអនន្តតួ",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "ផលបូក",
+        "ស្វ៊ីតធរណីមាត្រ",
+        "អនន្តតួ",
+        "geometric series",
+        "infinite series"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p008-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 8,
+      "pageEnd": 9,
+      "topic": "summation_formulas",
+      "topicKh": "រូបមន្តផលបូក",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "និមិត្តសញ្ញា sigma ត្រូវបានប្រើសម្រាប់តាងផលបូក។ រូបមន្តសំខាន់ៗរួមមានផលបូកចំនួនគត់ពី 1 ដល់ n ផលបូកការេ និងផលបូកគូប។",
+      "normalizedText": "Sigma notation represents sums. Important formulas are sum_{k=1}^n k = n(n+1)/2, sum_{k=1}^n k^2 = n(n+1)(2n+1)/6, and sum_{k=1}^n k^3 = [n(n+1)/2]^2.",
+      "formulas": [
+        {
+          "latex": "\\sum_{k=1}^{n} k=\\frac{n(n+1)}{2}",
+          "meaning": "ផលបូកចំនួនគត់ពី 1 ដល់ n",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\sum_{k=1}^{n} k^2=\\frac{n(n+1)(2n+1)}{6}",
+          "meaning": "ផលបូកការេ",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\sum_{k=1}^{n} k^3=\\left(\\frac{n(n+1)}{2}\\right)^2",
+          "meaning": "ផលបូកគូប",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "sigma",
+        "សិចម៉ា",
+        "ផលបូក",
+        "sum",
+        "summation",
+        "sum of squares",
+        "sum of cubes"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "sequences-chea-piseth-p011-c001",
+      "sourceId": "sequences-chea-piseth",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "10",
+        "11",
+        "12"
+      ],
+      "pageStart": 11,
+      "pageEnd": 11,
+      "topic": "mathematical_induction",
+      "topicKh": "វិចារអនុមានរួមគណិតវិទ្យា",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation",
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ដើម្បីស្រាយថាសំណើ P(n) ពិតចំពោះគ្រប់ចំនួនគត់ធម្មជាតិ n គេផ្ទៀងផ្ទាត់ករណីដំបូង បន្ទាប់មកឧបមាថា P(k) ពិត ហើយស្រាយថា P(k+1) ពិត។",
+      "normalizedText": "To prove P(n) for all natural numbers n by mathematical induction: verify the base case, assume P(k) is true, then prove P(k+1) is true.",
+      "formulas": [
+        {
+          "latex": "P(1)",
+          "meaning": "ករណីដំបូង",
+          "confidence": 0.95
+        },
+        {
+          "latex": "P(k)\\Rightarrow P(k+1)",
+          "meaning": "ជំហានអនុមាន",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "វិចារអនុមាន",
+        "អនុមានរួម",
+        "induction",
+        "mathematical induction",
+        "prove"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": true,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

@@ -237,6 +237,7 @@ export interface BreakdownNode {
 export interface ProblemBreakdown {
   title: string;
   subject: string;
+  topic?: string;
   nodes: BreakdownNode[];
   insights: {
     simpleBreakdown: string;
@@ -249,6 +250,7 @@ export interface ProblemSolutionFirst {
   mode: "solution-first";
   title: string;
   subject: string;
+  topic?: string;
   problem: string;
   finalAnswer: string;
   solutionText: string;
@@ -368,6 +370,11 @@ function buildFallbackSolutionFirst(
     mode: "solution-first",
     title: problem.slice(0, 70) || "New Solution",
     subject,
+    topic: subject.toLowerCase().includes("physic") 
+      ? "mechanics" 
+      : subject.toLowerCase().includes("chem") 
+        ? "general-chemistry" 
+        : "algebra",
     problem,
     finalAnswer: "See solution",
     solutionText,
@@ -530,6 +537,7 @@ async function generateRawSolution(
 interface SolutionMetadata {
   title: string;
   subject: string;
+  topic: string;
   problem: string;
   finalAnswer: string;
   problemText?: string;
@@ -547,11 +555,19 @@ async function extractSolutionMetadata(
 ): Promise<SolutionMetadata> {
   const schemaProperties: Record<string, object> = {
     title: { type: Type.STRING },
-    subject: { type: Type.STRING },
+    subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
+    topic: { 
+      type: Type.STRING, 
+      enum: [
+        "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
+        "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
+        "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
+      ] 
+    },
     problem: { type: Type.STRING },
     finalAnswer: { type: Type.STRING },
   };
-  const requiredFields = ["title", "subject", "problem", "finalAnswer"];
+  const requiredFields = ["title", "subject", "topic", "problem", "finalAnswer"];
 
   if (includeProblemText) {
     (schemaProperties as any).problemText = { type: Type.STRING };
@@ -570,8 +586,12 @@ ${rawSolution.slice(0, 4000)}
 PROBLEM HINT: "${problemHint.slice(0, 200)}"
 
 Return JSON with:
-- title: short descriptive title (max 70 chars)
-- subject: academic subject (e.g. "Mathematics", "Physics", "Chemistry")
+- title: short descriptive title specifically for the math/science problem itself (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar. Describe the specific problem (e.g. "គណនាលំដាប់ស៊េរីតេឡេស្កូប", "Evaluate rational integral", "Difference of squares").
+- subject: Must be strictly one of: "Math", "Physics", "Chemistry" (and nothing else! No subtopics, no other languages).
+- topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
+  * For Math: "algebra" (equations, polynomials, sequences, series), "geometry" (shapes, coordinates, trig), "calculus" (limits, derivatives, integrals), "probability-stats", "arithmetic" (basic numbers, roots, fractions).
+  * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
+  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 - problem: the problem statement with proper LaTeX math notation
 - finalAnswer: only the final result (e.g. "x = 3", "$v = 12\\ \\text{m/s}$")${problemTextInstruction}`;
 
@@ -592,7 +612,8 @@ Return JSON with:
   const fallbackTitle = problemHint.slice(0, 70) || "New Solution";
   return {
     title: `${data?.title ?? ""}`.trim() || fallbackTitle,
-    subject: `${data?.subject ?? ""}`.trim() || options.subject || "Mathematics",
+    subject: `${data?.subject ?? ""}`.trim() || options.subject || "Math",
+    topic: `${data?.topic ?? ""}`.trim() || "algebra",
     problem: `${data?.problem ?? ""}`.trim() || problemHint,
     finalAnswer: `${data?.finalAnswer ?? ""}`.trim() || "",
     ...(includeProblemText
@@ -649,6 +670,7 @@ Requirements:
           mode: "solution-first",
           title: metadata.title,
           subject: metadata.subject,
+          topic: metadata.topic,
           problem: metadata.problem || problem,
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
@@ -685,7 +707,13 @@ Rules:
 12. CRITICAL: NEVER include your internal reasoning process, self-corrections, or conversational filler.
 13. ABSOLUTELY FORBIDDEN: Phrases like "Wait," "Let me recheck," "I made a mistake," "Let's recalculate," or "I found a different solution online."
 14. Finality: Perform all reasoning internally. Output ONLY the final, polished, and correct mathematical derivation. It should look like a finished exam paper, not a scratchpad.
-15. Do NOT use "Step 1:", "Step 2:", or any numbered step headers. The solution should flow naturally.`;
+15. Do NOT use "Step 1:", "Step 2:", or any numbered step headers. The solution should flow naturally.
+16. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+17. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
+18. topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
+  * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
+  * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
+  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".`;
 
   const schema = {
     type: Type.OBJECT,
@@ -693,7 +721,15 @@ Rules:
       version: { type: Type.NUMBER },
       mode: { type: Type.STRING, enum: ["solution-first"] },
       title: { type: Type.STRING },
-      subject: { type: Type.STRING },
+      subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
+      topic: { 
+        type: Type.STRING, 
+        enum: [
+          "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
+          "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
+          "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
+        ] 
+      },
       problem: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
       solutionText: { type: Type.STRING },
@@ -713,6 +749,7 @@ Rules:
       "mode",
       "title",
       "subject",
+      "topic",
       "problem",
       "finalAnswer",
       "solutionText",
@@ -814,6 +851,7 @@ End your response with:
           mode: "solution-first",
           title: metadata.title,
           subject: metadata.subject,
+          topic: metadata.topic,
           problem: metadata.problem || finalProblemText,
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
@@ -847,8 +885,59 @@ Rules for solutionText:
 - Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
 - finalAnswer must be the final answer only.
 - explanationStatus must be "not_generated", explanation must be null.
+- title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+- subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
+- topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
+  * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
+  * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
+  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 
 Return a single JSON object only.`;
+
+  const fallbackSchema = {
+    type: Type.OBJECT,
+    properties: {
+      version: { type: Type.NUMBER },
+      mode: { type: Type.STRING, enum: ["solution-first"] },
+      title: { type: Type.STRING },
+      subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
+      topic: { 
+        type: Type.STRING, 
+        enum: [
+          "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
+          "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
+          "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
+        ] 
+      },
+      problem: { type: Type.STRING },
+      problemText: { type: Type.STRING },
+      finalAnswer: { type: Type.STRING },
+      solutionText: { type: Type.STRING },
+      solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
+      explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
+      explanation: { type: Type.OBJECT, nullable: true },
+      insights: {
+        type: Type.OBJECT,
+        properties: {
+          simpleBreakdown: { type: Type.STRING },
+          keyFormula: { type: Type.STRING },
+        },
+      },
+    },
+    required: [
+      "version",
+      "mode",
+      "title",
+      "subject",
+      "topic",
+      "problem",
+      "problemText",
+      "finalAnswer",
+      "solutionText",
+      "solutionFormat",
+      "explanationStatus",
+    ],
+  };
 
   const result = await generateStructuredJson<{ problemText: string } & ProblemSolutionFirst>({
     prompt,
@@ -859,6 +948,7 @@ Return a single JSON object only.`;
     maxAttempts: 2,
     imagePart,
     noJsonMime: true,
+    responseSchema: fallbackSchema,
   });
 
   const data = result.data;
@@ -918,7 +1008,9 @@ Rules:
 7. Never write plain-text fake math in mathContent, such as "ex", "limx o_0", "(f'(x))/(g'(x))", or "=>". Use $e^x$, $\\lim_{x\\to 0}$, $\\frac{f'(x)}{g'(x)}$, and $\\Rightarrow$.
 8. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
 9. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
-10. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.`;
+10. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.
+11. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+12. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.`;
 
   const nodeSchema = {
     type: Type.OBJECT,
@@ -938,7 +1030,7 @@ Rules:
     type: Type.OBJECT,
     properties: {
       title: { type: Type.STRING },
-      subject: { type: Type.STRING },
+      subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
       nodes: { 
         type: Type.ARRAY, 
         items: nodeSchema,
@@ -1015,7 +1107,9 @@ export async function instantBreakdown(
   4. Include ALL logical steps of the solution.
   5. The final branch node MUST contain the final answer/result.
   6. All text MUST be in ${targetLangName}.
-  7. Use standard LaTeX for math ($...$).`;
+  7. Use standard LaTeX for math ($...$).
+  8. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+  9. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.`;
 
   const nodeSchema = {
     type: Type.OBJECT,
@@ -1036,7 +1130,7 @@ export async function instantBreakdown(
     properties: {
       problemText: { type: Type.STRING },
       title: { type: Type.STRING },
-      subject: { type: Type.STRING },
+      subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
       nodes: { 
         type: Type.ARRAY, 
         items: nodeSchema,

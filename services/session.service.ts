@@ -630,6 +630,29 @@ export async function getUserSessions(userId: string): Promise<(StudySession & {
 
   // Sort by created_at descending
   merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+  // Batch-fetch chat message counts for all sessions in one query.
+  const sessionIds = merged.map((s) => s.id);
+  console.log("[getUserSessions] chat_count: sessionIds", sessionIds.length, sessionIds.slice(0, 3));
+  if (sessionIds.length > 0) {
+    const { data: chatRows, error: chatError } = await db
+      .from("chat_messages")
+      .select("session_id")
+      .in("session_id", sessionIds);
+
+    console.log("[getUserSessions] chat_count: chatRows", chatRows?.length ?? 0, "error:", chatError?.message ?? null);
+    console.log("[getUserSessions] chat_count: sample rows", (chatRows ?? []).slice(0, 3));
+
+    const chatCountMap = new Map<string, number>();
+    for (const row of (chatRows ?? []) as Array<{ session_id: string }>) {
+      chatCountMap.set(row.session_id, (chatCountMap.get(row.session_id) ?? 0) + 1);
+    }
+    console.log("[getUserSessions] chat_count: countMap entries", chatCountMap.size, [...chatCountMap.entries()].slice(0, 3));
+    for (const s of merged) {
+      s.chat_count = chatCountMap.get(s.id) ?? 0;
+    }
+  }
+
   return merged;
 }
 

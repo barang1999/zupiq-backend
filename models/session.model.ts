@@ -23,6 +23,8 @@ export interface StudySession {
   created_at: string;
   /** Populated by getUserSessions — caller's access level for this session. */
   user_role?: 'owner' | 'editor' | 'viewer';
+  /** Number of chat messages in this session — populated by getUserSessions. */
+  chat_count?: number;
 }
 
 export interface CreateSessionDTO {

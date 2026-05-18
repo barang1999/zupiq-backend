@@ -5,8 +5,8 @@ import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
 import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
 import { AllPackages } from "mathjax-full/js/input/tex/AllPackages.js";
 
-const COMPLEX_DISPLAY_MATH_RE = /\\(?:frac|sqrt|int|sum|prod|lim|begin|left|right|overline|underline|vec|hat|binom)|[_^]\{|\\,/;
-const MAX_CACHE_SIZE = 500;
+// Increased to handle all display math (not just complex expressions)
+const MAX_CACHE_SIZE = 2000;
 
 const svgCache = new Map<string, string>();
 
@@ -35,8 +35,35 @@ function getMathJaxContext() {
 export function shouldRenderMathSvg(latex: string, display: boolean): boolean {
   if (!display) return false;
   const source = `${latex ?? ""}`.replace(/\\displaystyle\s+/g, "").trim();
-  if (!source) return false;
-  return COMPLEX_DISPLAY_MATH_RE.test(source);
+  return source.length > 0;
+}
+
+// Strip common AI-output artifacts before a retry attempt
+function stripForRetry(latex: string): string {
+  return latex
+    .replace(/\\{2,}([a-zA-Z])/g, "\\$1")   // over-escaped backslashes: \\frac → \frac
+    .replace(/\t([a-zA-Z]+)/g, "\\$1")        // tab artifacts: \tfrac → \frac
+    .replace(/\\displaystyle\s*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function renderOnce(source: string, display: boolean, adaptor: any, html: any): string | null {
+  try {
+    const node = html.convert(source, { display });
+    const svgHtml = adaptor.outerHTML(node);
+    return `<span class="mathjax-svg-display">${svgHtml}</span>`;
+  } catch {
+    return null;
+  }
+}
+
+function setCached(key: string, value: string): void {
+  if (svgCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = svgCache.keys().next().value;
+    if (firstKey) svgCache.delete(firstKey);
+  }
+  svgCache.set(key, value);
 }
 
 export function renderMathSvg(latex: string, display: boolean): string | null {
@@ -44,8 +71,10 @@ export function renderMathSvg(latex: string, display: boolean): string | null {
 
   const source = `${latex ?? ""}`.replace(/\\displaystyle\s+/g, "").trim();
   const cacheKey = `${display ? "display" : "inline"}:${source}`;
+
   const cached = svgCache.get(cacheKey);
   if (cached) {
+    // LRU: move to end
     svgCache.delete(cacheKey);
     svgCache.set(cacheKey, cached);
     return cached;
@@ -53,19 +82,31 @@ export function renderMathSvg(latex: string, display: boolean): string | null {
 
   try {
     const { adaptor, html } = getMathJaxContext();
-    const node = html.convert(source, { display });
-    const svgHtml = adaptor.outerHTML(node);
-    const rendered = `<span class="mathjax-svg-display">${svgHtml}</span>`;
 
-    if (svgCache.size >= MAX_CACHE_SIZE) {
-      const firstKey = svgCache.keys().next().value;
-      if (firstKey) svgCache.delete(firstKey);
+    // First attempt: render as-is
+    let rendered = renderOnce(source, display, adaptor, html);
+
+    // Second attempt: strip common serialization artifacts and retry
+    if (!rendered) {
+      const cleaned = stripForRetry(source);
+      if (cleaned !== source) {
+        rendered = renderOnce(cleaned, display, adaptor, html);
+      }
     }
-    svgCache.set(cacheKey, rendered);
+
+    if (!rendered) {
+      console.warn("[MathJaxSvg] render failed after retry", {
+        latex: source.slice(0, 120),
+        display,
+      });
+      return null;
+    }
+
+    setCached(cacheKey, rendered);
     return rendered;
   } catch (error) {
-    console.warn("[MathJaxSvgDebug][backend] render failed", {
-      latex: source,
+    console.warn("[MathJaxSvg] context error", {
+      latex: source.slice(0, 120),
       display,
       error: error instanceof Error ? error.message : String(error),
     });

@@ -84,7 +84,11 @@ export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
 export function buildMathBlock(input: string, display: boolean): Extract<RenderBlock, { type: "math" }> {
   const normalizedLatex = normalizeLatexForRender(input);
   const warnings = getLatexWarnings(normalizedLatex);
-  const svgHtml = warnings.length === 0 && shouldRenderMathSvg(normalizedLatex, display)
+
+  // For display math: attempt SVG even with warnings — MathJax is more tolerant
+  // than the static warning heuristics, and rendering is preferred over client fallback.
+  // For inline math: keep client-side KaTeX only.
+  const svgHtml = shouldRenderMathSvg(normalizedLatex, display)
     ? renderMathSvg(normalizedLatex, display)
     : null;
 
@@ -125,12 +129,59 @@ function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {
 
 function normalizeLatexForRender(input: string): string {
   return stripMathDelimiters(`${input ?? ""}`)
+    // Whitespace
     .replace(/\u00a0/g, " ")
+    // Over-escaped backslashes from JSON serialization (\\frac → \frac)
+    .replace(/\\{2,}([a-zA-Z])/g, "\\$1")
+    // Tab artifacts from JSON deserialization (\t + remainder → \command)
+    .replace(/\tfrac/gi, "\\frac")
+    .replace(/\theta/gi, (m, o, s) => s[o - 1] === "\\" ? m : `\\theta`)
+    .replace(/\ttimes/gi, "\\times")
+    .replace(/\text(?=[{\\s])/gi, "\\text")
+    // Unicode operators → LaTeX
     .replace(/[−–]/g, "-")
-    .replace(/⇒|=>/g, "\\Rightarrow")
-    .replace(/→|->/g, "\\to")
-    .replace(/\s+/g, " ")
+    .replace(/[×·]/g, "\\times ")
+    .replace(/÷/g, "\\div ")
+    .replace(/±/g, "\\pm ")
+    .replace(/∓/g, "\\mp ")
+    .replace(/≤|⩽/g, "\\leq ")
+    .replace(/≥|⩾/g, "\\geq ")
+    .replace(/≠/g, "\\neq ")
+    .replace(/≈/g, "\\approx ")
+    .replace(/∞/g, "\\infty ")
+    .replace(/∑/g, "\\sum ")
+    .replace(/∏/g, "\\prod ")
+    .replace(/∫/g, "\\int ")
+    .replace(/∂/g, "\\partial ")
+    .replace(/∇/g, "\\nabla ")
+    .replace(/∈/g, "\\in ")
+    .replace(/∉/g, "\\notin ")
+    .replace(/⊂/g, "\\subset ")
+    .replace(/⊃/g, "\\supset ")
+    .replace(/∪/g, "\\cup ")
+    .replace(/∩/g, "\\cap ")
+    // Arrows
+    .replace(/⇒|=>/g, "\\Rightarrow ")
+    .replace(/⇔/g, "\\Leftrightarrow ")
+    .replace(/→|->/g, "\\to ")
+    .replace(/←/g, "\\leftarrow ")
+    // Unicode super/subscript digits
+    .replace(/([A-Za-z0-9])[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => {
+      const base = m[0];
+      const sup = m.slice(1).split("").map((c) => "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c)).join("");
+      return `${base}^{${sup}}`;
+    })
+    .replace(/[A-Za-z][₀₁₂₃₄₅₆₇₈₉]+/g, (m) => {
+      const base = m[0];
+      const sub = m.slice(1).split("").map((c) => "₀₁₂₃₄₅₆₇₈₉".indexOf(c)).join("");
+      return `${base}_{${sub}}`;
+    })
+    // Sqrt without braces
+    .replace(/√\(([^()\n]+)\)/g, "\\sqrt{$1}")
+    .replace(/√\{([^{}\n]+)\}/g, "\\sqrt{$1}")
+    .replace(/√([0-9])/g, "\\sqrt{$1}")
     .replace(/\\displaystyle\s*/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 

@@ -5,6 +5,7 @@ export type DiagramType =
   | 'function-graph'
   | 'number-line'
   | 'sign-table'
+  | 'venn-diagram'
   | 'solid-geometry';
 
 export type RenderBlock =

@@ -145,7 +145,7 @@ function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {
 }
 
 function normalizeLatexForRender(input: string): string {
-  return stripMathDelimiters(`${input ?? ""}`)
+  return normalizeTextCommandsForMath(stripMathDelimiters(`${input ?? ""}`))
     // Whitespace
     .replace(/\u00a0/g, " ")
     // Over-escaped backslashes from JSON serialization (\\frac → \frac)
@@ -200,6 +200,14 @@ function normalizeLatexForRender(input: string): string {
     .replace(/\\displaystyle\s*/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeTextCommandsForMath(input: string): string {
+  return `${input ?? ""}`
+    // Khmer prose inside \text{...} often falls back poorly in native/KaTeX paths.
+    // Keep the math semantic compact and put Khmer explanation in surrounding prose.
+    .replace(/([A-Za-z])\s*\\text\{[^}]*[\u1780-\u17FF][^}]*\}/g, "$1_{\\mathrm{only}}")
+    .replace(/\\text\{[^}]*[\u1780-\u17FF][^}]*\}/g, "\\mathrm{only}");
 }
 
 function stripMathDelimiters(input: string): string {

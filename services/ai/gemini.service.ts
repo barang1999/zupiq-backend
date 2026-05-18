@@ -473,6 +473,16 @@ function repairGeneratedMathText(input: string): string {
     .trim();
 }
 
+function completeDanglingSolutionText(solutionText: string, finalAnswer: string): string {
+  const answer = repairGeneratedMathText(finalAnswer).trim();
+  if (!solutionText.trim() || !answer) return solutionText;
+  if (solutionText.includes(answer)) return solutionText;
+  if (/(ដូចនេះ|ដូច្នេះ|ហេតុនេះ|therefore|thus|hence)(?:\s+ចម្លើយគឺ)?\s*[:：]?\s*$/i.test(solutionText.trim())) {
+    return `${solutionText.trim()} ${answer}`.trim();
+  }
+  return solutionText;
+}
+
 function normalizeSolutionFirstPayload(
   payload: ProblemSolutionFirst,
   problem: string,
@@ -480,7 +490,8 @@ function normalizeSolutionFirstPayload(
 ): ProblemSolutionFirst {
   const raw = payload.solutionText ?? "";
   const afterSanitize = sanitizeSolutionText(raw);
-  const afterRepair = repairGeneratedMathText(afterSanitize);
+  const repairedFinalAnswer = repairGeneratedMathText(payload.finalAnswer);
+  const afterRepair = completeDanglingSolutionText(repairGeneratedMathText(afterSanitize), repairedFinalAnswer);
 
   // Debug: trace every stage of solutionText pipeline to catch corruption early
   logger.info("[solutionText:pipeline]", {
@@ -496,11 +507,11 @@ function normalizeSolutionFirstPayload(
     mode: "solution-first",
     problem: payload.problem?.trim() || problem,
     subject: payload.subject?.trim() || subject,
-    finalAnswer: repairGeneratedMathText(payload.finalAnswer),
+    finalAnswer: repairedFinalAnswer,
     solutionText: afterRepair,
     solutionFormat: "markdown-latex",
     solutionBlocks: buildRenderBlocks(afterRepair),
-    finalAnswerBlocks: buildRenderBlocks(repairGeneratedMathText(payload.finalAnswer), { defaultDisplay: false }),
+    finalAnswerBlocks: buildRenderBlocks(repairedFinalAnswer, { defaultDisplay: false }),
     diagramBlocks: normalizeDiagramBlocks(payload.diagramBlocks),
     explanationStatus: "not_generated",
     explanation: null,
@@ -512,8 +523,86 @@ Diagram spec examples:
 - number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}],"points":[{"value":0,"closed":true}]}
 - sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
 - geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
+- geometry vector arrows: {"shapes":[{"shape":"arrow","start":[0,0],"end":[3,2],"label":"\\vec{A}"},{"shape":"arrow","start":[3,2],"end":[4,7],"label":"\\vec{B}"},{"shape":"arrow","start":[0,0],"end":[4,7],"label":"\\vec{A}+\\vec{B}","color":"red"}],"options":{"xMin":-1,"xMax":5,"yMin":-1,"yMax":8,"grid":true,"showOrigin":true,"xAxisLabel":"x","yAxisLabel":"y"}}
+- venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
 - solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
+
+const KHMER_DIGITS: Record<string, string> = {
+  "០": "0",
+  "១": "1",
+  "២": "2",
+  "៣": "3",
+  "៤": "4",
+  "៥": "5",
+  "៦": "6",
+  "៧": "7",
+  "៨": "8",
+  "៩": "9",
+};
+
+function normalizeDigits(input: string): string {
+  return `${input ?? ""}`.replace(/[០-៩]/g, (digit) => KHMER_DIGITS[digit] ?? digit);
+}
+
+function firstNumberAfter(source: string, patterns: RegExp[]): number | null {
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (!match) continue;
+    const raw = match[1] ?? match[2] ?? match[0];
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function inferVennDiagramBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  if (!/(venn|diagram|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចូលចិត្តទាំង)/i.test(source)) return [];
+
+  // Prefer labels from the AI-generated block (may have correct set names even if values are missing)
+  const emptyVenn = emptyBlocks.find((b) => b.diagramType === "venn-diagram");
+  const emptySpec = emptyVenn?.spec as Record<string, unknown> | undefined;
+  const emptySets = Array.isArray(emptySpec?.sets) ? emptySpec!.sets as Array<Record<string, unknown>> : [];
+  const leftLabelHint = String(emptySets[0]?.label || "M");
+  const rightLabelHint = String(emptySets[1]?.label || "S");
+
+  const L = leftLabelHint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const R = rightLabelHint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const leftTotal = firstNumberAfter(source, [
+    new RegExp(`n\\s*\\(\\s*${L}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
+    /(\d+)\s*(?:នាក់)?[^\n]*(?:គណិត|math|mathematics)/i,
+  ]);
+  const rightTotal = firstNumberAfter(source, [
+    new RegExp(`n\\s*\\(\\s*${R}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
+    /(\d+)\s*(?:នាក់)?[^\n]*(?:វិទ្យាសាស្ត្រ|science)/i,
+  ]);
+  const intersection = firstNumberAfter(source, [
+    new RegExp(`n\\s*\\(\\s*${L}\\s*\\\\cap\\s*${R}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
+    /(\d+)\s*(?:នាក់)?[^\n]*(?:ទាំងពីរ|ចូលចិត្តទាំង|both|intersection)/i,
+  ]);
+
+  if (!Number.isFinite(leftTotal) || !Number.isFinite(rightTotal) || !Number.isFinite(intersection)) return [];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "venn-diagram",
+    sets: [
+      { label: leftLabelHint, total: leftTotal },
+      { label: rightLabelHint, total: rightTotal },
+    ],
+    intersection,
+    regions: {
+      leftOnly: Math.max(0, leftTotal - intersection),
+      intersection,
+      rightOnly: Math.max(0, rightTotal - intersection),
+    },
+  }]);
+}
 
 const diagramBlockSchema = {
   type: Type.ARRAY,
@@ -521,7 +610,7 @@ const diagramBlockSchema = {
   items: {
     type: Type.OBJECT,
     properties: {
-      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "solid-geometry"] },
+      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "venn-diagram", "solid-geometry"] },
       spec: { type: Type.OBJECT },
     },
   },
@@ -535,8 +624,8 @@ async function extractDiagramBlocksForSolution(
   const subject = `${options.subject || ""}`.toLowerCase();
   const source = `${problem}\n${solutionText}`.toLowerCase();
   const likelyUseful = subject.includes("math")
-    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function)/i.test(source)
-    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត)/.test(source);
+    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection)/i.test(source)
+    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី)/.test(source);
   if (!likelyUseful) return [];
 
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
@@ -566,7 +655,15 @@ ${DIAGRAM_SPEC_GUIDE}`,
     },
   });
 
-  return normalizeDiagramBlocks(result.data?.diagramBlocks);
+  const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
+  // Filter out blocks the normalizer flagged as empty (AI produced a diagram type but no data).
+  // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
+  const useful = normalized.filter(
+    (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
+  );
+  if (useful.length) return useful;
+  // Pass the empty normalized blocks so the fallback can reuse AI-extracted set labels.
+  return inferVennDiagramBlocks(problem, solutionText, normalized);
 }
 
 // ─── Two-phase generation helpers ────────────────────────────────────────────
@@ -679,7 +776,7 @@ Return JSON with:
     prompt,
     options,
     temperature: 0.1,
-    maxOutputTokens: 512,
+    maxOutputTokens: 1536,
     taskName: "extractSolutionMetadata",
     maxAttempts: 2,
     responseSchema: {
@@ -801,7 +898,7 @@ Rules:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
-19. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "geometry", "function-graph", "solid-geometry".`;
+19. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".`;
 
   const schema = {
     type: Type.OBJECT,
@@ -859,7 +956,10 @@ Rules:
   });
 
   if (isUsableProblemSolutionFirst(primary.data)) {
-    return normalizeSolutionFirstPayload(primary.data, problem, subject);
+    const diagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks).length
+      ? primary.data.diagramBlocks
+      : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }).catch(() => []);
+    return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks }, problem, subject);
   }
 
   const recovery = await generateStructuredJson<ProblemSolutionFirst>({
@@ -987,10 +1087,11 @@ Rules for solutionText:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
-- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "geometry", "function-graph", "solid-geometry".
+- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".
 - Diagram spec examples:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
   sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
+  venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
   geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
   function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
   solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}
@@ -1059,8 +1160,16 @@ Return a single JSON object only.`;
   const extractedProblemText = (data?.problemText ?? "").trim();
 
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
+    const diagramBlocks = normalizeDiagramBlocks(data.diagramBlocks).length
+      ? data.diagramBlocks
+      : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }).catch((err) => {
+        logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      });
     const solution = normalizeSolutionFirstPayload(
-      data,
+      { ...data, diagramBlocks },
       extractedProblemText,
       data.subject ?? "General"
     );

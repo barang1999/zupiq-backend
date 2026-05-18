@@ -5,6 +5,7 @@ export type DiagramType =
   | "function-graph"
   | "number-line"
   | "sign-table"
+  | "venn-diagram"
   | "solid-geometry";
 
 export type DiagramRenderBlock = {
@@ -22,6 +23,7 @@ const DIAGRAM_TYPES = new Set<DiagramType>([
   "function-graph",
   "number-line",
   "sign-table",
+  "venn-diagram",
   "solid-geometry",
 ]);
 
@@ -124,6 +126,45 @@ function normalizeSignTableSpec(input: Record<string, unknown>, warnings: string
   return { type: "sign-table", rows: normalizedRows.slice(0, 6) };
 }
 
+function normalizeVennDiagramSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const sets = Array.isArray(input.sets) ? input.sets : [];
+  const leftSet = sets[0] && typeof sets[0] === "object" ? sets[0] as Record<string, unknown> : {};
+  const rightSet = sets[1] && typeof sets[1] === "object" ? sets[1] as Record<string, unknown> : {};
+  const regions = input.regions && typeof input.regions === "object" ? input.regions as Record<string, unknown> : {};
+  const totals = input.totals && typeof input.totals === "object" ? input.totals as Record<string, unknown> : {};
+  const leftLabel = String(leftSet.label || input.leftLabel || "M").slice(0, 24);
+  const rightLabel = String(rightSet.label || input.rightLabel || "S").slice(0, 24);
+  const leftTotal = asFiniteNumber(leftSet.total ?? totals.left ?? input.leftTotal, Number.NaN);
+  const rightTotal = asFiniteNumber(rightSet.total ?? totals.right ?? input.rightTotal, Number.NaN);
+  const intersection = asFiniteNumber(regions.intersection ?? input.intersection, Number.NaN);
+  const leftOnly = asFiniteNumber(
+    regions.leftOnly ?? input.leftOnly,
+    Number.isFinite(leftTotal) && Number.isFinite(intersection) ? leftTotal - intersection : Number.NaN,
+  );
+  const rightOnly = asFiniteNumber(
+    regions.rightOnly ?? input.rightOnly,
+    Number.isFinite(rightTotal) && Number.isFinite(intersection) ? rightTotal - intersection : Number.NaN,
+  );
+
+  if (!Number.isFinite(leftOnly) && !Number.isFinite(rightOnly) && !Number.isFinite(intersection)) {
+    warnings.push("empty-venn-diagram");
+  }
+
+  return {
+    type: "venn-diagram",
+    sets: [
+      { label: leftLabel, total: Number.isFinite(leftTotal) ? leftTotal : undefined },
+      { label: rightLabel, total: Number.isFinite(rightTotal) ? rightTotal : undefined },
+    ],
+    regions: {
+      leftOnly: Number.isFinite(leftOnly) ? leftOnly : undefined,
+      intersection: Number.isFinite(intersection) ? intersection : undefined,
+      rightOnly: Number.isFinite(rightOnly) ? rightOnly : undefined,
+    },
+    universeLabel: typeof input.universeLabel === "string" ? input.universeLabel.slice(0, 32) : undefined,
+  };
+}
+
 function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const shapes = Array.isArray(input.shapes) ? input.shapes : [];
   const normalizedShapes = shapes
@@ -131,27 +172,51 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (!shape || typeof shape !== "object") return null;
       const item = shape as Record<string, unknown>;
       const shapeType = String(item.shape || item.type || "");
-      if (!["triangle", "polygon", "circle", "segment", "line"].includes(shapeType)) return null;
+      if (!["triangle", "polygon", "circle", "segment", "line", "arrow"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)
         : [];
       const center = asPoint(item.center);
+      const start = asPoint(item.start);
+      const end = asPoint(item.end);
       const radius = asFiniteNumber(item.radius, Number.NaN);
       return {
         shape: shapeType,
         vertices,
         center,
+        start,
+        end,
         radius: Number.isFinite(radius) ? radius : undefined,
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
+        label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
+        color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
       };
     })
     .filter((shape) => {
       if (!shape) return false;
       if (shape.shape === "circle") return Boolean(shape.center) && Number.isFinite(shape.radius);
+      if (shape.shape === "arrow") return Boolean(shape.start) && Boolean(shape.end);
       return Array.isArray(shape.vertices) && shape.vertices.length >= 2;
     });
   if (!normalizedShapes.length) warnings.push("empty-geometry");
-  return { type: "geometry", shapes: normalizedShapes.slice(0, 8) };
+
+  const inputOptions = input.options && typeof input.options === "object"
+    ? input.options as Record<string, unknown>
+    : {};
+  const axisBounds = ["xMin", "xMax", "yMin", "yMax"].reduce<Record<string, number | undefined>>((acc, key) => {
+    const value = asFiniteNumber(inputOptions[key], Number.NaN);
+    if (Number.isFinite(value)) acc[key] = value;
+    return acc;
+  }, {});
+  const options = {
+    ...axisBounds,
+    grid: inputOptions.grid === true,
+    showOrigin: inputOptions.showOrigin === true,
+    xAxisLabel: typeof inputOptions.xAxisLabel === "string" ? inputOptions.xAxisLabel.slice(0, 16) : undefined,
+    yAxisLabel: typeof inputOptions.yAxisLabel === "string" ? inputOptions.yAxisLabel.slice(0, 16) : undefined,
+  };
+
+  return { type: "geometry", shapes: normalizedShapes.slice(0, 12), options };
 }
 
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
@@ -214,9 +279,10 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
   const spec =
     diagramType === "number-line" ? normalizeNumberLineSpec(inputSpec, warnings)
       : diagramType === "sign-table" ? normalizeSignTableSpec(inputSpec, warnings)
-        : diagramType === "geometry" ? normalizeGeometrySpec(inputSpec, warnings)
-          : diagramType === "function-graph" ? normalizeFunctionGraphSpec(inputSpec, warnings)
-            : normalizeSolidGeometrySpec(inputSpec, warnings);
+        : diagramType === "venn-diagram" ? normalizeVennDiagramSpec(inputSpec, warnings)
+          : diagramType === "geometry" ? normalizeGeometrySpec(inputSpec, warnings)
+            : diagramType === "function-graph" ? normalizeFunctionGraphSpec(inputSpec, warnings)
+              : normalizeSolidGeometrySpec(inputSpec, warnings);
 
   return {
     type: "diagram",

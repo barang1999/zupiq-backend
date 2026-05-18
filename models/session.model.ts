@@ -1,5 +1,12 @@
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
+export type DiagramType =
+  | 'geometry'
+  | 'function-graph'
+  | 'number-line'
+  | 'sign-table'
+  | 'solid-geometry';
+
 export type RenderBlock =
   | {
       type: 'text';
@@ -15,6 +22,15 @@ export type RenderBlock =
       warnings?: string[];
       renderEngine?: 'mathjax-svg';
       svgHtml?: string;
+    }
+  | {
+      type: 'diagram';
+      diagramType: DiagramType;
+      spec: Record<string, unknown>;
+      renderer: 'zupiq-svg';
+      version: 1;
+      cacheKey: string;
+      warnings?: string[];
     };
 
 export interface SessionBreakdownNode {
@@ -44,6 +60,7 @@ export interface SolutionFirstSessionPayload {
   solutionText: string;
   solutionFormat: 'markdown-latex';
   solutionBlocks?: RenderBlock[];
+  diagramBlocks?: RenderBlock[];
   explanationStatus: 'not_generated' | 'generated';
   explanation?: {
     nodes: SessionBreakdownNode[];

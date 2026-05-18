@@ -1,6 +1,7 @@
 import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
+import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
 import { getGeminiClient } from "./core/client.js";
 import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
@@ -261,6 +262,7 @@ export interface ProblemSolutionFirst {
   solutionFormat: "markdown-latex";
   solutionBlocks?: RenderBlock[];
   finalAnswerBlocks?: RenderBlock[];
+  diagramBlocks?: RenderBlock[];
   explanationStatus: "not_generated" | "generated";
   explanation?: {
     nodes: BreakdownNode[];
@@ -499,9 +501,72 @@ function normalizeSolutionFirstPayload(
     solutionFormat: "markdown-latex",
     solutionBlocks: buildRenderBlocks(afterRepair),
     finalAnswerBlocks: buildRenderBlocks(repairGeneratedMathText(payload.finalAnswer), { defaultDisplay: false }),
+    diagramBlocks: normalizeDiagramBlocks(payload.diagramBlocks),
     explanationStatus: "not_generated",
     explanation: null,
   };
+}
+
+const DIAGRAM_SPEC_GUIDE = `
+Diagram spec examples:
+- number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}],"points":[{"value":0,"closed":true}]}
+- sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
+- geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
+- function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+- solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
+
+const diagramBlockSchema = {
+  type: Type.ARRAY,
+  nullable: true,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "solid-geometry"] },
+      spec: { type: Type.OBJECT },
+    },
+  },
+};
+
+async function extractDiagramBlocksForSolution(
+  problem: string,
+  solutionText: string,
+  options: AIRequestOptions,
+): Promise<RenderBlock[]> {
+  const subject = `${options.subject || ""}`.toLowerCase();
+  const source = `${problem}\n${solutionText}`.toLowerCase();
+  const likelyUseful = subject.includes("math")
+    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function)/i.test(source)
+    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត)/.test(source);
+  if (!likelyUseful) return [];
+
+  const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
+    prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
+
+If a diagram helps, return one or more diagramBlocks. If not, return {"diagramBlocks":[]}.
+AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.
+
+Problem:
+${problem}
+
+Solution:
+${solutionText.slice(0, 1800)}
+
+${DIAGRAM_SPEC_GUIDE}`,
+    options,
+    temperature: 0,
+    maxOutputTokens: 2048,
+    taskName: "extractDiagramBlocksForSolution",
+    maxAttempts: 1,
+    responseSchema: {
+      type: Type.OBJECT,
+      properties: {
+        diagramBlocks: diagramBlockSchema,
+      },
+      required: ["diagramBlocks"],
+    },
+  });
+
+  return normalizeDiagramBlocks(result.data?.diagramBlocks);
 }
 
 // ─── Two-phase generation helpers ────────────────────────────────────────────
@@ -679,6 +744,12 @@ Requirements:
   if (rawSolution && !isFallbackContent(rawSolution)) {
     const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
+      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }).catch((err) => {
+        logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      });
       return normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -690,6 +761,7 @@ Requirements:
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
           solutionFormat: "markdown-latex",
+          diagramBlocks,
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
@@ -728,7 +800,8 @@ Rules:
 18. topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
-  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".`;
+  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
+19. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "geometry", "function-graph", "solid-geometry".`;
 
   const schema = {
     type: Type.OBJECT,
@@ -748,6 +821,7 @@ Rules:
       problem: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
       solutionText: { type: Type.STRING },
+      diagramBlocks: diagramBlockSchema,
       solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
       explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
       explanation: { type: Type.OBJECT, nullable: true },
@@ -774,7 +848,7 @@ Rules:
   };
 
   const primary = await generateStructuredJson<ProblemSolutionFirst>({
-    prompt,
+    prompt: `${prompt}\n${DIAGRAM_SPEC_GUIDE}`,
     options,
     temperature: 0.15,
     maxOutputTokens: 8192,
@@ -860,6 +934,12 @@ End your response with:
     const finalProblemText = (metadata.problemText || extractedHint || "").trim();
 
     if (finalProblemText && !isFallbackContent(finalProblemText) && !isFallbackContent(metadata.finalAnswer)) {
+      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }).catch((err) => {
+        logger.warn("[solveFromImageDirect] diagram extraction failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return [];
+      });
       const solution = normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -871,6 +951,7 @@ End your response with:
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
           solutionFormat: "markdown-latex",
+          diagramBlocks,
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
@@ -906,6 +987,13 @@ Rules for solutionText:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
+- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "geometry", "function-graph", "solid-geometry".
+- Diagram spec examples:
+  number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
+  sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
+  geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
+  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+  solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}
 
 Return a single JSON object only.`;
 
@@ -928,6 +1016,7 @@ Return a single JSON object only.`;
       problemText: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
       solutionText: { type: Type.STRING },
+      diagramBlocks: diagramBlockSchema,
       solutionFormat: { type: Type.STRING, enum: ["markdown-latex"] },
       explanationStatus: { type: Type.STRING, enum: ["not_generated"] },
       explanation: { type: Type.OBJECT, nullable: true },

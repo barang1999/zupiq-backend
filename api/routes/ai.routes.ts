@@ -20,6 +20,7 @@ import {
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
+import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, enrichRenderBlocks } from "../../utils/render-blocks.js";
 import {
   generateEducationalGameProblem,
@@ -275,6 +276,9 @@ function attachRenderBlocksToPayload(payload: any): any {
       payload.finalAnswerBlocks = buildRenderBlocks(String(payload.finalAnswer), { defaultDisplay: false });
     } else if (Array.isArray(payload.finalAnswerBlocks)) {
       payload.finalAnswerBlocks = enrichRenderBlocks(payload.finalAnswerBlocks);
+    }
+    if (Array.isArray(payload.diagramBlocks)) {
+      payload.diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
     }
     if (Array.isArray(payload.explanation?.nodes)) {
       payload.explanation.nodes = payload.explanation.nodes.map(attachRenderBlocksToNode);

@@ -1,4 +1,5 @@
 import { segmentMathContent } from "./math-segmenter.js";
+import { normalizeDiagramBlock, type DiagramRenderBlock } from "./diagram-blocks.js";
 import { renderMathSvg, shouldRenderMathSvg } from "./mathjax-svg.js";
 
 export type RenderBlock =
@@ -16,7 +17,8 @@ export type RenderBlock =
       warnings?: string[];
       renderEngine?: "mathjax-svg";
       svgHtml?: string;
-    };
+    }
+  | DiagramRenderBlock;
 
 const LATEX_COMMAND_REGEX = /\\[a-zA-Z]+/;
 const DELIMITED_MATH_REGEX = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/;
@@ -74,6 +76,10 @@ export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
           ...buildMathBlock(input, display),
           latex: typeof block.latex === "string" && block.latex.trim() ? block.latex.trim() : stripMathDelimiters(input),
         };
+      }
+
+      if (block?.type === "diagram" || block?.diagramType) {
+        return normalizeDiagramBlock(block);
       }
 
       return null;

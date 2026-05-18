@@ -5,6 +5,13 @@
 
 const MATH_TOKEN_REGEX = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/g;
 
+function repairBrokenMathDelimiters(content: string): string {
+  return `${content ?? ""}`.replace(
+    /(?<!\$)\$([^$\n]+?)\$\$\s+\$\$([^$\n]+?)\$(?!\$)/g,
+    (_match, first, second) => `$$${first.trim()}$$\n\n$$${second.trim()}$$`
+  );
+}
+
 export interface MathSegment {
   type: 'text' | 'math';
   content: string;
@@ -14,8 +21,10 @@ export interface MathSegment {
 export function segmentMathContent(content: string): MathSegment[] {
   if (!content || typeof content !== 'string') return [];
 
+  const repairedContent = repairBrokenMathDelimiters(content);
+
   // Split by the math tokens
-  const parts = content.split(MATH_TOKEN_REGEX);
+  const parts = repairedContent.split(MATH_TOKEN_REGEX);
   const segments: MathSegment[] = [];
 
   parts.forEach((part, index) => {

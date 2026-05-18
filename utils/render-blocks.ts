@@ -1,4 +1,5 @@
 import { segmentMathContent } from "./math-segmenter.js";
+import { renderMathSvg, shouldRenderMathSvg } from "./mathjax-svg.js";
 
 export type RenderBlock =
   | {
@@ -13,6 +14,8 @@ export type RenderBlock =
       normalizedLatex: string;
       valid: boolean;
       warnings?: string[];
+      renderEngine?: "mathjax-svg";
+      svgHtml?: string;
     };
 
 const LATEX_COMMAND_REGEX = /\\[a-zA-Z]+/;
@@ -54,9 +57,36 @@ export function buildMathBlocks(content: string, options: { defaultDisplay?: boo
   return blocks.filter((block): block is Extract<RenderBlock, { type: "math" }> => block.type === "math");
 }
 
+export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
+  if (!Array.isArray(blocks)) return [];
+
+  return blocks
+    .map((block): RenderBlock | null => {
+      if (block?.type === "text") {
+        return buildTextBlock(`${block.content ?? ""}`, typeof block.lang === "string" ? block.lang : undefined);
+      }
+
+      if (block?.type === "math") {
+        const display = block.mode === "display";
+        const input = `${block.normalizedLatex || block.latex || block.content || ""}`.trim();
+        if (!input) return null;
+        return {
+          ...buildMathBlock(input, display),
+          latex: typeof block.latex === "string" && block.latex.trim() ? block.latex.trim() : stripMathDelimiters(input),
+        };
+      }
+
+      return null;
+    })
+    .filter((block): block is RenderBlock => Boolean(block));
+}
+
 export function buildMathBlock(input: string, display: boolean): Extract<RenderBlock, { type: "math" }> {
   const normalizedLatex = normalizeLatexForRender(input);
   const warnings = getLatexWarnings(normalizedLatex);
+  const svgHtml = warnings.length === 0 && shouldRenderMathSvg(normalizedLatex, display)
+    ? renderMathSvg(normalizedLatex, display)
+    : null;
 
   return {
     type: "math",
@@ -65,6 +95,7 @@ export function buildMathBlock(input: string, display: boolean): Extract<RenderB
     normalizedLatex,
     valid: warnings.length === 0,
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(svgHtml ? { renderEngine: "mathjax-svg" as const, svgHtml } : {}),
   };
 }
 

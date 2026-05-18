@@ -20,7 +20,7 @@ import {
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
-import { buildMathBlocks, buildRenderBlocks } from "../../utils/render-blocks.js";
+import { buildMathBlocks, buildRenderBlocks, enrichRenderBlocks } from "../../utils/render-blocks.js";
 import {
   generateEducationalGameProblem,
   type GameProblemSubject,
@@ -251,8 +251,11 @@ function attachRenderBlocksToNode(node: any): any {
   const mathContent = String(node.mathContent || node.math || node.keyFormula || "").trim();
 
   if (label && !Array.isArray(node.labelBlocks)) node.labelBlocks = buildRenderBlocks(label);
+  else if (Array.isArray(node.labelBlocks)) node.labelBlocks = enrichRenderBlocks(node.labelBlocks);
   if (description && !Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = buildRenderBlocks(description);
+  else if (Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = enrichRenderBlocks(node.descriptionBlocks);
   if (mathContent && !Array.isArray(node.mathBlocks)) node.mathBlocks = buildMathBlocks(mathContent, { defaultDisplay: true });
+  else if (Array.isArray(node.mathBlocks)) node.mathBlocks = enrichRenderBlocks(node.mathBlocks);
   if (Array.isArray(node.subSteps)) node.subSteps = node.subSteps.map(attachRenderBlocksToNode);
 
   return node;
@@ -265,9 +268,13 @@ function attachRenderBlocksToPayload(payload: any): any {
     payload.version = 3;
     if (payload.solutionText && !Array.isArray(payload.solutionBlocks)) {
       payload.solutionBlocks = buildRenderBlocks(String(payload.solutionText));
+    } else if (Array.isArray(payload.solutionBlocks)) {
+      payload.solutionBlocks = enrichRenderBlocks(payload.solutionBlocks);
     }
     if (payload.finalAnswer) {
       payload.finalAnswerBlocks = buildRenderBlocks(String(payload.finalAnswer), { defaultDisplay: false });
+    } else if (Array.isArray(payload.finalAnswerBlocks)) {
+      payload.finalAnswerBlocks = enrichRenderBlocks(payload.finalAnswerBlocks);
     }
     if (Array.isArray(payload.explanation?.nodes)) {
       payload.explanation.nodes = payload.explanation.nodes.map(attachRenderBlocksToNode);

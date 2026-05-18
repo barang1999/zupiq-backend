@@ -13,6 +13,8 @@ export type RenderBlock =
       normalizedLatex: string;
       valid: boolean;
       warnings?: string[];
+      renderEngine?: 'mathjax-svg';
+      svgHtml?: string;
     };
 
 export interface SessionBreakdownNode {

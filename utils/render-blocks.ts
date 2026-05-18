@@ -112,9 +112,20 @@ export function buildMathBlock(input: string, display: boolean): Extract<RenderB
 function buildTextBlock(content: string, lang?: string): Extract<RenderBlock, { type: "text" }> {
   return {
     type: "text",
-    content: `${content ?? ""}`.replace(/[ \t]+\n/g, "\n").trim(),
+    content: normalizeTextBlockContent(content),
     ...(lang ? { lang } : {}),
   };
+}
+
+function normalizeTextBlockContent(content: string): string {
+  return `${content ?? ""}`
+    .replace(/[ \t]+\n/g, "\n")
+    // Gemini sometimes emits markdown list markers between inline math segments.
+    // Once split into render blocks, they become lonely visible "*" lines.
+    .replace(/(^|\n)\s*[*-]\s+(?=[^\n])/g, "$1")
+    .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {

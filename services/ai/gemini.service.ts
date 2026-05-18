@@ -2494,16 +2494,17 @@ function escapeInvalidBackslashesInsideJsonStrings(input: string): string {
 
     if (ch === "\\") {
       const next = input[i + 1];
-      // Exclude \b (backspace) and \f (form-feed) from the valid-escape list:
-      // the model frequently writes LaTeX commands like \frac, \because that start
-      // with those letters, and they must be doubled to \\ so JSON.parse produces
-      // the literal backslash that math renderers need.
+      // Exclude \b, \f, and \r from the valid-escape list:
+      // the model frequently writes LaTeX commands that start with those letters
+      // (\frac, \because, \right, \rho, \rightarrow, \beta …) and they must be
+      // doubled to \\ so JSON.parse produces the literal backslash math renderers need.
+      // \r is excluded for the same reason \b and \f already were — \right is far
+      // more common in model output than an intentional carriage-return escape.
       const validEscape =
         next === "\"" ||
         next === "\\" ||
         next === "/" ||
         next === "n" ||
-        next === "r" ||
         next === "t" ||
         next === "u";
 

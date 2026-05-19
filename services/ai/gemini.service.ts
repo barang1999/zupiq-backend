@@ -526,6 +526,7 @@ Diagram spec examples:
 - geometry vector arrows: {"shapes":[{"shape":"arrow","start":[0,0],"end":[3,2],"label":"\\vec{A}"},{"shape":"arrow","start":[3,2],"end":[4,7],"label":"\\vec{B}"},{"shape":"arrow","start":[0,0],"end":[4,7],"label":"\\vec{A}+\\vec{B}","color":"red"}],"options":{"xMin":-1,"xMax":5,"yMin":-1,"yMax":8,"grid":true,"showOrigin":true,"xAxisLabel":"x","yAxisLabel":"y"}}
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+- function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
 
 const KHMER_DIGITS: Record<string, string> = {
@@ -604,6 +605,112 @@ function inferVennDiagramBlocks(
   }]);
 }
 
+function inferFunctionGraphBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+
+  // Only fire for graph/parabola/sketch problems
+  if (!/(graph|parabola|sketch|plot|ក្រាហ្វ|ប៉ារ៉ាបូល|គូស|quadratic)/i.test(source)) return [];
+
+  // Confirm the AI identified this as a function-graph (empty block hint)
+  const wantedFunctionGraph = emptyBlocks.some((b) => b.diagramType === "function-graph")
+    || /(graph|sketch|plot)/i.test(source);
+  if (!wantedFunctionGraph) return [];
+
+  const absMatch = source.match(
+    /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*([+-]?)\s*(\d+(?:\.\d+)?)?\s*\|\s*([a-z])\s*([+-])\s*(\d+(?:\.\d+)?)\s*\|\s*([+-]\s*\d+(?:\.\d+)?)?/i
+  );
+  if (absMatch) {
+    const sign = absMatch[1] === "-" ? -1 : 1;
+    const magnitude = absMatch[2] ? parseFloat(absMatch[2]) : 1;
+    const a = sign * magnitude;
+    const variable = absMatch[3] || "x";
+    const h = absMatch[4] === "-" ? parseFloat(absMatch[5]) : -parseFloat(absMatch[5]);
+    const k = absMatch[6] ? parseFloat(absMatch[6].replace(/\s/g, "")) : 0;
+    if (Number.isFinite(a) && Number.isFinite(h) && Number.isFinite(k) && a !== 0) {
+      const rootDistance = -k / a;
+      const xIntercepts = rootDistance >= 0
+        ? [h - rootDistance, h + rootDistance].filter((value, index, arr) => Number.isFinite(value) && arr.indexOf(value) === index)
+        : [];
+      const domainMin = Math.floor(Math.min(h - 4, ...xIntercepts) - 1);
+      const domainMax = Math.ceil(Math.max(h + 4, ...xIntercepts) + 1);
+      const evalAt = (x: number) => a * Math.abs(x - h) + k;
+      const yValues = [k, 0, evalAt(domainMin), evalAt(domainMax)];
+      const yMin = Math.floor(Math.min(...yValues) - 1);
+      const yMax = Math.ceil(Math.max(...yValues) + 1);
+      const latexMatch = problem.match(/\$([^$]*\|[^$]*\|[^$]*)\$/);
+      const latex = latexMatch ? latexMatch[1].trim() : `y=|${variable}${h >= 0 ? "-" : "+"}${Math.abs(h)}|${k >= 0 ? "+" : ""}${k}`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{
+          kind: "absolute-value",
+          params: { a, h, k, xIntercepts },
+          latex,
+        }],
+        domain: [domainMin, domainMax],
+        range: [yMin, yMax],
+        xAxisLabel: variable,
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
+  // Extract quadratic: f(t) = -5t^2 + 20t + 15 or f(x) = ax^2 + bx + c
+  const qMatch = source.match(
+    /=\s*(-?\s*\d+(?:\.\d+)?)\s*[a-z]\^2\s*([+\-]\s*\d+(?:\.\d+)?)\s*[a-z](?:\s*([+\-]\s*\d+(?:\.\d+)?))?(?!\s*[a-z])/i
+  );
+  if (!qMatch) return [];
+
+  const a = parseFloat(qMatch[1].replace(/\s/g, ""));
+  const b = parseFloat(qMatch[2].replace(/\s/g, ""));
+  const c = qMatch[3] ? parseFloat(qMatch[3].replace(/\s/g, "")) : 0;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || a === 0) return [];
+
+  const vertexX = -b / (2 * a);
+  const vertexY = a * vertexX * vertexX + b * vertexX + c;
+  const discriminant = b * b - 4 * a * c;
+
+  let domainMin = vertexX - 3;
+  let domainMax = vertexX + 3;
+  if (discriminant >= 0) {
+    const sqrtD = Math.sqrt(discriminant);
+    const x1 = (-b - sqrtD) / (2 * a);
+    const x2 = (-b + sqrtD) / (2 * a);
+    const xLeft = Math.min(x1, x2);
+    const xRight = Math.max(x1, x2);
+    const pad = Math.max((xRight - xLeft) * 0.2, 0.5);
+    domainMin = xLeft - pad;
+    domainMax = xRight + pad;
+  }
+
+  const evalAt = (x: number) => a * x * x + b * x + c;
+  const yValues = [vertexY, evalAt(domainMin), evalAt(domainMax), 0];
+  const rawYMin = Math.min(...yValues);
+  const rawYMax = Math.max(...yValues);
+  const yPad = Math.max((rawYMax - rawYMin) * 0.12, 2);
+
+  // Try to grab the latex label and axis variable names from the problem statement
+  // e.g. "$h(t) = -5t^2 + 20t + 15$" → xAxisLabel="t", yAxisLabel="h"
+  const latexMatch = problem.match(/\$([^$]*[a-z]\s*=\s*[^$]*[a-z]\^2[^$]*)\$/i);
+  const latex = latexMatch ? latexMatch[1].trim() : "";
+  const funcSigMatch = problem.match(/\$\s*([a-z])\s*\(\s*([a-z])\s*\)/i);
+  const yAxisLabel = funcSigMatch ? funcSigMatch[1] : "y";
+  const xAxisLabel = funcSigMatch ? funcSigMatch[2] : "x";
+
+  return normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    functions: [{ kind: "quadratic", params: { a, b, c }, latex }],
+    domain: [Math.floor(domainMin - 0.5), Math.ceil(domainMax + 0.5)],
+    range: [Math.floor(rawYMin - yPad), Math.ceil(rawYMax + yPad)],
+    xAxisLabel,
+    yAxisLabel,
+  }]);
+}
+
 const diagramBlockSchema = {
   type: Type.ARRAY,
   nullable: true,
@@ -662,8 +769,12 @@ ${DIAGRAM_SPEC_GUIDE}`,
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
   );
   if (useful.length) return useful;
-  // Pass the empty normalized blocks so the fallback can reuse AI-extracted set labels.
-  return inferVennDiagramBlocks(problem, solutionText, normalized);
+
+  // Type-specific inference fallbacks — each uses the empty AI blocks as a hint
+  const vennFallback = inferVennDiagramBlocks(problem, solutionText, normalized);
+  if (vennFallback.length) return vennFallback;
+
+  return inferFunctionGraphBlocks(problem, solutionText, normalized);
 }
 
 // ─── Two-phase generation helpers ────────────────────────────────────────────

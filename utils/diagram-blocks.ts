@@ -229,7 +229,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
       const params = item.params && typeof item.params === "object" ? item.params : undefined;
-      if (!points.length && !["linear", "quadratic"].includes(kind)) return null;
+      if (!points.length && !["linear", "quadratic", "absolute-value"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,
@@ -246,6 +246,8 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     functions: normalizedFunctions,
     domain: Array.isArray(input.domain) ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     range: Array.isArray(input.range) ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
+    xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 8) : undefined,
+    yAxisLabel: typeof input.yAxisLabel === "string" ? input.yAxisLabel.slice(0, 8) : undefined,
   };
 }
 

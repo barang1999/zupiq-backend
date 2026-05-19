@@ -400,9 +400,20 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
   };
 }
 
+const CRITICAL_WARNINGS = new Set([
+  "empty-function-graph",
+  "empty-geometry",
+  "empty-sign-table",
+  "empty-number-line",
+  "empty-venn-diagram",
+  "empty-pie-chart",
+]);
+
 export function normalizeDiagramBlocks(blocks: unknown): DiagramRenderBlock[] {
   if (!Array.isArray(blocks)) return [];
   return blocks
     .map(normalizeDiagramBlock)
-    .filter((block): block is DiagramRenderBlock => Boolean(block));
+    .filter((block): block is DiagramRenderBlock =>
+      Boolean(block) && !block.warnings?.some((w) => CRITICAL_WARNINGS.has(w))
+    );
 }

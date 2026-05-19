@@ -21,7 +21,7 @@ import {
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
-import { buildMathBlocks, buildRenderBlocks, enrichRenderBlocks } from "../../utils/render-blocks.js";
+import { buildRenderBlocks, enrichRenderBlocks } from "../../utils/render-blocks.js";
 import {
   generateEducationalGameProblem,
   type GameProblemSubject,
@@ -255,7 +255,8 @@ function attachRenderBlocksToNode(node: any): any {
   else if (Array.isArray(node.labelBlocks)) node.labelBlocks = enrichRenderBlocks(node.labelBlocks);
   if (description && !Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = buildRenderBlocks(description);
   else if (Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = enrichRenderBlocks(node.descriptionBlocks);
-  if (mathContent && !Array.isArray(node.mathBlocks)) node.mathBlocks = buildMathBlocks(mathContent, { defaultDisplay: true });
+  // Use buildRenderBlocks so mixed prose+math mathContent keeps its text blocks.
+  if (mathContent && !Array.isArray(node.mathBlocks)) node.mathBlocks = buildRenderBlocks(mathContent, { defaultDisplay: true });
   else if (Array.isArray(node.mathBlocks)) node.mathBlocks = enrichRenderBlocks(node.mathBlocks);
   if (Array.isArray(node.subSteps)) node.subSteps = node.subSteps.map(attachRenderBlocksToNode);
 

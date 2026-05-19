@@ -319,8 +319,38 @@ const SUPERSCRIPT_DIGITS: Record<string, string> = {
 
 function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
   if (!value || typeof value !== "object") return false;
-  const candidate = value as ProblemBreakdown;
+  const candidate = value as any;
+
+  if (!Array.isArray(candidate.nodes) && Array.isArray(candidate.tree)) {
+    candidate.nodes = candidate.tree;
+  }
+  if (!Array.isArray(candidate.nodes) && Array.isArray(candidate.steps)) {
+    candidate.nodes = candidate.steps;
+  }
+
   if (!Array.isArray(candidate.nodes) || candidate.nodes.length < 5) return false;
+
+  // Normalize node keys (e.g. title -> label, desc -> description, math -> mathContent)
+  candidate.nodes = candidate.nodes.map((node: any) => {
+    if (!node || typeof node !== "object") return node;
+    const n = { ...node };
+    if (!n.label && n.title) n.label = n.title;
+    if (!n.description && n.desc) n.description = n.desc;
+    if (!n.mathContent && n.math) n.mathContent = n.math;
+    return n;
+  });
+
+  const rootNode = candidate.nodes.find((n: any) => n?.id === "root" || n?.parentId == null);
+  if (rootNode) {
+    if (!candidate.title && rootNode.title) candidate.title = rootNode.title;
+    if (!candidate.title && rootNode.label) candidate.title = rootNode.label;
+    if (!candidate.subject && rootNode.subject) candidate.subject = rootNode.subject;
+  }
+  if (!candidate.title) candidate.title = "Problem Breakdown";
+  if (!candidate.subject) candidate.subject = "Math";
+  if (!candidate.insights) {
+    candidate.insights = { simpleBreakdown: "", keyFormula: "" };
+  }
 
   // Prefer explicitly typed branch nodes; recovery responses often omit `type`,
   // so fall back to non-root nodes (parentId === "root" or id !== "root") as branch candidates.
@@ -2473,7 +2503,7 @@ Rules:
    - 1-2 leaf nodes (concepts/formulas). EACH leaf node MUST have parentId set to the specific "id" of the branch (step) it supports.
 4. The final branch node MUST show the definitive final answer.
 5. mathContent MUST be math only, never prose. It must be valid KaTeX-compatible LaTeX wrapped in $...$ or $$...$$.
-6. For multi-step mathContent, use one display block with \\begin{aligned} ... \\end{aligned}. Example: "$$\\begin{aligned} f'(x)&=e^x+\\sin x-\\cos x \\\\ g'(x)&=2x \\\\ \\lim_{x\\to 0}\\frac{f'(x)}{g'(x)}&=\\lim_{x\\to 0}\\frac{e^x+\\sin x-\\cos x}{2x} \\end{aligned}$$".
+6. For multi-step mathContent, use one display block with \\begin{aligned} ... \\end{aligned}. Do NOT use manual spacing commands (like \\text{ } or \\quad or \\qquad repeated multiple times) to align or indent math blocks. Use clean, minimal LaTeX alignment. Example: "$$\\begin{aligned} f'(x)&=e^x+\\sin x-\\cos x \\\\ g'(x)&=2x \\\\ \\lim_{x\\to 0}\\frac{f'(x)}{g'(x)}&=\\lim_{x\\to 0}\\frac{e^x+\\sin x-\\cos x}{2x} \\end{aligned}$$".
 7. Never write plain-text fake math in mathContent, such as "ex", "limx o_0", "(f'(x))/(g'(x))", or "=>". Use $e^x$, $\\lim_{x\\to 0}$, $\\frac{f'(x)}{g'(x)}$, and $\\Rightarrow$.
 8. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
 9. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
@@ -2578,7 +2608,8 @@ export async function instantBreakdown(
   6. All text MUST be in ${targetLangName}.
   7. Use standard LaTeX for math ($...$).
   8. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
-  9. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.`;
+  9. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
+  10. Do NOT use manual spacing commands (like \\text{ } or \\quad or \\qquad repeated multiple times) to align or indent math blocks. Use clean, minimal LaTeX alignment.`;
 
   const nodeSchema = {
     type: Type.OBJECT,
@@ -2648,7 +2679,8 @@ Return ONE complete JSON object only. Ensure all steps are concrete to the extra
 
   if (recovery.data && isUsableProblemBreakdown(recovery.data)) {
     const sanitized = sanitizeBreakdownNodes(recovery.data);
-    return { ...sanitized, problemText: recovery.data.problemText || sanitized.title };
+    const probText = recovery.data.problemText || primary.data?.problemText || sanitized.title;
+    return { ...sanitized, problemText: probText };
   }
   
   return {
@@ -2725,9 +2757,67 @@ function normalizePlainMathContent(text: string): string {
     .trim();
 }
 
+function stripRepeatedTextSpacePadding(raw: string): string {
+  // Gemini sometimes pads aligned blocks with hundreds of \text{ } tokens.
+  // Collapse any run of 2+ consecutive \text{ } or \text{} into a single space.
+  return raw
+    .replace(/(?:\\text\{[ ]*\}\s*){2,}/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * When AI generates `\text{Khmer prose} math \text{Khmer prose}` inside mathContent,
+ * KaTeX cannot render non-Latin inside \text{} — it leaks literal "text" and stray `}`.
+ * This function detects that pattern (before any $...$ wrapping) and converts it to
+ * a prose+math mixed string like `Khmer prose $math$ Khmer prose` that buildRenderBlocks
+ * can correctly segment into text + math blocks.
+ *
+ * Only acts when \text{} contains non-ASCII (Khmer, Arabic, etc.).
+ * Skips \begin{aligned} blocks — those are handled separately.
+ */
+function demoteNonLatinTextCommands(raw: string): string {
+  // Only act if there's non-ASCII inside \text{}
+  if (!/\\text\{[^}]*[^\x00-\x7F][^}]*\}/.test(raw)) return raw;
+  // Don't restructure aligned environments — too complex
+  if (/\\begin\{aligned\}/.test(raw)) return raw;
+
+  // Strip outer math delimiters so we can work on the inner expression
+  let inner = raw.trim();
+  if (/^\$\$[\s\S]+\$\$$/.test(inner)) inner = inner.slice(2, -2).trim();
+  else if (/^\$[^$]+\$$/.test(inner)) inner = inner.slice(1, -1).trim();
+
+  const parts: string[] = [];
+  const TEXT_CMD_RE = /\\text\{([^}]*)\}/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = TEXT_CMD_RE.exec(inner)) !== null) {
+    const mathPart = inner.slice(lastIndex, m.index).trim();
+    const textPart = m[1].trim();
+    if (mathPart) parts.push(`$${mathPart}$`);
+    if (textPart) parts.push(textPart);
+    lastIndex = m.index + m[0].length;
+  }
+
+  const tail = inner.slice(lastIndex).trim();
+  if (tail) parts.push(`$${tail}$`);
+
+  // Remove empty math delimiters that result from empty math segments
+  return parts
+    .join(" ")
+    .replace(/\$\s*\$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function normalizeNodeMathContent(raw: string): string {
-  let text = normalizeMathExpression(stripLatexTabularEnv(raw ?? ""));
+  let text = normalizeMathExpression(stripLatexTabularEnv(stripRepeatedTextSpacePadding(raw ?? "")));
   if (!text) return "";
+
+  // Demote \text{non-Latin} commands BEFORE delimiter wrapping so KaTeX never
+  // tries to render Khmer/Arabic/etc. inside a math context.
+  text = demoteNonLatinTextCommands(text);
 
   text = text
     .replace(/\\\[/g, "$$")
@@ -2786,7 +2876,9 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
         keyFormula: normalizedKeyFormula,
         labelBlocks: buildRenderBlocks(normalizedLabel),
         descriptionBlocks: buildRenderBlocks(normalizedDescription),
-        mathBlocks: buildMathBlocks(normalizedMathContent || normalizedKeyFormula, { defaultDisplay: true }),
+        // Use buildRenderBlocks (not buildMathBlocks) so that mixed prose+math mathContent
+        // (e.g. "ដឺក្រេ $n = 3$ (ចំនួនSES)") keeps its text blocks instead of filtering them out.
+        mathBlocks: buildRenderBlocks(normalizedMathContent || normalizedKeyFormula, { defaultDisplay: true }),
       };
     }),
   };
@@ -4334,6 +4426,11 @@ async function generateStructuredJson<T>(
 
     let response;
     try {
+      logger.info(`[DEBUG:AI:PROMPT] Task: ${config.taskName}`, {
+        model: modelName,
+        systemInstruction: buildSystemInstruction(config.options),
+        prompt: `${config.prompt}${retrySuffix}`
+      });
       response = await client.models.generateContent({
         model: modelName,
         config: {

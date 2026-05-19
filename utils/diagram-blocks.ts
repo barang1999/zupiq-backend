@@ -229,7 +229,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
       const params = item.params && typeof item.params === "object" ? item.params : undefined;
-      if (!points.length && !["linear", "quadratic", "absolute-value"].includes(kind)) return null;
+      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,

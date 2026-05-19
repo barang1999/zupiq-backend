@@ -527,6 +527,7 @@ Diagram spec examples:
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
+- function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
 - solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
 
 const KHMER_DIGITS: Record<string, string> = {
@@ -653,6 +654,46 @@ function inferFunctionGraphBlocks(
         }],
         domain: [domainMin, domainMax],
         range: [yMin, yMax],
+        xAxisLabel: variable,
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
+  const rationalMatch = source.match(
+    /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*(?:\\frac\{([+-]?\d+(?:\.\d+)?)\}\{\s*([a-z])\s*([+-])\s*(\d+(?:\.\d+)?)\s*\}|([+-]?\d+(?:\.\d+)?)\s*\/\s*\(?\s*([a-z])\s*([+-])\s*(\d+(?:\.\d+)?)\s*\)?)(?:\s*([+-]\s*\d+(?:\.\d+)?))?/i
+  );
+  if (rationalMatch) {
+    const numerator = rationalMatch[1] ?? rationalMatch[5];
+    const variable = rationalMatch[2] ?? rationalMatch[6] ?? "x";
+    const sign = rationalMatch[3] ?? rationalMatch[7] ?? "-";
+    const shift = rationalMatch[4] ?? rationalMatch[8] ?? "0";
+    const trailing = rationalMatch[9];
+    const a = parseFloat(numerator);
+    const h = sign === "-" ? parseFloat(shift) : -parseFloat(shift);
+    const k = trailing ? parseFloat(trailing.replace(/\s/g, "")) : 0;
+    if (Number.isFinite(a) && Number.isFinite(h) && Number.isFinite(k) && a !== 0) {
+      const domainMin = Math.floor(h - 6);
+      const domainMax = Math.ceil(h + 6);
+      const ySpan = Math.max(6, Math.ceil(Math.abs(a) * 3));
+      const latexMatch = problem.match(/\$([^$]*(?:\\frac|\/)[^$]*)\$/);
+      const latex = latexMatch ? latexMatch[1].trim() : `y=\\frac{${a}}{${variable}${h >= 0 ? "-" : "+"}${Math.abs(h)}}${k ? `${k >= 0 ? "+" : ""}${k}` : ""}`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{
+          kind: "rational-reciprocal",
+          params: {
+            a,
+            h,
+            k,
+            verticalAsymptote: h,
+            horizontalAsymptote: k,
+          },
+          latex,
+        }],
+        domain: [domainMin, domainMax],
+        range: [Math.floor(k - ySpan), Math.ceil(k + ySpan)],
         xAxisLabel: variable,
         yAxisLabel: "y",
       }]);

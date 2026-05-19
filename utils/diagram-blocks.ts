@@ -172,21 +172,31 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (!shape || typeof shape !== "object") return null;
       const item = shape as Record<string, unknown>;
       const shapeType = String(item.shape || item.type || "");
-      if (!["triangle", "polygon", "circle", "segment", "line", "arrow"].includes(shapeType)) return null;
+      if (!["triangle", "polygon", "circle", "segment", "line", "arrow", "angle", "arc", "semicircle"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)
         : [];
       const center = asPoint(item.center);
       const start = asPoint(item.start);
       const end = asPoint(item.end);
+      const vertex = asPoint(item.vertex);
+      const from = asPoint(item.from);
+      const to = asPoint(item.to);
       const radius = asFiniteNumber(item.radius, Number.NaN);
+      const startAngle = asFiniteNumber(item.startAngle, Number.NaN);
+      const endAngle = asFiniteNumber(item.endAngle, Number.NaN);
       return {
         shape: shapeType,
         vertices,
         center,
         start,
         end,
+        vertex,
+        from,
+        to,
         radius: Number.isFinite(radius) ? radius : undefined,
+        startAngle: Number.isFinite(startAngle) ? startAngle : undefined,
+        endAngle: Number.isFinite(endAngle) ? endAngle : undefined,
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
@@ -195,7 +205,10 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
     .filter((shape) => {
       if (!shape) return false;
       if (shape.shape === "circle") return Boolean(shape.center) && Number.isFinite(shape.radius);
+      if (shape.shape === "arc") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
+      if (shape.shape === "semicircle") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "arrow") return Boolean(shape.start) && Boolean(shape.end);
+      if (shape.shape === "angle") return Boolean(shape.vertex) && Boolean(shape.from) && Boolean(shape.to);
       return Array.isArray(shape.vertices) && shape.vertices.length >= 2;
     });
   if (!normalizedShapes.length) warnings.push("empty-geometry");
@@ -221,6 +234,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
 
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const functions = Array.isArray(input.functions) ? input.functions : [];
+  const featurePoints = Array.isArray(input.featurePoints) ? input.featurePoints : [];
   const normalizedFunctions = functions
     .map((fn) => {
       if (!fn || typeof fn !== "object") return null;
@@ -240,10 +254,25 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 3);
+  const normalizedFeaturePoints = featurePoints
+    .map((point) => {
+      if (!point || typeof point !== "object") return null;
+      const item = point as Record<string, unknown>;
+      const coordinates = asPoint(item.point ?? item.coordinates);
+      if (!coordinates) return null;
+      return {
+        point: coordinates,
+        label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
+        color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
   if (!normalizedFunctions.length) warnings.push("empty-function-graph");
   return {
     type: "function-graph",
     functions: normalizedFunctions,
+    featurePoints: normalizedFeaturePoints,
     domain: Array.isArray(input.domain) ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     range: Array.isArray(input.range) ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 8) : undefined,

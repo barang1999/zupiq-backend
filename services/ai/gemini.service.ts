@@ -526,6 +526,7 @@ Diagram spec examples:
 - geometry vector arrows: {"shapes":[{"shape":"arrow","start":[0,0],"end":[3,2],"label":"\\vec{A}"},{"shape":"arrow","start":[3,2],"end":[4,7],"label":"\\vec{B}"},{"shape":"arrow","start":[0,0],"end":[4,7],"label":"\\vec{A}+\\vec{B}","color":"red"}],"options":{"xMin":-1,"xMax":5,"yMin":-1,"yMax":8,"grid":true,"showOrigin":true,"xAxisLabel":"x","yAxisLabel":"y"}}
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+- function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
 - solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
@@ -614,12 +615,127 @@ function inferFunctionGraphBlocks(
   const source = normalizeDigits(`${problem}\n${solutionText}`);
 
   // Only fire for graph/parabola/sketch problems
-  if (!/(graph|parabola|sketch|plot|ក្រាហ្វ|ប៉ារ៉ាបូល|គូស|quadratic)/i.test(source)) return [];
+  if (!/(graph|parabola|sketch|plot|line|linear|intersection|ក្រាហ្វ|ប៉ារ៉ាបូល|គូស|quadratic|បន្ទាត់|ប្រសព្វ)/i.test(source)) return [];
 
   // Confirm the AI identified this as a function-graph (empty block hint)
   const wantedFunctionGraph = emptyBlocks.some((b) => b.diagramType === "function-graph")
-    || /(graph|sketch|plot)/i.test(source);
+    || /(graph|sketch|plot|line|linear|intersection|បន្ទាត់|ប្រសព្វ)/i.test(source);
   if (!wantedFunctionGraph) return [];
+
+  const parseLinearCoefficient = (raw: string | undefined): number => {
+    const value = `${raw ?? ""}`.replace(/\s/g, "");
+    if (!value || value === "+") return 1;
+    if (value === "-") return -1;
+    return Number(value);
+  };
+  const lineMatches = Array.from(source.matchAll(/y\s*=\s*([+-]?\s*\d*(?:\.\d+)?)\s*x\s*([+-]\s*\d+(?:\.\d+)?)?/gi))
+    .map((match) => {
+      const m = parseLinearCoefficient(match[1]);
+      const b = match[2] ? Number(match[2].replace(/\s/g, "")) : 0;
+      const latex = match[0].replace(/\s+/g, "");
+      return Number.isFinite(m) && Number.isFinite(b) ? { m, b, latex } : null;
+    })
+    .filter((line): line is { m: number; b: number; latex: string } => Boolean(line));
+  if (lineMatches.length >= 2) {
+    const [line1, line2] = lineMatches;
+    if (line1.m !== line2.m) {
+      const x = (line2.b - line1.b) / (line1.m - line2.m);
+      const y = line1.m * x + line1.b;
+      const domainMin = Math.floor(x - 4);
+      const domainMax = Math.ceil(x + 4);
+      const evalY = (line: { m: number; b: number }, value: number) => line.m * value + line.b;
+      const yValues = [0, y, evalY(line1, domainMin), evalY(line1, domainMax), evalY(line2, domainMin), evalY(line2, domainMax)];
+      const yMin = Math.floor(Math.min(...yValues) - 1);
+      const yMax = Math.ceil(Math.max(...yValues) + 1);
+      const pointLabel = `(${Number(x.toFixed(2))}, ${Number(y.toFixed(2))})`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [
+          { kind: "linear", params: { m: line1.m, b: line1.b }, latex: line1.latex, color: "primary" },
+          { kind: "linear", params: { m: line2.m, b: line2.b }, latex: line2.latex, color: "red" },
+        ],
+        featurePoints: [{ point: [x, y], label: pointLabel, color: "green" }],
+        domain: [domainMin, domainMax],
+        range: [yMin, yMax],
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
+  const pointMatches = Array.from(source.matchAll(
+    /\b([A-Z])\s*(?:\([^()]*\)\s*=\s*)?\(\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*\)/g
+  ))
+    .map((match) => ({
+      label: match[1],
+      x: Number(match[2]),
+      y: Number(match[3]),
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .filter((point, index, points) => points.findIndex((candidate) => (
+      candidate.label === point.label && candidate.x === point.x && candidate.y === point.y
+    )) === index);
+  if (pointMatches.length >= 2 && /(slope|ជម្រាល|increasing|decreasing|កើន|ចុះ|line segment|plotted points|ចំណុច)/i.test(source)) {
+    const [pointA, pointB] = pointMatches;
+    const dx = pointB.x - pointA.x;
+    const dy = pointB.y - pointA.y;
+    if (dx !== 0) {
+      const m = dy / dx;
+      const b = pointA.y - m * pointA.x;
+      const xMin = Math.floor(Math.min(pointA.x, pointB.x) - 2);
+      const xMax = Math.ceil(Math.max(pointA.x, pointB.x) + 2);
+      const evalY = (xValue: number) => m * xValue + b;
+      const yValues = [0, pointA.y, pointB.y, evalY(xMin), evalY(xMax)];
+      const yMin = Math.floor(Math.min(...yValues) - 1);
+      const yMax = Math.ceil(Math.max(...yValues) + 1);
+      const formatNumber = (value: number) => Number(value.toFixed(6));
+      const gcd = (left: number, right: number): number => {
+        let a = Math.abs(Math.round(left));
+        let bValue = Math.abs(Math.round(right));
+        while (bValue) {
+          const next = a % bValue;
+          a = bValue;
+          bValue = next;
+        }
+        return a || 1;
+      };
+      const formatFraction = (numerator: number, denominator: number): string => {
+        if (denominator < 0) {
+          numerator *= -1;
+          denominator *= -1;
+        }
+        if (Number.isInteger(numerator) && Number.isInteger(denominator)) {
+          const divisor = gcd(numerator, denominator);
+          numerator /= divisor;
+          denominator /= divisor;
+        }
+        if (denominator === 1) return `${formatNumber(numerator)}`;
+        return `\\frac{${formatNumber(numerator)}}{${formatNumber(denominator)}}`;
+      };
+      const slopeLatex = Number.isInteger(m) ? `${m}` : formatFraction(dy, dx);
+      const interceptLatex = Number.isInteger(b) ? `${Math.abs(b)}` : formatFraction(Math.abs(dy * -pointA.x + pointA.y * dx), Math.abs(dx));
+      const latex = `y=${slopeLatex}x${b < 0 ? "-" : "+"}${interceptLatex}`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{
+          kind: "linear",
+          params: { m, b },
+          latex,
+          color: "primary",
+        }],
+        featurePoints: [
+          { point: [pointA.x, pointA.y], label: `${pointA.label}(${pointA.x}, ${pointA.y})`, color: "green" },
+          { point: [pointB.x, pointB.y], label: `${pointB.label}(${pointB.x}, ${pointB.y})`, color: "red" },
+        ],
+        domain: [xMin, xMax],
+        range: [yMin, yMax],
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    }
+  }
 
   const absMatch = source.match(
     /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*([+-]?)\s*(\d+(?:\.\d+)?)?\s*\|\s*([a-z])\s*([+-])\s*(\d+(?:\.\d+)?)\s*\|\s*([+-]\s*\d+(?:\.\d+)?)?/i
@@ -752,6 +868,155 @@ function inferFunctionGraphBlocks(
   }]);
 }
 
+function inferTriangleExteriorAngleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(triangle|ត្រីកោណ|exterior angle|មុំក្រៅ)/i.test(source);
+  if (!wantsGeometry || !/(triangle|ត្រីកោណ)/i.test(source) || !/(exterior angle|មុំក្រៅ)/i.test(source)) return [];
+
+  const angleA = firstNumberAfter(source, [
+    /\\angle\s*A\s*=\s*(\d+)/i,
+    /angle\s*A\s*=\s*(\d+)/i,
+    /មុំ\s*A[^\d]*(\d+)/i,
+  ]);
+  const angleB = firstNumberAfter(source, [
+    /\\angle\s*B\s*=\s*(\d+)/i,
+    /angle\s*B\s*=\s*(\d+)/i,
+    /មុំ\s*B[^\d]*(\d+)/i,
+  ]);
+  if (!Number.isFinite(angleA) || !Number.isFinite(angleB)) return [];
+
+  const exterior = angleA + angleB;
+  const A: [number, number] = [70, 165];
+  const B: [number, number] = [250, 165];
+  const C: [number, number] = [185, 58];
+  const E: [number, number] = [150, 0];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "triangle", vertices: [A, B, C], labels: ["A", "B", "C"] },
+      { shape: "segment", vertices: [C, E], label: "extension", color: "red" },
+      { shape: "angle", vertex: A, from: B, to: C, label: `${angleA}°`, radius: 24, color: "muted" },
+      { shape: "angle", vertex: B, from: A, to: C, label: `${angleB}°`, radius: 24, color: "muted" },
+      { shape: "angle", vertex: C, from: A, to: E, label: `${exterior}°`, radius: 30, color: "red" },
+    ],
+  }]);
+}
+
+function inferCircleInscribedAngleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(circle|រង្វង់|arc|ធ្នូ|inscribed angle|មុំចារឹក)/i.test(source);
+  if (!wantsGeometry || !/(circle|រង្វង់)/i.test(source) || !/(arc|ធ្នូ|inscribed angle|មុំចារឹក)/i.test(source)) return [];
+
+  const arcMeasure = firstNumberAfter(source, [
+    /(?:arc|ធ្នូ)\s*AB[^\d]*(\d+)/i,
+    /AB[^\d]*(\d+)\s*(?:\^\\?circ|°|o)?/i,
+    /(\d+)\s*(?:\^\\?circ|°|o)?[^\n]*(?:arc|ធ្នូ)/i,
+  ]);
+  if (!Number.isFinite(arcMeasure) || arcMeasure <= 0 || arcMeasure >= 360) return [];
+
+  const inscribed = arcMeasure / 2;
+  const O: [number, number] = [160, 110];
+  const r = 78;
+  const startAngle = 210;
+  const endAngle = startAngle + arcMeasure;
+  const pointAt = (deg: number): [number, number] => {
+    const rad = (deg * Math.PI) / 180;
+    return [O[0] + Math.cos(rad) * r, O[1] + Math.sin(rad) * r];
+  };
+  const A = pointAt(startAngle);
+  const B = pointAt(endAngle);
+  const C: [number, number] = [160, 32];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "circle", center: O, radius: r, label: "O" },
+      { shape: "triangle", vertices: [A, B, C], labels: ["A", "B", "C"] },
+      { shape: "segment", vertices: [O, A], color: "muted" },
+      { shape: "segment", vertices: [O, B], color: "muted" },
+      { shape: "arc", center: O, radius: r + 4, startAngle, endAngle, label: `${arcMeasure}°`, color: "red" },
+      { shape: "angle", vertex: C, from: A, to: B, label: `${inscribed}°`, radius: 28, color: "primary" },
+    ],
+  }]);
+}
+
+function inferRectangleSemicircleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(rectangle|ចតុកោណ|semicircle|កន្លះរង្វង់|composite|រូបផ្សំ|area|ផ្ទៃក្រឡា)/i.test(source);
+  if (!wantsGeometry || !/(rectangle|ចតុកោណ)/i.test(source) || !/(semicircle|កន្លះរង្វង់)/i.test(source)) return [];
+
+  const length = firstNumberAfter(source, [
+    /length[^\d]*(\d+(?:\.\d+)?)/i,
+    /ប្រវែង[^\d]*(\d+(?:\.\d+)?)/i,
+    /l\s*\)?\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  const width = firstNumberAfter(source, [
+    /width[^\d]*(\d+(?:\.\d+)?)/i,
+    /ទទឹង[^\d]*(\d+(?:\.\d+)?)/i,
+    /w\s*\)?\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  if (!Number.isFinite(length) || !Number.isFinite(width)) return [];
+
+  const rectLeft = 46;
+  const rectTop = 58;
+  const rectW = 178;
+  const rectH = 116;
+  const rectRight = rectLeft + rectW;
+  const rectBottom = rectTop + rectH;
+  const centerY = rectTop + rectH / 2;
+  const radius = rectH / 2;
+  const rValue = width / 2;
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      {
+        shape: "polygon",
+        vertices: [[rectLeft, rectTop], [rectRight, rectTop], [rectRight, rectBottom], [rectLeft, rectBottom]],
+        labels: ["", "", "", ""],
+        label: `rectangle area=${length}×${width}`,
+      },
+      {
+        shape: "semicircle",
+        center: [rectRight, centerY],
+        radius,
+        startAngle: -90,
+        endAngle: 90,
+        label: `r=${rValue}`,
+        color: "primary",
+      },
+      {
+        shape: "segment",
+        vertices: [[rectLeft, rectBottom + 22], [rectRight, rectBottom + 22]],
+        label: `${length}`,
+        color: "muted",
+      },
+      {
+        shape: "segment",
+        vertices: [[rectLeft - 20, rectTop], [rectLeft - 20, rectBottom]],
+        label: `${width}`,
+        color: "muted",
+      },
+    ],
+  }]);
+}
+
 const diagramBlockSchema = {
   type: Type.ARRAY,
   nullable: true,
@@ -815,7 +1080,16 @@ ${DIAGRAM_SPEC_GUIDE}`,
   const vennFallback = inferVennDiagramBlocks(problem, solutionText, normalized);
   if (vennFallback.length) return vennFallback;
 
-  return inferFunctionGraphBlocks(problem, solutionText, normalized);
+  const graphFallback = inferFunctionGraphBlocks(problem, solutionText, normalized);
+  if (graphFallback.length) return graphFallback;
+
+  const triangleFallback = inferTriangleExteriorAngleBlocks(problem, solutionText, normalized);
+  if (triangleFallback.length) return triangleFallback;
+
+  const circleFallback = inferCircleInscribedAngleBlocks(problem, solutionText, normalized);
+  if (circleFallback.length) return circleFallback;
+
+  return inferRectangleSemicircleBlocks(problem, solutionText, normalized);
 }
 
 // ─── Two-phase generation helpers ────────────────────────────────────────────

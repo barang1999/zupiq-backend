@@ -951,6 +951,69 @@ function inferCircleInscribedAngleBlocks(
   }]);
 }
 
+function inferFerrisWheelBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const problemSource = normalizeDigits(problem);
+  const solutionSource = normalizeDigits(solutionText);
+  const source = `${problemSource}\n${solutionSource}`;
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(ferris wheel|កង់ហ្វែរីស|circle|រង្វង់|radius|កាំ|ground line|បន្ទាត់ដី|rotational angle|មុំបង្វិល)/i.test(source);
+  if (!wantsGeometry || !/(ferris wheel|កង់ហ្វែរីស)/i.test(source)) return [];
+
+  const radiusValue = firstNumberAfter(`${problemSource}\n${solutionSource}`, [
+    /(?:radius|កាំ|R)\s*(?:=|:)?\s*(\d+(?:\.\d+)?)/i,
+    /(?:radius|កាំ)[^\n]*?(\d+(?:\.\d+)?)/i,
+    /R\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  const centerHeight = firstNumberAfter(`${problemSource}\n${solutionSource}`, [
+    /(?:center|ផ្ចិត|ចំណុចកណ្តាល)[^\n]*?(?:height|កម្ពស់)?[^\n]*?(\d+(?:\.\d+)?)(?:\s*\\?\s*text\{?m\}?|\s*m)?[^\n]*(?:above|លើ|ដី|ground)/i,
+    /(?:height|កម្ពស់)[^\n]*(?:center|ផ្ចិត|ចំណុចកណ្តាល|D)[^\n]*?(\d+(?:\.\d+)?)(?:\s*\\?\s*text\{?m\}?|\s*m)?/i,
+    /\bD\s*(?:=|គឺ)\s*(\d+(?:\.\d+)?)/i,
+    /\bC(?:enter)?(?:_{shift})?\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  if (!Number.isFinite(radiusValue) || !Number.isFinite(centerHeight) || radiusValue <= 0 || centerHeight <= 0) return [];
+
+  const formulaSource = `${solutionSource}\n${problemSource}`.replace(/\s+/g, "");
+  const horizontalStart = /h\(\s*\\theta\s*\)=\d+(?:\.\d+)?\\sin\(\s*\\theta\s*\)\+\d+(?:\.\d+)?/.test(formulaSource)
+    || /\\phi=0/.test(formulaSource)
+    || /(កម្ពស់ផ្ចិត|center height|ខាងស្តាំ|horizontal)/i.test(source);
+
+  // GeometryDiagram maps y upward. Use drawing units for a readable wheel, while
+  // preserving the correct vertical relation: ground is below the wheel center.
+  const center: [number, number] = [160, 92];
+  const radius = 72;
+  const scale = radius / radiusValue;
+  const groundY = center[1] - centerHeight * scale;
+  const groundLeft: [number, number] = [42, groundY];
+  const groundRight: [number, number] = [278, groundY];
+  const theta = 45;
+  const phi = horizontalStart ? theta : theta - 90;
+  const phiRad = (phi * Math.PI) / 180;
+  const rimPoint: [number, number] = [
+    center[0] + Math.cos(phiRad) * radius,
+    center[1] + Math.sin(phiRad) * radius,
+  ];
+  const bottomPoint: [number, number] = [center[0], center[1] - radius];
+  const rightPoint: [number, number] = [center[0] + radius, center[1]];
+  const referencePoint = horizontalStart ? rightPoint : bottomPoint;
+  const centerGround: [number, number] = [center[0], groundY];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "segment", vertices: [groundLeft, groundRight], label: "ground", color: "muted" },
+      { shape: "circle", center, radius, label: "O" },
+      { shape: "segment", vertices: [center, rimPoint], label: `R=${radiusValue} m`, color: "primary" },
+      { shape: "segment", vertices: [center, referencePoint], color: "muted" },
+      { shape: "angle", vertex: center, from: referencePoint, to: rimPoint, label: "θ", radius: 30, color: "red" },
+      { shape: "segment", vertices: [center, centerGround], label: `${centerHeight} m`, color: "green" },
+    ],
+  }]);
+}
+
 function inferRectangleSemicircleBlocks(
   problem: string,
   solutionText: string,
@@ -1088,6 +1151,9 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const circleFallback = inferCircleInscribedAngleBlocks(problem, solutionText, normalized);
   if (circleFallback.length) return circleFallback;
+
+  const ferrisWheelFallback = inferFerrisWheelBlocks(problem, solutionText, normalized);
+  if (ferrisWheelFallback.length) return ferrisWheelFallback;
 
   return inferRectangleSemicircleBlocks(problem, solutionText, normalized);
 }

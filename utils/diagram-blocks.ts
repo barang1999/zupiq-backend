@@ -235,6 +235,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const functions = Array.isArray(input.functions) ? input.functions : [];
   const featurePoints = Array.isArray(input.featurePoints) ? input.featurePoints : [];
+  const shadedRegions = Array.isArray(input.shadedRegions) ? input.shadedRegions : [];
   const normalizedFunctions = functions
     .map((fn) => {
       if (!fn || typeof fn !== "object") return null;
@@ -268,11 +269,30 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 8);
+  const normalizedShadedRegions = shadedRegions
+    .map((region) => {
+      if (!region || typeof region !== "object") return null;
+      const item = region as Record<string, unknown>;
+      const from = asFiniteNumber(item.from ?? item.xMin ?? item.start, Number.NaN);
+      const to = asFiniteNumber(item.to ?? item.xMax ?? item.end, Number.NaN);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
+      return {
+        from: Math.min(from, to),
+        to: Math.max(from, to),
+        baseline: asFiniteNumber(item.baseline, 0),
+        functionIndex: Math.max(0, Math.floor(asFiniteNumber(item.functionIndex, 0))),
+        label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
+        color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
   if (!normalizedFunctions.length) warnings.push("empty-function-graph");
   return {
     type: "function-graph",
     functions: normalizedFunctions,
     featurePoints: normalizedFeaturePoints,
+    shadedRegions: normalizedShadedRegions,
     domain: Array.isArray(input.domain) ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     range: Array.isArray(input.range) ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 8) : undefined,

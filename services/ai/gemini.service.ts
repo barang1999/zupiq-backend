@@ -737,6 +737,53 @@ function inferFunctionGraphBlocks(
     }
   }
 
+  const areaUnderMatch = source.match(
+    /(?:area under|ផ្ទៃក្រោម|shaded region|តំបន់ដែលបានដាក់ស្រមោល|អាំងតេក្រាល)[\s\S]{0,240}?(?:y\s*=\s*([+-]?\d+(?:\.\d+)?)?\s*x\^2|([+-]?\d+(?:\.\d+)?)?\s*x\^2)[\s\S]{0,240}?(?:from|ពី)\s*:?\s*\$?\s*x\s*=\s*([+-]?\d+(?:\.\d+)?)[\s\S]{0,120}?(?:to|ដល់)\s*:?\s*\$?\s*x\s*=\s*([+-]?\d+(?:\.\d+)?)/i
+  );
+  if (areaUnderMatch) {
+    const coefficient = areaUnderMatch[1] ?? areaUnderMatch[2];
+    const a = coefficient ? parseFloat(coefficient) : 1;
+    const from = parseFloat(areaUnderMatch[3]);
+    const to = parseFloat(areaUnderMatch[4]);
+    if (Number.isFinite(a) && Number.isFinite(from) && Number.isFinite(to) && a !== 0 && from !== to) {
+      const xMin = Math.min(from, to);
+      const xMax = Math.max(from, to);
+      const domainMin = Math.floor(Math.min(0, xMin) - 0.5);
+      const domainMax = Math.ceil(xMax + 0.5);
+      const evalAt = (x: number) => a * x * x;
+      const yValues = [0, evalAt(domainMin), evalAt(domainMax), evalAt(xMin), evalAt(xMax)];
+      const yMin = Math.floor(Math.min(...yValues) - 1);
+      const yMax = Math.ceil(Math.max(...yValues) + 1);
+      const area = (a / 3) * (Math.pow(xMax, 3) - Math.pow(xMin, 3));
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{
+          kind: "quadratic",
+          params: { a, b: 0, c: 0 },
+          latex: a === 1 ? "y=x^2" : `y=${a}x^2`,
+          color: "primary",
+        }],
+        shadedRegions: [{
+          from: xMin,
+          to: xMax,
+          baseline: 0,
+          functionIndex: 0,
+          label: `A=${Number(area.toFixed(2))}`,
+          color: "primary",
+        }],
+        featurePoints: [
+          { point: [xMin, 0], label: `x=${Number(xMin.toFixed(2))}`, color: "muted" },
+          { point: [xMax, 0], label: `x=${Number(xMax.toFixed(2))}`, color: "muted" },
+        ],
+        domain: [domainMin, domainMax],
+        range: [yMin, yMax],
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
   const absMatch = source.match(
     /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*([+-]?)\s*(\d+(?:\.\d+)?)?\s*\|\s*([a-z])\s*([+-])\s*(\d+(?:\.\d+)?)\s*\|\s*([+-]\s*\d+(?:\.\d+)?)?/i
   );
@@ -1014,6 +1061,51 @@ function inferFerrisWheelBlocks(
   }]);
 }
 
+function inferLadderRightTriangleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(ladder|ជណ្ដើរ|ជណ្តើរ|wall|ជញ្ជាំង|right triangle|ត្រីកោណកែង|ground|ដី)/i.test(source);
+  if (!wantsGeometry || !/(ladder|ជណ្ដើរ|ជណ្តើរ)/i.test(source)) return [];
+
+  const ladderLength = firstNumberAfter(source, [
+    /ladder[^\n]*?(\d+(?:\.\d+)?)\s*(?:m|\\text\{m\})?[^\n]*(?:long|length)/i,
+    /(?:length|ប្រវែង)[^\n]*(?:ladder|ជណ្ដើរ|ជណ្តើរ|c)[^\n]*?(\d+(?:\.\d+)?)/i,
+    /\bc\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  const footDistance = firstNumberAfter(source, [
+    /foot[^\n]*?(\d+(?:\.\d+)?)\s*(?:m|\\text\{m\})?[^\n]*(?:wall|ជញ្ជាំង)/i,
+    /(?:distance|ចម្ងាយ)[^\n]*(?:wall|ជញ្ជាំង|a)[^\n]*?(\d+(?:\.\d+)?)/i,
+    /\ba\s*=\s*(\d+(?:\.\d+)?)/i,
+  ]);
+  if (!Number.isFinite(ladderLength) || !Number.isFinite(footDistance) || ladderLength <= 0 || footDistance <= 0 || ladderLength <= footDistance) return [];
+
+  const height = Number(Math.sqrt(ladderLength * ladderLength - footDistance * footDistance).toFixed(6));
+  if (!Number.isFinite(height) || height <= 0) return [];
+
+  const wallFoot: [number, number] = [0, 0];
+  const ladderFoot: [number, number] = [footDistance, 0];
+  const wallTop: [number, number] = [0, height];
+  const groundRight: [number, number] = [footDistance + Math.max(1, footDistance * 0.35), 0];
+  const wallAbove: [number, number] = [0, height + Math.max(1, height * 0.12)];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "polygon", vertices: [wallFoot, ladderFoot, wallTop], labels: ["", "", ""] },
+      { shape: "segment", vertices: [wallFoot, groundRight], label: "ground", color: "muted" },
+      { shape: "segment", vertices: [wallFoot, wallAbove], color: "muted" },
+      { shape: "segment", vertices: [wallFoot, ladderFoot], label: `${footDistance} m`, color: "muted" },
+      { shape: "segment", vertices: [wallFoot, wallTop], label: `${Number(height.toFixed(2))} m`, color: "green" },
+      { shape: "segment", vertices: [ladderFoot, wallTop], label: `${ladderLength} m`, color: "primary" },
+      { shape: "angle", vertex: wallFoot, from: ladderFoot, to: wallTop, label: "90°", radius: 20, color: "muted" },
+    ],
+  }]);
+}
+
 function inferRectangleSemicircleBlocks(
   problem: string,
   solutionText: string,
@@ -1154,6 +1246,9 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const ferrisWheelFallback = inferFerrisWheelBlocks(problem, solutionText, normalized);
   if (ferrisWheelFallback.length) return ferrisWheelFallback;
+
+  const ladderFallback = inferLadderRightTriangleBlocks(problem, solutionText, normalized);
+  if (ladderFallback.length) return ladderFallback;
 
   return inferRectangleSemicircleBlocks(problem, solutionText, normalized);
 }

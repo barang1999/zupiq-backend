@@ -18,10 +18,19 @@ export interface MathSegment {
   display?: boolean;
 }
 
+function repairInlineMathNewlines(content: string): string {
+  return content.replace(/\$(?!\$)([\s\S]*?)\$(?!\$)/g, (match, inside) => {
+    if (inside.includes("\n\n") || !inside.trim() || inside.length > 500) return match;
+    if (!inside.includes("\n")) return match;
+    return `$${inside.replace(/\r?\n/g, " ")}$`;
+  });
+}
+
 export function segmentMathContent(content: string): MathSegment[] {
   if (!content || typeof content !== 'string') return [];
 
-  const repairedContent = repairBrokenMathDelimiters(content);
+  let repairedContent = repairBrokenMathDelimiters(content);
+  repairedContent = repairInlineMathNewlines(repairedContent);
 
   // Split by the math tokens
   const parts = repairedContent.split(MATH_TOKEN_REGEX);

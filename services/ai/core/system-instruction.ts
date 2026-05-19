@@ -55,6 +55,10 @@ Guidelines:
 - Keep answers focused and avoid unnecessary verbosity.
 - If reference response patterns are provided, use them to shape the explanation style and structure, but do not copy source text verbatim.
 
+Khmer Math Terminology Rules:
+- NEVER use the hallucinated/artificial term "ចំណុចកុំហ្វា" for critical values or roots.
+- Instead, use standard curriculum terms: "ឫសនៃសមីការ" (roots of the equation) or "ចំណុចសូន្យ" (zeros).
+
 Math formatting rules (CRITICAL — always follow these):
 - Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
 - NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.

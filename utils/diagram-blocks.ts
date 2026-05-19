@@ -6,7 +6,8 @@ export type DiagramType =
   | "number-line"
   | "sign-table"
   | "venn-diagram"
-  | "solid-geometry";
+  | "solid-geometry"
+  | "pie-chart";
 
 export type DiagramRenderBlock = {
   type: "diagram";
@@ -25,6 +26,7 @@ const DIAGRAM_TYPES = new Set<DiagramType>([
   "sign-table",
   "venn-diagram",
   "solid-geometry",
+  "pie-chart",
 ]);
 
 function stableStringify(value: unknown): string {
@@ -93,13 +95,37 @@ function normalizeNumberLineSpec(input: Record<string, unknown>, warnings: strin
       };
     })
     .filter(Boolean);
-  if (!normalizedRanges.length && !normalizedPoints.length) warnings.push("empty-number-line");
+
+  let normalizedBoxPlot: Record<string, number> | undefined = undefined;
+  if (input.boxPlot && typeof input.boxPlot === "object") {
+    const bp = input.boxPlot as Record<string, unknown>;
+    const minVal = asFiniteNumber(bp.min, Number.NaN);
+    const q1Val = asFiniteNumber(bp.q1, Number.NaN);
+    const q2Val = asFiniteNumber(bp.q2, Number.NaN);
+    const q3Val = asFiniteNumber(bp.q3, Number.NaN);
+    const maxVal = asFiniteNumber(bp.max, Number.NaN);
+    if (
+      Number.isFinite(minVal) &&
+      Number.isFinite(q1Val) &&
+      Number.isFinite(q2Val) &&
+      Number.isFinite(q3Val) &&
+      Number.isFinite(maxVal)
+    ) {
+      normalizedBoxPlot = { min: minVal, q1: q1Val, q2: q2Val, q3: q3Val, max: maxVal };
+    }
+  }
+
+  if (!normalizedRanges.length && !normalizedPoints.length && !normalizedBoxPlot) {
+    warnings.push("empty-number-line");
+  }
+
   return {
     type: "number-line",
     ranges: normalizedRanges,
     points: normalizedPoints,
     min: Number.isFinite(Number(input.min)) ? Number(input.min) : undefined,
     max: Number.isFinite(Number(input.max)) ? Number(input.max) : undefined,
+    ...(normalizedBoxPlot ? { boxPlot: normalizedBoxPlot } : {}),
   };
 }
 
@@ -302,17 +328,44 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
 function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const shape = String(input.shape || "").trim();
-  if (!["cube", "cuboid", "pyramid", "prism"].includes(shape)) warnings.push("unsupported-solid-shape");
+  const allowed = ["cube", "cuboid", "pyramid", "prism", "cylinder", "cone", "sphere"];
+  if (!allowed.includes(shape)) warnings.push("unsupported-solid-shape");
   const dimensions = input.dimensions && typeof input.dimensions === "object" ? input.dimensions as Record<string, unknown> : {};
   return {
     type: "solid-geometry",
-    shape: ["cube", "cuboid", "pyramid", "prism"].includes(shape) ? shape : "cube",
+    shape: allowed.includes(shape) ? shape : "cube",
     dimensions: {
       width: asFiniteNumber(dimensions.width, 100),
       height: asFiniteNumber(dimensions.height, 100),
       depth: asFiniteNumber(dimensions.depth, 80),
     },
     labels: input.labels && typeof input.labels === "object" ? input.labels : {},
+  };
+}
+
+function normalizePieChartSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const sectors = Array.isArray(input.sectors) ? input.sectors : [];
+  const normalizedSectors = sectors
+    .map((sector) => {
+      if (!sector || typeof sector !== "object") return null;
+      const item = sector as Record<string, unknown>;
+      const label = typeof item.label === "string" ? item.label.slice(0, 80) : "Category";
+      const percentage = asFiniteNumber(item.percentage, Number.NaN);
+      if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) return null;
+      return {
+        label,
+        percentage
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalizedSectors.length) {
+    warnings.push("empty-pie-chart");
+  }
+
+  return {
+    type: "pie-chart",
+    sectors: normalizedSectors
   };
 }
 
@@ -333,7 +386,8 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
         : diagramType === "venn-diagram" ? normalizeVennDiagramSpec(inputSpec, warnings)
           : diagramType === "geometry" ? normalizeGeometrySpec(inputSpec, warnings)
             : diagramType === "function-graph" ? normalizeFunctionGraphSpec(inputSpec, warnings)
-              : normalizeSolidGeometrySpec(inputSpec, warnings);
+              : diagramType === "pie-chart" ? normalizePieChartSpec(inputSpec, warnings)
+                : normalizeSolidGeometrySpec(inputSpec, warnings);
 
   return {
     type: "diagram",

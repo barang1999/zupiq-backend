@@ -449,7 +449,15 @@ function repairGeneratedMathText(input: string): string {
   const text = `${input ?? ""}`;
   if (!text.trim()) return "";
 
-  return text
+  // Fix LaTeX commands corrupted by JSON escape sequence parsing:
+  const repaired = text
+    .replace(/\n(otin|umber|ame|ew)/g, "\\n$1")
+    .replace(/\t(an|heta|imes)/g, "\\t$1")
+    .replace(/[\b](eta)/g, "\\b$1")
+    .replace(/\f(rac)/g, "\\f$1")
+    .replace(/\r(ight)/g, "\\r$1");
+
+  return repaired
     .split("\n")
     .map((line) => {
       const dollarCount = (line.match(/\$/g) ?? []).length;
@@ -521,6 +529,7 @@ function normalizeSolutionFirstPayload(
 const DIAGRAM_SPEC_GUIDE = `
 Diagram spec examples:
 - number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}],"points":[{"value":0,"closed":true}]}
+- number-line box plot: {"boxPlot":{"min":2,"q1":4.5,"q2":8,"q3":12.5,"max":15}}
 - sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
 - geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
 - geometry vector arrows: {"shapes":[{"shape":"arrow","start":[0,0],"end":[3,2],"label":"\\vec{A}"},{"shape":"arrow","start":[3,2],"end":[4,7],"label":"\\vec{B}"},{"shape":"arrow","start":[0,0],"end":[4,7],"label":"\\vec{A}+\\vec{B}","color":"red"}],"options":{"xMin":-1,"xMax":5,"yMin":-1,"yMax":8,"grid":true,"showOrigin":true,"xAxisLabel":"x","yAxisLabel":"y"}}
@@ -529,7 +538,7 @@ Diagram spec examples:
 - function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
-- solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
+- solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
 
 const KHMER_DIGITS: Record<string, string> = {
   "០": "0",
@@ -863,14 +872,155 @@ function inferFunctionGraphBlocks(
     }
   }
 
+  // Extract cubic: f(x) = ax^3 [+ bx^2] [+ cx] [+ d]
+  // Must be checked before quadratic since x^3 contains x which would confuse qMatch
+  const cubicMatch = source.match(
+    /=\s*([+-]?\s*\d*(?:\.\d+)?)\s*x\^3(?:\s*([+-]\s*\d+(?:\.\d+)?)\s*x\^2)?(?:\s*([+-]\s*\d+(?:\.\d+)?)\s*x(?!\^))?(?:\s*([+-]\s*\d+(?:\.\d+)?))?/i
+  );
+  if (cubicMatch) {
+    const rawA = (cubicMatch[1] ?? "1").replace(/\s/g, "");
+    const cubicA = rawA === "" || rawA === "+" ? 1 : rawA === "-" ? -1 : parseFloat(rawA);
+    const cubicB = cubicMatch[2] ? parseFloat(cubicMatch[2].replace(/\s/g, "")) : 0;
+    const cubicC = cubicMatch[3] ? parseFloat(cubicMatch[3].replace(/\s/g, "")) : 0;
+    const cubicD = cubicMatch[4] ? parseFloat(cubicMatch[4].replace(/\s/g, "")) : 0;
+
+    if (Number.isFinite(cubicA) && cubicA !== 0) {
+      const evalCubic = (x: number) => cubicA * x ** 3 + cubicB * x ** 2 + cubicC * x + cubicD;
+
+      // Critical points: f'(x) = 3ax^2 + 2bx + c = 0
+      const dDisc = (2 * cubicB) ** 2 - 4 * (3 * cubicA) * cubicC;
+      const criticalXs: number[] = dDisc > 0
+        ? [(-2 * cubicB - Math.sqrt(dDisc)) / (6 * cubicA), (-2 * cubicB + Math.sqrt(dDisc)) / (6 * cubicA)].filter(Number.isFinite)
+        : Math.abs(dDisc) < 1e-10
+          ? [(-2 * cubicB) / (6 * cubicA)].filter(Number.isFinite)
+          : [];
+
+      const critXMin = criticalXs.length ? Math.min(...criticalXs) : 0;
+      const critXMax = criticalXs.length ? Math.max(...criticalXs) : 0;
+      const domainMin = Math.floor(critXMin - 2);
+      const domainMax = Math.ceil(critXMax + 2);
+
+      const NUM_SAMPLES = 60;
+      const samplePoints: [number, number][] = Array.from({ length: NUM_SAMPLES }, (_, i) => {
+        const x = domainMin + ((domainMax - domainMin) * i) / (NUM_SAMPLES - 1);
+        return [Math.round(x * 1000) / 1000, Math.round(evalCubic(x) * 1000) / 1000];
+      });
+
+      const featurePoints = criticalXs.map((x) => ({
+        point: [Math.round(x * 100) / 100, Math.round(evalCubic(x) * 100) / 100] as [number, number],
+        label: `(${Number(x.toFixed(2))}, ${Number(evalCubic(x).toFixed(2))})`,
+      }));
+
+      const yValues = samplePoints.map((p) => p[1]);
+      const rawYMin = Math.min(...yValues);
+      const rawYMax = Math.max(...yValues);
+      const yPad = Math.max((rawYMax - rawYMin) * 0.1, 2);
+
+      const cubicLatexMatch = problem.match(/\$([^$]*x\^3[^$]*)\$/i);
+      const cubicLatex = cubicLatexMatch ? cubicLatexMatch[1].trim() : "";
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{ kind: "cubic", points: samplePoints, latex: cubicLatex, color: "primary" }],
+        featurePoints,
+        domain: [domainMin, domainMax],
+        range: [Math.floor(rawYMin - yPad), Math.ceil(rawYMax + yPad)],
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
+  // Extract exponential: P(t) = 500(1.08)^t or y = a * b^x or f(x) = b^x
+  // Let's try matching with constant coefficient "a" first: P(t) = 500(1.08)^t
+  const expoMatch = source.match(
+    /(?:([a-z]+)\s*\(\s*([a-z])\s*\)|([a-z]+))\s*=\s*(\d+(?:\.\d+)?)\s*(?:\*|\\times|\\cdot|\\s*|\s*)\(?\s*(\d+(?:\.\d+)?)\s*\)?\^(?:([a-z])|\{([a-z])\})/i
+  );
+  // Also try matching without "a" coefficient (implied a = 1): y = 2^x
+  const expoMatchNoA = !expoMatch ? source.match(
+    /(?:([a-z]+)\s*\(\s*([a-z])\s*\)|([a-z]+))\s*=\s*\(?\s*(\d+(?:\.\d+)?)\s*\)?\^(?:([a-z])|\{([a-z])\})/i
+  ) : null;
+
+  if (expoMatch || expoMatchNoA) {
+    let expoA = 1;
+    let expoB = 1;
+    let xAxisLabel = "x";
+    let yAxisLabel = "y";
+
+    if (expoMatch) {
+      yAxisLabel = expoMatch[1] || expoMatch[3] || "y";
+      xAxisLabel = expoMatch[2] || expoMatch[6] || expoMatch[7] || "x";
+      expoA = parseFloat(expoMatch[4]);
+      expoB = parseFloat(expoMatch[5]);
+    } else if (expoMatchNoA) {
+      yAxisLabel = expoMatchNoA[1] || expoMatchNoA[3] || "y";
+      xAxisLabel = expoMatchNoA[2] || expoMatchNoA[5] || expoMatchNoA[6] || "x";
+      expoA = 1;
+      expoB = parseFloat(expoMatchNoA[4]);
+    }
+
+    if (Number.isFinite(expoA) && Number.isFinite(expoB) && expoA > 0 && expoB > 0 && expoB !== 1) {
+      const targetVal = firstNumberAfter(source, [
+        /(?:after|បន្ទាប់ពី|រយៈពេល)\s*(\d+(?:\.\d+)?)\s*(?:years|months|days|hours|ឆ្នាំ|ខែ|ថ្ងៃ|ម៉ោង)/i,
+        /(\d+(?:\.\d+)?)\s*(?:years|months|days|hours|ឆ្នាំ|ខែ|ថ្ងៃ|ម៉ោង)/i,
+      ]) || 5;
+
+      const domainMin = 0;
+      const domainMax = Math.max(8, Math.ceil(targetVal * 1.6));
+      
+      const NUM_SAMPLES = 60;
+      const samplePoints: [number, number][] = [];
+      for (let i = 0; i < NUM_SAMPLES; i++) {
+        const tVal = domainMin + ((domainMax - domainMin) * i) / (NUM_SAMPLES - 1);
+        const pVal = expoA * Math.pow(expoB, tVal);
+        samplePoints.push([
+          Math.round(tVal * 100) / 100,
+          Math.round(pVal * 100) / 100
+        ]);
+      }
+
+      const targetY = expoA * Math.pow(expoB, targetVal);
+      const featurePoints = [
+        { point: [0, expoA] as [number, number], label: `(0, ${expoA})`, color: "muted" },
+        { point: [targetVal, Math.round(targetY * 100) / 100] as [number, number], label: `(${targetVal}, ${Math.round(targetY)})`, color: "primary" }
+      ];
+
+      const yValues = samplePoints.map((p) => p[1]);
+      const rawYMin = Math.min(...yValues);
+      const rawYMax = Math.max(...yValues);
+      const yPad = Math.max((rawYMax - rawYMin) * 0.1, 2);
+
+      const latexMatch = problem.match(/\$([^$]*=[^$]*\^[^$]*)\$/);
+      const latex = latexMatch ? latexMatch[1].trim() : `${yAxisLabel}(${xAxisLabel}) = ${expoA}(${expoB})^${xAxisLabel}`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [{ kind: "exponential", points: samplePoints, latex, color: "primary" }],
+        featurePoints,
+        domain: [domainMin, domainMax],
+        range: [Math.floor(rawYMin), Math.ceil(rawYMax + yPad)],
+        xAxisLabel,
+        yAxisLabel,
+      }]);
+    }
+  }
+
   // Extract quadratic: f(t) = -5t^2 + 20t + 15 or f(x) = ax^2 + bx + c
   const qMatch = source.match(
-    /=\s*(-?\s*\d+(?:\.\d+)?)\s*[a-z]\^2\s*([+\-]\s*\d+(?:\.\d+)?)\s*[a-z](?:\s*([+\-]\s*\d+(?:\.\d+)?))?(?!\s*[a-z])/i
+    /=\s*([+-]?\s*\d*(?:\.\d+)?)\s*[a-z]\^2\s*(?:([+-]\s*\d*(?:\.\d+)?)\s*[a-z])?(?:\s*([+-]\s*\d+(?:\.\d+)?))?(?!\s*[a-z])/i
   );
   if (!qMatch) return [];
 
-  const a = parseFloat(qMatch[1].replace(/\s/g, ""));
-  const b = parseFloat(qMatch[2].replace(/\s/g, ""));
+  const rawA = (qMatch[1] ?? "").replace(/\s/g, "");
+  const a = rawA === "" || rawA === "+" ? 1 : rawA === "-" ? -1 : parseFloat(rawA);
+
+  const b = qMatch[2] !== undefined
+    ? (() => {
+        const rawB = qMatch[2].replace(/\s/g, "");
+        return rawB === "" || rawB === "+" ? 1 : rawB === "-" ? -1 : parseFloat(rawB);
+      })()
+    : 0;
+
   const c = qMatch[3] ? parseFloat(qMatch[3].replace(/\s/g, "")) : 0;
   if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || a === 0) return [];
 
@@ -913,6 +1063,245 @@ function inferFunctionGraphBlocks(
     xAxisLabel,
     yAxisLabel,
   }]);
+}
+
+function inferNumberLineBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+
+  // 1. Try Box Plot extraction first
+  const isBoxPlot = /(box.?plot|boxplot|ក្វាទែល|មេដ្យាន|quartile)/i.test(source);
+  if (isBoxPlot) {
+    const minVal = firstNumberAfter(source, [
+      /(?:អប្បបរមា|minimum|min)[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /\bmin\s*=\s*([+-]?\d+(?:\.\d+)?)/i
+    ]);
+    const q1Val = firstNumberAfter(source, [
+      /q_?1[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី\s*១[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី១[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i
+    ]);
+    const q2Val = firstNumberAfter(source, [
+      /q_?2[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /median[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /មេដ្យាន[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី\s*២[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី២[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i
+    ]);
+    const q3Val = firstNumberAfter(source, [
+      /q_?3[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី\s*៣[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /ក្វាទែលទី៣[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i
+    ]);
+    const maxVal = firstNumberAfter(source, [
+      /(?:អតិបរមា|maximum|max)[^\d\n]*?([+-]?\d+(?:\.\d+)?)/i,
+      /\bmax\s*=\s*([+-]?\d+(?:\.\d+)?)/i
+    ]);
+
+    if (
+      minVal !== null && Number.isFinite(minVal) &&
+      q1Val !== null && Number.isFinite(q1Val) &&
+      q2Val !== null && Number.isFinite(q2Val) &&
+      q3Val !== null && Number.isFinite(q3Val) &&
+      maxVal !== null && Number.isFinite(maxVal)
+    ) {
+      return normalizeDiagramBlocks([{
+        diagramType: "number-line",
+        spec: {
+          boxPlot: {
+            min: minVal,
+            q1: q1Val,
+            q2: q2Val,
+            q3: q3Val,
+            max: maxVal
+          }
+        }
+      }]);
+    }
+  }
+
+  const wantedNumberLine = emptyBlocks.some((b) => b.diagramType === "number-line")
+    || /(number.?line|inequalit|solution.?set|interval.?notation|ចន្លោះ|វិសមភាព)/i.test(source);
+  if (!wantedNumberLine) return [];
+
+  const isOpen = (op: string) => op === "<" || op === ">" || op === "\\lt" || op === "\\gt";
+
+  // Try compound inequality: a OP x OP b  (e.g. -1 < x \le 3)
+  const compoundRe = /([+-]?\s*\d+(?:\.\d+)?)\s*(\\le[q]?|\\ge[q]?|<=|>=|[<>≤≥])\s*&?\s*x\s*(\\le[q]?|\\ge[q]?|<=|>=|[<>≤≥])\s*([+-]?\s*\d+(?:\.\d+)?)/i;
+  const cm = source.match(compoundRe);
+  if (cm) {
+    const left = parseFloat(cm[1].replace(/\s/g, ""));
+    const op1 = cm[2];
+    const op2 = cm[3];
+    const right = parseFloat(cm[4].replace(/\s/g, ""));
+    if (Number.isFinite(left) && Number.isFinite(right)) {
+      const [from, to] = left < right ? [left, right] : [right, left];
+      // op1 is operator between left and x; op2 is operator between x and right.
+      // If op1 is < or \lt, left side is open. If op2 is ≤ or \le, right side is closed.
+      const closedStart = !isOpen(op1);
+      const closedEnd = !isOpen(op2);
+      return normalizeDiagramBlocks([{
+        diagramType: "number-line",
+        spec: { ranges: [{ from, to, closedStart, closedEnd }], points: [] },
+      }]);
+    }
+  }
+
+  // Try interval notation: (-1, 3] or [-1, 3) or [-1, 3]
+  const intervalRe = /([([])?\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*([\])])/;
+  const im = source.match(intervalRe);
+  if (im) {
+    const from = parseFloat(im[2]);
+    const to = parseFloat(im[3]);
+    if (Number.isFinite(from) && Number.isFinite(to) && from < to) {
+      const closedStart = im[1] === "[";
+      const closedEnd = im[4] === "]";
+      return normalizeDiagramBlocks([{
+        diagramType: "number-line",
+        spec: { ranges: [{ from, to, closedStart, closedEnd }], points: [] },
+      }]);
+    }
+  }
+
+  return [];
+}
+
+function parseMarkdownTable(text: string): { label: string; cells: string[] }[] | null {
+  const lines = text.split("\n");
+  const tableRows: string[][] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      const cells = trimmed
+        .split("|")
+        .slice(1, -1)
+        .map((c) => c.trim());
+      if (cells.every((c) => /^[:\s\-]+$/.test(c))) {
+        continue;
+      }
+      tableRows.push(cells);
+    }
+  }
+
+  if (tableRows.length < 2) return null;
+
+  const cleanCellText = (cell: string): string => {
+    return cell
+      .replace(/\$/g, "") // strip $
+      .replace(/\\infty/g, "∞")
+      .replace(/-\\infty/g, "-∞")
+      .replace(/\+\\infty/g, "+∞")
+      .replace(/\\pm/g, "±")
+      .replace(/\\ge/g, "≥")
+      .replace(/\\le/g, "≤")
+      .trim();
+  };
+
+  return tableRows.map((row) => {
+    const label = cleanCellText(row[0]);
+    const cells = row.slice(1).map(cleanCellText);
+    return { label, cells };
+  });
+}
+
+function inferSignTableBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+
+  // Only fire for derivative / monotonicity / sign analysis problems
+  const wantedSignTable = emptyBlocks.some((b) => b.diagramType === "sign-table")
+    || /(sign table|variation table|sign chart|monoton|increasing|decreasing|critical point|f'\s*\(|ចន្លោះកើន|ចន្លោះចុះ|តារាងសញ្ញា|ចំណុចវិបាក)/i.test(source);
+  if (!wantedSignTable) return [];
+
+  // 1. Try to parse sign table from markdown in solutionText
+  const parsedMarkdownRows = parseMarkdownTable(solutionText);
+  if (parsedMarkdownRows && parsedMarkdownRows.length >= 2) {
+    // Check if all rows have the exact same number of cells (meaning they are already aligned)
+    const lengths = parsedMarkdownRows.map((r) => r.cells.length);
+    const allSameLength = lengths.every((l) => l === lengths[0]);
+    if (allSameLength && lengths[0] >= 3) {
+      return normalizeDiagramBlocks([{ diagramType: "sign-table", spec: { rows: parsedMarkdownRows } }]);
+    }
+  }
+
+  // 2. Fallback to programmatic sign table extraction and evaluation
+  // Extract critical x values (e.g. x = 1, x = -1, x = ±k)
+  const criticalXSet = new Set<number>();
+  for (const m of source.matchAll(/x\s*=\s*([+-]?\s*\d+(?:\.\d+)?)/gi)) {
+    const v = parseFloat(m[1].replace(/\s/g, ""));
+    if (Number.isFinite(v)) criticalXSet.add(v);
+  }
+  for (const m of source.matchAll(/x\s*=\s*\\?pm\s*(\d+(?:\.\d+)?)/gi)) {
+    const v = parseFloat(m[1]);
+    if (Number.isFinite(v)) { criticalXSet.add(-v); criticalXSet.add(v); }
+  }
+
+  const criticalXs = Array.from(criticalXSet).sort((a, b) => a - b);
+  if (criticalXs.length === 0) return [];
+
+  // Parse derivative or quadratic expression to evaluate signs
+  const isDerivative = /f'\s*\(|y'\s*=|derivative|ដេរីវេ/i.test(source);
+  const derivMatch = source.match(/f'\s*\(\s*x\s*\)\s*=\s*([^,\n$\\]+)/i);
+  const derivExpr = derivMatch ? derivMatch[1].trim() : "";
+
+  // Look for any quadratic expression in problem or solutionText as a fallback
+  const qm = derivExpr.match(/([+-]?\s*\d*(?:\.\d+)?)\s*x\^2(?:\s*([+-]\s*\d+(?:\.\d+)?)\s*x)?(?:\s*([+-]\s*\d+(?:\.\d+)?))?/i)
+    || source.match(/([+-]?\s*\d*(?:\.\d+)?)\s*x\^2(?:\s*([+-]\s*\d+(?:\.\d+)?)\s*x)?(?:\s*([+-]\s*\d+(?:\.\d+)?))?/i);
+
+  const evalDerivSign = (x: number): "+" | "-" | "0" => {
+    if (qm) {
+      const rawA = (qm[1] ?? "1").replace(/\s/g, "");
+      const dA = rawA === "" || rawA === "+" ? 1 : rawA === "-" ? -1 : parseFloat(rawA);
+      const dB = qm[2] ? parseFloat(qm[2].replace(/\s/g, "")) : 0;
+      const dC = qm[3] ? parseFloat(qm[3].replace(/\s/g, "")) : 0;
+      if (Number.isFinite(dA)) {
+        const val = dA * x * x + dB * x + dC;
+        if (Math.abs(val) < 1e-9) return "0";
+        return val > 0 ? "+" : "-";
+      }
+    }
+    return "+";
+  };
+
+  // Build perfectly aligned cells for the sign table:
+  // xRow:     ["-∞", crit0, "", crit1, ..., "+∞"]
+  // signRow:  [sign_before, "0", sign_between, "0", ..., sign_after]
+  const xRow: string[] = ["-∞"];
+  const signRow: string[] = [];
+
+  for (let i = 0; i < criticalXs.length; i++) {
+    // interval before criticalXs[i]
+    const testX = i === 0
+      ? criticalXs[0] - 1
+      : (criticalXs[i - 1] + criticalXs[i]) / 2;
+    signRow.push(evalDerivSign(testX));
+    
+    if (i > 0) {
+      xRow.push(""); // interval spacer between roots in xRow
+    }
+    xRow.push(String(criticalXs[i]));
+    signRow.push("0");
+  }
+
+  // interval after the last root
+  const testXAfter = criticalXs[criticalXs.length - 1] + 1;
+  signRow.push(evalDerivSign(testXAfter));
+  xRow.push("+∞");
+
+  const signLabel = isDerivative ? "f'(x)" : "P(x)";
+  const rows = [
+    { label: "x", cells: xRow },
+    { label: signLabel, cells: signRow },
+  ];
+
+  return normalizeDiagramBlocks([{ diagramType: "sign-table", spec: { rows } }]);
 }
 
 function inferTriangleExteriorAngleBlocks(
@@ -1106,6 +1495,96 @@ function inferLadderRightTriangleBlocks(
   }]);
 }
 
+function inferVectorRightTriangleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(force|forces|east|north|resultant|vector|magnitude|កម្លាំង|ខាងកើត|ខាងជើង|កម្លាំងសរុប|ពីតាហ្គ័រ|ត្រីកោណកែង)/i.test(source);
+  if (!wantsGeometry) return [];
+
+  // Try to find forces/magnitudes in Newtons (N)
+  const matches = Array.from(source.matchAll(/(\d+(?:\.\d+)?)\s*(?:N|\\text\{N\}|\bNewtons?\b)/gi));
+  let f1 = 0;
+  let f2 = 0;
+  let fR = 0;
+
+  if (matches.length >= 2) {
+    const numbers = matches.map(m => Number(m[1]));
+    const uniqueNumbers = [...new Set(numbers)];
+    uniqueNumbers.sort((a, b) => a - b);
+    
+    if (uniqueNumbers.length === 2) {
+      f1 = uniqueNumbers[0];
+      f2 = uniqueNumbers[1];
+      fR = Math.sqrt(f1 * f1 + f2 * f2);
+    } else if (uniqueNumbers.length >= 3) {
+      f1 = uniqueNumbers[0];
+      f2 = uniqueNumbers[1];
+      fR = uniqueNumbers[2];
+      
+      const diff = Math.abs(f1 * f1 + f2 * f2 - fR * fR);
+      if (diff > 10) {
+        f1 = uniqueNumbers[0];
+        f2 = uniqueNumbers[1];
+        fR = Math.sqrt(f1 * f1 + f2 * f2);
+      }
+    }
+  }
+
+  // Double check with east/north parsing if we don't have valid forces
+  if (f1 <= 0 || f2 <= 0) {
+    const eastMatch = source.match(/(\d+(?:\.\d+)?)\s*(?:N|Newtons?)?[^\n]*(?:east|ខាងកើត)/i);
+    const northMatch = source.match(/(\d+(?:\.\d+)?)\s*(?:N|Newtons?)?[^\n]*(?:north|ខាងជើង)/i);
+    if (eastMatch && northMatch) {
+      f1 = Number(eastMatch[1]);
+      f2 = Number(northMatch[1]);
+      fR = Math.sqrt(f1 * f1 + f2 * f2);
+    }
+  }
+
+  // Check if we still don't have forces, look for generic right triangle sides
+  if (f1 <= 0 || f2 <= 0) {
+    const numbers = Array.from(source.matchAll(/(?:side|c|a|b|\bប្រវែង\b)[^\d]*?(\d+(?:\.\d+)?)/gi))
+      .map(m => Number(m[1]));
+    const unique = [...new Set(numbers)];
+    if (unique.length >= 2) {
+      unique.sort((a, b) => a - b);
+      f1 = unique[0];
+      f2 = unique[1];
+      fR = Math.sqrt(f1 * f1 + f2 * f2);
+    }
+  }
+
+  if (f1 <= 0 || f2 <= 0 || !Number.isFinite(f1) || !Number.isFinite(f2) || !Number.isFinite(fR)) return [];
+
+  const O: [number, number] = [0, 0];
+  const P1: [number, number] = [f1, 0];
+  const P2: [number, number] = [f1, f2];
+
+  const paddingX = f1 * 0.15 || 1;
+  const paddingY = f2 * 0.15 || 1;
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "polygon", vertices: [O, P1, P2], labels: ["", "", ""] },
+      { shape: "arrow", start: O, end: P1, label: `${f1} N (East)`, color: "muted" },
+      { shape: "arrow", start: P1, end: P2, label: `${f2} N (North)`, color: "muted" },
+      { shape: "arrow", start: O, end: P2, label: `${Number(fR.toFixed(1))} N (Resultant)`, color: "primary" },
+      { shape: "angle", vertex: P1, from: O, to: P2, label: "90°", radius: 18, color: "muted" },
+    ],
+    options: {
+      xMin: -paddingX,
+      xMax: f1 + paddingX,
+      yMin: -paddingY,
+      yMax: f2 + paddingY,
+    }
+  }]);
+}
+
 function inferRectangleSemicircleBlocks(
   problem: string,
   solutionText: string,
@@ -1184,16 +1663,184 @@ const diagramBlockSchema = {
   },
 };
 
+function inferSolidGeometryBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const hasSolidBlock = emptyBlocks.some((b) => b.diagramType === "solid-geometry");
+  const hasKeywords = /(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source);
+
+  if (!hasSolidBlock && !hasKeywords) return [];
+
+  // 1. Cylinder or Cone
+  if (/(cylinder|ស៊ីឡាំង|cone|កោន)/i.test(source)) {
+    const radius = firstNumberAfter(source, [
+      /(?:radius|កាំ|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\br\s*=\s*(\d+(?:\.\d+)?)/i
+    ]);
+    const height = firstNumberAfter(source, [
+      /(?:height|កម្ពស់|h)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\bh\s*=\s*(\d+(?:\.\d+)?)/i
+    ]);
+    const shape = /(cone|កោន)/i.test(source) ? "cone" : "cylinder";
+    const rVal = Number.isFinite(radius) ? radius : 3;
+    const hVal = Number.isFinite(height) ? height : 10;
+    return normalizeDiagramBlocks([{
+      diagramType: "solid-geometry",
+      spec: {
+        shape,
+        dimensions: { radius: rVal, height: hVal },
+        labels: { r: `r=${rVal}`, h: `h=${hVal}` }
+      }
+    }]);
+  }
+
+  // 2. Sphere
+  if (/(sphere|ស្វ៊ែរ)/i.test(source)) {
+    const radius = firstNumberAfter(source, [
+      /(?:radius|កាំ|R|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\bR\s*=\s*(\d+(?:\.\d+)?)/i,
+      /\br\s*=\s*(\d+(?:\.\d+)?)/i
+    ]);
+    const rVal = Number.isFinite(radius) ? radius : 5;
+    return normalizeDiagramBlocks([{
+      diagramType: "solid-geometry",
+      spec: {
+        shape: "sphere",
+        dimensions: { radius: rVal },
+        labels: { R: `R=${rVal}` }
+      }
+    }]);
+  }
+
+  // 3. Cube or Pyramid
+  if (/(cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source) || hasSolidBlock) {
+    const edge = firstNumberAfter(source, [
+      /(?:edge|side|ជ្រុង|ទ្រនុង|a)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\ba\s*=\s*(\d+(?:\.\d+)?)/i
+    ]);
+    const shape = /(pyramid|ពីរ៉ាមីត)/i.test(source) ? "pyramid" : "cube";
+    const aVal = Number.isFinite(edge) ? edge : 100;
+    return normalizeDiagramBlocks([{
+      diagramType: "solid-geometry",
+      spec: {
+        shape,
+        dimensions: { width: aVal, height: aVal, depth: aVal * 0.8 },
+        labels: { edge: `a=${aVal}` }
+      }
+    }]);
+  }
+
+  return [];
+}
+
+function inferPieChartBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+  finalAnswer = "",
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = normalizeDigits(`${problem}\n${finalAnswer}\n${solutionText}`);
+  const isPieChart = /(pie.?chart|piechart|តារាងចំណិតជុំ|ចំណិតជុំ|រង្វង់ចំណិត|ចំណិតនំ)/i.test(source);
+  if (!isPieChart) return [];
+
+  const sectors: Array<{ label: string; percentage: number }> = [];
+  const lines = source.split("\n");
+  for (const line of lines) {
+    if (line.includes(",") || (line.match(/%/g) || []).length > 1) {
+      continue;
+    }
+
+    // 1. Try format: <Label> : <Percentage>%   or   <Label> : <something> ( <Percentage>% )
+    const match1 = line.match(/(?:[*+-]|\b)\s*([^:\n]+?)\s*:\s*(?:[^%]*?\(\s*([^)]*?\s+|)(\d+(?:\.\d+)?)\s*\\?%|[^%]*?(\d+(?:\.\d+)?)\s*\\?%)/);
+    if (match1) {
+      const label = match1[1].replace(/[$*{}]/g, "").trim();
+      const pctVal = parseFloat(match1[3] ?? match1[4]);
+      if (label && Number.isFinite(pctVal) && pctVal > 0 && pctVal <= 100) {
+        if (!/^(min|max|q1|q2|q3|minimum|maximum|total|ភាគរយសរុប|មុំសរុប|មុំ|មេដ្យាន)$/i.test(label)) {
+          const dupIdx = sectors.findIndex((s) => {
+            const labelOverlap = s.label.toLowerCase().includes(label.toLowerCase()) || label.toLowerCase().includes(s.label.toLowerCase());
+            const pctMatch = s.percentage === pctVal;
+            return labelOverlap || pctMatch;
+          });
+          if (dupIdx !== -1) {
+            const existingHasKhmer = /[\u1780-\u17FF]/.test(sectors[dupIdx].label);
+            const newHasKhmer = /[\u1780-\u17FF]/.test(label);
+            if (newHasKhmer && !existingHasKhmer) {
+              sectors[dupIdx].label = label;
+            } else if (newHasKhmer === existingHasKhmer) {
+              if (label.length < sectors[dupIdx].label.length) {
+                sectors[dupIdx].label = label;
+              }
+            }
+          } else {
+            sectors.push({ label, percentage: pctVal });
+          }
+          continue;
+        }
+      }
+    }
+
+    // 2. Try format: <Percentage>% like <Label>  or  <Percentage>% <Label>
+    const match2 = line.match(/(?:[*+-]|\b)\s*(\d+(?:\.\d+)?)\s*\\?%\s*(?:like\s+|of\s+|)\s*([^\n]+)/i);
+    if (match2) {
+      const pctVal = parseFloat(match2[1]);
+      let label = match2[2].replace(/[$*{}]/g, "").trim();
+      label = label.replace(/^(like|of)\s+/i, "");
+      if (label && Number.isFinite(pctVal) && pctVal > 0 && pctVal <= 100) {
+        if (!/^(min|max|q1|q2|q3|minimum|maximum|total|ភាគរយសរុប|មុំសរុប|មុំ|មេដ្យាន)$/i.test(label)) {
+          const dupIdx = sectors.findIndex((s) => {
+            const labelOverlap = s.label.toLowerCase().includes(label.toLowerCase()) || label.toLowerCase().includes(s.label.toLowerCase());
+            const pctMatch = s.percentage === pctVal;
+            return labelOverlap || pctMatch;
+          });
+          if (dupIdx !== -1) {
+            const existingHasKhmer = /[\u1780-\u17FF]/.test(sectors[dupIdx].label);
+            const newHasKhmer = /[\u1780-\u17FF]/.test(label);
+            if (newHasKhmer && !existingHasKhmer) {
+              sectors[dupIdx].label = label;
+            } else if (newHasKhmer === existingHasKhmer) {
+              if (label.length < sectors[dupIdx].label.length) {
+                sectors[dupIdx].label = label;
+              }
+            }
+          } else {
+            sectors.push({ label, percentage: pctVal });
+          }
+          continue;
+        }
+      }
+    }
+  }
+
+  const totalPercentage = sectors.reduce((sum, s) => sum + s.percentage, 0);
+  logger.info("[inferPieChartBlocks] check:", { isPieChart, totalSectors: sectors.length, sectors, totalPercentage });
+  if (sectors.length >= 2 && totalPercentage >= 90 && totalPercentage <= 110) {
+    return normalizeDiagramBlocks([{
+      diagramType: "pie-chart",
+      spec: {
+        sectors
+      }
+    }]);
+  }
+
+  return [];
+}
+
 async function extractDiagramBlocksForSolution(
   problem: string,
   solutionText: string,
   options: AIRequestOptions,
+  finalAnswer?: string,
 ): Promise<RenderBlock[]> {
   const subject = `${options.subject || ""}`.toLowerCase();
   const source = `${problem}\n${solutionText}`.toLowerCase();
   const likelyUseful = subject.includes("math")
-    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection)/i.test(source)
-    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី)/.test(source);
+    || subject.includes("physics")
+    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection|pie.?chart|piechart|force|resultant|vector)/i.test(source)
+    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ)/.test(source);
   if (!likelyUseful) return [];
 
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
@@ -1226,17 +1873,33 @@ ${DIAGRAM_SPEC_GUIDE}`,
   const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
   // Filter out blocks the normalizer flagged as empty (AI produced a diagram type but no data).
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
+  // If the problem needs solid-geometry, prioritize our highly robust solid geometry inference.
+  // This prevents AI errors (like returning empty specs or defaulting cylinders to cubes).
+  if (/(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ)/i.test(problem + "\n" + solutionText)) {
+    const solidFallback = inferSolidGeometryBlocks(problem, solutionText, normalized);
+    if (solidFallback.length) return solidFallback;
+  }
+
   const useful = normalized.filter(
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
   );
   if (useful.length) return useful;
 
   // Type-specific inference fallbacks — each uses the empty AI blocks as a hint
+  const numberLineFallback = inferNumberLineBlocks(problem, solutionText, normalized);
+  if (numberLineFallback.length) return numberLineFallback;
+
   const vennFallback = inferVennDiagramBlocks(problem, solutionText, normalized);
   if (vennFallback.length) return vennFallback;
 
+  const pieChartFallback = inferPieChartBlocks(problem, solutionText, normalized, finalAnswer);
+  if (pieChartFallback.length) return pieChartFallback;
+
   const graphFallback = inferFunctionGraphBlocks(problem, solutionText, normalized);
   if (graphFallback.length) return graphFallback;
+
+  const signTableFallback = inferSignTableBlocks(problem, solutionText, normalized);
+  if (signTableFallback.length) return signTableFallback;
 
   const triangleFallback = inferTriangleExteriorAngleBlocks(problem, solutionText, normalized);
   if (triangleFallback.length) return triangleFallback;
@@ -1249,6 +1912,12 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const ladderFallback = inferLadderRightTriangleBlocks(problem, solutionText, normalized);
   if (ladderFallback.length) return ladderFallback;
+
+  const vectorFallback = inferVectorRightTriangleBlocks(problem, solutionText, normalized);
+  if (vectorFallback.length) return vectorFallback;
+
+  const solidFallback = inferSolidGeometryBlocks(problem, solutionText, normalized);
+  if (solidFallback.length) return solidFallback;
 
   return inferRectangleSemicircleBlocks(problem, solutionText, normalized);
 }
@@ -1428,7 +2097,7 @@ Requirements:
   if (rawSolution && !isFallbackContent(rawSolution)) {
     const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
-      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }).catch((err) => {
+      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer).catch((err) => {
         logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -1621,7 +2290,7 @@ End your response with:
     const finalProblemText = (metadata.problemText || extractedHint || "").trim();
 
     if (finalProblemText && !isFallbackContent(finalProblemText) && !isFallbackContent(metadata.finalAnswer)) {
-      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }).catch((err) => {
+      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, metadata.finalAnswer).catch((err) => {
         logger.warn("[solveFromImageDirect] diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -1681,7 +2350,7 @@ Rules for solutionText:
   venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
   geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
   function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
-  solid-geometry: {"shape":"cube","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}
+  solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}
 
 Return a single JSON object only.`;
 

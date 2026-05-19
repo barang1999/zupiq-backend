@@ -119,6 +119,8 @@ function buildTextBlock(content: string, lang?: string): Extract<RenderBlock, { 
 
 function normalizeTextBlockContent(content: string): string {
   return `${content ?? ""}`
+    // Strip fenced code blocks (mermaid, etc.) that can't be rendered in solution text
+    .replace(/```[^\n]*\n[\s\S]*?```/g, "")
     .replace(/[ \t]+\n/g, "\n")
     // Gemini sometimes emits markdown list markers between inline math segments.
     // Once split into render blocks, they become lonely visible "*" lines.
@@ -204,10 +206,8 @@ function normalizeLatexForRender(input: string): string {
 
 function normalizeTextCommandsForMath(input: string): string {
   return `${input ?? ""}`
-    // Khmer prose inside \text{...} often falls back poorly in native/KaTeX paths.
-    // Keep the math semantic compact and put Khmer explanation in surrounding prose.
-    .replace(/([A-Za-z])\s*\\text\{[^}]*[\u1780-\u17FF][^}]*\}/g, "$1_{\\mathrm{only}}")
-    .replace(/\\text\{[^}]*[\u1780-\u17FF][^}]*\}/g, "\\mathrm{only}");
+    .replace(/([A-Za-z])\s*\\text\{([^}]*[\u1780-\u17FF][^}]*)\}/g, "$1_{\\text{$2}}")
+    .replace(/\\text\{([^}]*[\u1780-\u17FF][^}]*)\}/g, "\\text{$1}");
 }
 
 function stripMathDelimiters(input: string): string {
@@ -222,9 +222,26 @@ function stripMathDelimiters(input: string): string {
 function looksLikeBareMath(input: string): boolean {
   const text = stripMathDelimiters(`${input ?? ""}`).trim();
   if (!text) return false;
+
+  // 1. If it contains Khmer unicode text, it is prose, not bare math!
+  if (/[\u1780-\u17FF]/.test(text)) return false;
+
+  // 2. If it contains math delimiters ($ or $$), it is marked as math
   if (DELIMITED_MATH_REGEX.test(`${input ?? ""}`)) return true;
-  if (LATEX_COMMAND_REGEX.test(text)) return true;
-  if (/^[A-Za-z0-9\\{}\[\]_^+\-*/=().,\s]+$/.test(text) && /[=^_\\]|\\frac|\\sqrt/.test(text)) return true;
+
+  // 3. Exclude common prose text keywords in mixed output
+  if (/\b(volume|surface|area|find|solve|calculate|មាឌ|ផ្ទៃ|ក្រឡា)\b/i.test(text)) return false;
+
+  // 4. Check for standard math symbols and operators
+  if (LATEX_COMMAND_REGEX.test(text)) {
+    // A single word command or short expression is fine, but not long sentences
+    return text.split(/\s+/).length <= 15;
+  }
+
+  if (/^[A-Za-z0-9\\{}\[\]_^+\-*/=().,\s]+$/.test(text) && /[=^_\\]|\\frac|\\sqrt/.test(text)) {
+    return true;
+  }
+
   return false;
 }
 

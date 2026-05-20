@@ -2009,6 +2009,13 @@ If a diagram helps, return exactly ONE diagramBlock (choose the single most help
 
 If no diagram helps, return {"diagramBlocks":[]}.
 
+DIAGRAM SELECTION RULES (CRITICAL):
+1. ALWAYS prefer "function-graph" over "sign-table" if the problem or solution involves:
+   - Calculating derivatives, concavity, inflection points, or extrema of a function (e.g. f(x) = x^3 - 6x^2 + 9x).
+   - Drawing, sketching, or analyzing any linear, quadratic, cubic, exponential, logarithmic, rational, or trigonometric curve.
+   Plotting the actual curve is infinitely more helpful to the student than showing a sign table.
+2. In "function-graph" specs, always specify the "latex" representation of the function (e.g., "y = x^3 - 6x^2 + 9x") and supply a sensible domain (e.g., [-1, 5]) and range (e.g., [-5, 5]) that clearly captures any extrema or inflection points.
+
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
 AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.

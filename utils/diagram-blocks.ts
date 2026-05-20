@@ -135,7 +135,7 @@ function normalizeNumberLineSpec(input: Record<string, unknown>, warnings: strin
 
 function normalizeSignTableSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const rows = Array.isArray(input.rows) ? input.rows : [];
-  const normalizedRows = rows
+  let normalizedRows = rows
     .map((row) => {
       if (!row || typeof row !== "object") return null;
       const item = row as Record<string, unknown>;
@@ -148,10 +148,34 @@ function normalizeSignTableSpec(input: Record<string, unknown>, warnings: string
             : [];
       return {
         label: String(item.label || "").slice(0, 32),
-        cells: cells.map((cell) => String(cell ?? "").slice(0, 32)).slice(0, 8),
+        cells: cells.map((cell) => String(cell ?? "").slice(0, 32)),
       };
     })
-    .filter((row) => row && (row.label || row.cells.length));
+    .filter((row) => row && (row.label || row.cells.length)) as { label: string; cells: string[] }[];
+
+  // Automatically expand 3-column shorthand tables to 5-column interval tables
+  if (
+    normalizedRows.length === 2 &&
+    normalizedRows[0].cells.length === 3 &&
+    normalizedRows[1].cells.length === 3
+  ) {
+    const r0 = normalizedRows[0].cells;
+    const r1 = normalizedRows[1].cells;
+    const hasMinusInf = r0[0].includes("-∞") || r0[0].includes("-\\infty");
+    const hasPlusInf = r0[2].includes("+∞") || r0[2].includes("+\\infty") || r0[2].includes("∞");
+    const hasZero = r1[1] === "0";
+    if (hasMinusInf && hasPlusInf && hasZero) {
+      normalizedRows[0].cells = [r0[0], "", r0[1], "", r0[2]];
+      normalizedRows[1].cells = ["", r1[0], "0", r1[2], ""];
+    }
+  }
+
+  // Slice columns to limit size
+  normalizedRows = normalizedRows.map(row => ({
+    label: row.label,
+    cells: row.cells.slice(0, 8)
+  }));
+
   if (!normalizedRows.length) warnings.push("empty-sign-table");
   return { type: "sign-table", rows: normalizedRows.slice(0, 6) };
 }
@@ -288,6 +312,47 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
   };
 }
 
+function parsePolynomial(latex: string): { a: number; b: number; c: number; d: number } | null {
+  const clean = String(latex || "")
+    .replace(/\s+/g, "")
+    .replace(/^(?:f\(x\)|y)=/, "");
+  
+  if (!clean) return null;
+
+  const matches = clean.matchAll(/([+-]?(?:\d+(?:\.\d+)?)?)(x(?:\^(\d+))?|(?!\d))/g);
+  const coefficients = { a: 0, b: 0, c: 0, d: 0 };
+  let foundPower = false;
+
+  for (const match of matches) {
+    const rawCoeff = match[1];
+    const rawVar = match[2];
+    const powerStr = match[3];
+    
+    if (!rawCoeff && !rawVar) continue;
+    
+    let val = 1;
+    if (rawCoeff === "+") val = 1;
+    else if (rawCoeff === "-") val = -1;
+    else if (rawCoeff) val = parseFloat(rawCoeff);
+    
+    let power = 0;
+    if (rawVar) {
+      if (powerStr) {
+        power = parseInt(powerStr, 10);
+      } else {
+        power = 1;
+      }
+    }
+    
+    if (power === 3) { coefficients.a = val; foundPower = true; }
+    else if (power === 2) { coefficients.b = val; foundPower = true; }
+    else if (power === 1) { coefficients.c = val; foundPower = true; }
+    else if (power === 0) { coefficients.d = val; foundPower = true; }
+  }
+  
+  return foundPower ? coefficients : null;
+}
+
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const functions = Array.isArray(input.functions) ? [...input.functions] : [];
   const featurePoints = Array.isArray(input.featurePoints) ? [...input.featurePoints] : [];
@@ -348,6 +413,24 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       if (kind === "line") kind = "linear";
 
       let params = item.params && typeof item.params === "object" ? item.params : undefined;
+      const latex = String(item.latex || item.label || "").slice(0, 80);
+      
+      if (!params && latex) {
+        const poly = parsePolynomial(latex);
+        if (poly) {
+          if (poly.a !== 0) {
+            kind = "cubic";
+            params = poly;
+          } else if (poly.b !== 0) {
+            kind = "quadratic";
+            params = { a: poly.b, b: poly.c, c: poly.d };
+          } else if (poly.c !== 0 || poly.d !== 0) {
+            kind = "linear";
+            params = { m: poly.c, b: poly.d };
+          }
+        }
+      }
+
       let domain = Array.isArray(item.domain)
         ? [asFiniteNumber(item.domain[0], -Number.MAX_VALUE), asFiniteNumber(item.domain[1], Number.MAX_VALUE)]
         : undefined;
@@ -371,7 +454,6 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         }
       }
 
-      const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
       
       let pieces = undefined;
@@ -405,7 +487,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             if (fnKind === "line") fnKind = "linear";
 
             const fnParams = fnObj.params && typeof fnObj.params === "object" ? fnObj.params : undefined;
-            if (!["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
+            if (!["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
             return {
               domain,
               function: {
@@ -417,7 +499,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           .filter(Boolean);
       }
 
-      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
+      if (!points.length && !["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,

@@ -113,13 +113,17 @@ router.get("/:id/feedback", async (req: Request, res: Response, next: NextFuncti
 });
 
 // POST /api/sessions/:id/feedback — upsert a signal ('positive' | 'negative')
+// Optional body field: reasons (string[]) — dislike reasons, only stored when signal is 'negative'.
 router.post("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { signal } = req.body as { signal: unknown };
+    const { signal, reasons } = req.body as { signal: unknown; reasons?: unknown };
     if (signal !== "positive" && signal !== "negative") {
       throw new ValidationError("signal must be 'positive' or 'negative'");
     }
-    await upsertBreakdownFeedback(req.params.id, req.user!.sub, signal);
+    const validReasons = Array.isArray(reasons)
+      ? reasons.filter((r): r is string => typeof r === "string").slice(0, 10)
+      : undefined;
+    await upsertBreakdownFeedback(req.params.id, req.user!.sub, signal, validReasons);
     res.json({ signal });
   } catch (err) {
     next(err);

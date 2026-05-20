@@ -372,7 +372,28 @@ function normalizePieChartSpec(input: Record<string, unknown>, warnings: string[
 export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null {
   if (!block || typeof block !== "object") return null;
   const raw = block as Record<string, unknown>;
-  const diagramType = String(raw.diagramType || raw.type || raw.specType || "") as DiagramType;
+  let diagramType = String(raw.diagramType || raw.type || raw.specType || "") as DiagramType;
+
+  // Auto-detect / heal missing or invalid diagramType based on unique structural properties
+  if (!diagramType || !DIAGRAM_TYPES.has(diagramType)) {
+    const spec = (raw.spec && typeof raw.spec === "object" ? raw.spec : raw) as Record<string, unknown>;
+    if (Array.isArray(spec.shapes) || Array.isArray(raw.shapes)) {
+      diagramType = "geometry";
+    } else if (Array.isArray(spec.functions) || Array.isArray(raw.functions)) {
+      diagramType = "function-graph";
+    } else if (Array.isArray(spec.ranges) || Array.isArray(spec.points) || spec.boxPlot || Array.isArray(raw.ranges) || Array.isArray(raw.points) || raw.boxPlot) {
+      diagramType = "number-line";
+    } else if (Array.isArray(spec.rows) || Array.isArray(raw.rows)) {
+      diagramType = "sign-table";
+    } else if (Array.isArray(spec.sets) || Array.isArray(raw.sets)) {
+      diagramType = "venn-diagram";
+    } else if (spec.shape || raw.shape) {
+      diagramType = "solid-geometry";
+    } else if (Array.isArray(spec.sectors) || Array.isArray(raw.sectors)) {
+      diagramType = "pie-chart";
+    }
+  }
+
   if (!DIAGRAM_TYPES.has(diagramType)) return null;
 
   const inputSpec = raw.spec && typeof raw.spec === "object"

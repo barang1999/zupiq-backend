@@ -1915,8 +1915,19 @@ async function extractDiagramBlocksForSolution(
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
     prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
 
-If a diagram helps, return one or more diagramBlocks. If not, return {"diagramBlocks":[]}.
-CRITICAL: Every diagramBlock you return MUST have a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
+If a diagram helps, return one or more diagramBlocks in this exact structure:
+{
+  "diagramBlocks": [
+    {
+      "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart",
+      "spec": { ... }
+    }
+  ]
+}
+
+If no diagram helps, return {"diagramBlocks":[]}.
+
+CRITICAL: Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
 AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.
 
 Problem:
@@ -1930,14 +1941,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
     temperature: 0,
     maxOutputTokens: 2048,
     taskName: "extractDiagramBlocksForSolution",
-    maxAttempts: 1,
-    responseSchema: {
-      type: Type.OBJECT,
-      properties: {
-        diagramBlocks: diagramBlockSchema,
-      },
-      required: ["diagramBlocks"],
-    },
+    maxAttempts: 2,
   });
 
   const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);

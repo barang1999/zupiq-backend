@@ -9,13 +9,21 @@ export type FeedbackSignal = "positive" | "negative";
 export async function upsertBreakdownFeedback(
   sessionId: string,
   userId: string,
-  signal: FeedbackSignal
+  signal: FeedbackSignal,
+  reasons?: string[]
 ): Promise<void> {
   const db = getSupabaseAdmin();
   const now = new Date().toISOString();
 
   const { error } = await db.from("breakdown_feedback").upsert(
-    { session_id: sessionId, user_id: userId, signal, updated_at: now },
+    {
+      session_id: sessionId,
+      user_id: userId,
+      signal,
+      updated_at: now,
+      // Only persist reasons for negative signals; clear them when switching to positive.
+      reasons: signal === "negative" && reasons?.length ? reasons : null,
+    },
     { onConflict: "session_id,user_id" }
   );
 

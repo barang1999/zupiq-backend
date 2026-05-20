@@ -405,7 +405,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             if (fnKind === "line") fnKind = "linear";
 
             const fnParams = fnObj.params && typeof fnObj.params === "object" ? fnObj.params : undefined;
-            if (!["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
+            if (!["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
             return {
               domain,
               function: {
@@ -417,7 +417,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           .filter(Boolean);
       }
 
-      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
+      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,

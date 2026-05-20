@@ -127,7 +127,7 @@ function normalizeTextBlockContent(content: string): string {
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     // Ensure numbered items (e.g. 1., 2., 3. or Khmer numbers ១., ២., ៣.) start on a new line for clean lists
-    .replace(/(?<!\n|^)\s*(\b\d+|[\u17E0-\u17E9])\.\s*/g, "\n$1. ")
+    .replace(/(?<!\n|^)\s*(\b\d+|[\u17E0-\u17E9])\.(?!\d)\s*/g, "\n$1. ")
     // Replace LaTeX thin-space separators (` \ ` or `\ `) used between math expression segments
     // with a comma+space — prevents adjacent segments from running together without any separator.
     .replace(/[ \t]*\\[ \t]*/g, "\n");

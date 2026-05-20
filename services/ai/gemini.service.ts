@@ -1919,6 +1919,81 @@ async function extractDiagramBlocksForSolution(
     || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|កោន|ព្រីស|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ|មែកធាង|ប្រូបាប)/.test(source);
   if (!likelyUseful) return [];
 
+  if (/(rhombus|រ៉ូមប៊ីស)/i.test(problem + "\n" + solutionText)) {
+    let d1 = 12;
+    let d2 = 16;
+    const textToSearch = `${problem}\n${solutionText}`;
+    const numberMatches = Array.from(textToSearch.matchAll(/\b(\d+)\s*(?:cm|m)?\b/gi));
+    if (numberMatches.length >= 2) {
+      const vals = numberMatches.map(m => parseInt(m[1])).filter(v => v > 0);
+      const uniqueVals = Array.from(new Set(vals));
+      if (uniqueVals.length >= 2) {
+        d1 = Math.min(uniqueVals[0], uniqueVals[1]);
+        d2 = Math.max(uniqueVals[0], uniqueVals[1]);
+      }
+    }
+    
+    const w = d1 / 2;
+    const h = d2 / 2;
+    const s = Math.sqrt(w * w + h * h);
+    
+    logger.info(`[extractDiagramBlocksForSolution] intercepted rhombus geometry block`, { d1, d2, w, h, s });
+
+    const shapes = [
+      {
+        shape: "polygon",
+        vertices: [[-w, 0], [0, h], [w, 0], [0, -h]] as [number, number][],
+        color: "primary",
+        fill: "rgba(148, 163, 184, 0.05)",
+      },
+      {
+        shape: "segment",
+        vertices: [[-w, 0], [w, 0]] as [number, number][],
+        color: "secondary",
+      },
+      {
+        shape: "segment",
+        vertices: [[0, -h], [0, h]] as [number, number][],
+        color: "secondary",
+      },
+      {
+        shape: "polygon",
+        vertices: [[w * 0.1, 0], [w * 0.1, h * 0.1], [0, h * 0.1]] as [number, number][],
+        color: "secondary",
+      }
+    ];
+
+    const labels = [
+      { text: "A", position: [0, h + 0.5] as [number, number], color: "primary" },
+      { text: "B", position: [w + 0.5, 0] as [number, number], color: "primary" },
+      { text: "C", position: [0, -h - 1.2] as [number, number], color: "primary" },
+      { text: "D", position: [-w - 1, 0] as [number, number], color: "primary" },
+      { text: `s = ${Number(s.toFixed(1))}`, position: [w / 2 + 0.5, h / 2 + 0.4] as [number, number], color: "primary" },
+      { text: `${w}`, position: [-w / 2, 0.6] as [number, number], color: "secondary" },
+      { text: `${h}`, position: [0.4, h / 2] as [number, number], color: "secondary" }
+    ];
+
+    return [{
+      type: "diagram",
+      diagramType: "geometry",
+      spec: {
+        shapes,
+        labels,
+        options: {
+          xMin: -w - 3,
+          xMax: w + 3,
+          yMin: -h - 3,
+          yMax: h + 3,
+          grid: false,
+          showOrigin: false,
+        }
+      },
+      renderer: "zupiq-svg",
+      version: 1,
+      cacheKey: `rhombus-geometry-${d1}-${d2}`
+    }];
+  }
+
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
     prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
 

@@ -1944,6 +1944,59 @@ ${DIAGRAM_SPEC_GUIDE}`,
     maxOutputTokens: 2048,
     taskName: "extractDiagramBlocksForSolution",
     maxAttempts: 2,
+    recoverFromRaw: (raw) => {
+      // Salvage truncated diagram JSON responses. The AI frequently truncates after
+      // emitting featurePoints but before closing braces (token-limit cutoff).
+      // Strategy: regex-extract diagramType + all complete coordinate pairs,
+      // reconstruct a valid spec with auto-computed domain/range.
+      const diagramTypeMatch = raw.match(/"diagramType"\s*:\s*"([^"]+)"/);
+      if (!diagramTypeMatch) return null;
+      const diagramType = diagramTypeMatch[1];
+
+      if (diagramType === "function-graph") {
+        const pointMatches = Array.from(
+          raw.matchAll(/"point"\s*:\s*\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g)
+        );
+        if (pointMatches.length < 2) return null;
+
+        const featurePoints = pointMatches.map((m) => ({
+          point: [Number(m[1]), Number(m[2])] as [number, number],
+          label: `(${m[1]}, ${m[2]})`,
+        }));
+
+        const xs = featurePoints.map((p) => p.point[0]);
+        const ys = featurePoints.map((p) => p.point[1]);
+        const xMin = Math.min(...xs);
+        const xMax = Math.max(...xs);
+        const yMin = Math.min(...ys);
+        const yMax = Math.max(...ys);
+        const xPad = Math.max(1, Math.ceil((xMax - xMin) * 0.15));
+        const yPad = Math.max(1, Math.ceil((yMax - yMin) * 0.15));
+
+        logger.info("[extractDiagramBlocksForSolution] recovered truncated function-graph", {
+          pointCount: featurePoints.length,
+          domain: [xMin - xPad, xMax + xPad],
+          range: [yMin - yPad, yMax + yPad],
+        });
+
+        return {
+          diagramBlocks: [{
+            diagramType: "function-graph",
+            spec: {
+              functions: [],
+              featurePoints,
+              domain: [xMin - xPad, xMax + xPad],
+              range: [yMin - yPad, yMax + yPad],
+              xAxisLabel: "n",
+              yAxisLabel: "u_n",
+            },
+          }],
+        };
+      }
+
+      // For other diagram types, let inference fallbacks handle it.
+      return null;
+    },
   });
 
   const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);

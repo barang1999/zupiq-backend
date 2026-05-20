@@ -131,9 +131,9 @@ function normalizeTextBlockContent(content: string): string {
 
   if (!raw.trim()) return "";
 
-  const leadingNewlines = raw.match(/^\n*/)?.[0] || "";
-  const trailingNewlines = raw.match(/\n*$/)?.[0] || "";
-  return leadingNewlines + raw.trim() + trailingNewlines;
+  const leadingWhitespaces = raw.match(/^\s*/)?.[0] || "";
+  const trailingWhitespaces = raw.match(/\s*$/)?.[0] || "";
+  return leadingWhitespaces + raw.trim() + trailingWhitespaces;
 }
 
 function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {

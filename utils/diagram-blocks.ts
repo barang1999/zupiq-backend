@@ -203,7 +203,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (shapeType === "rectangle" || shapeType === "square") {
         shapeType = "polygon";
       }
-      if (!["triangle", "polygon", "circle", "segment", "line", "arrow", "angle", "arc", "semicircle"].includes(shapeType)) return null;
+      if (!["triangle", "polygon", "circle", "segment", "line", "arrow", "angle", "arc", "semicircle", "sector"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)
         : [];
@@ -231,6 +231,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
+        fill: typeof item.fill === "string" ? item.fill.slice(0, 24) : undefined,
       };
     })
     .filter((shape) => {
@@ -238,7 +239,8 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (shape.shape === "circle") return Boolean(shape.center) && Number.isFinite(shape.radius);
       if (shape.shape === "arc") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "semicircle") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
-      if (shape.shape === "arrow") return Boolean(shape.start) && Boolean(shape.end);
+      if (shape.shape === "sector") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
+      if (shape.shape === "arrow" || shape.shape === "line") return Boolean(shape.start) && Boolean(shape.end);
       if (shape.shape === "angle") return Boolean(shape.vertex) && Boolean(shape.from) && Boolean(shape.to);
       return Array.isArray(shape.vertices) && shape.vertices.length >= 2;
     });
@@ -260,7 +262,28 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
     yAxisLabel: typeof inputOptions.yAxisLabel === "string" ? inputOptions.yAxisLabel.slice(0, 32) : undefined,
   };
 
-  return { type: "geometry", shapes: normalizedShapes.slice(0, 12), options };
+  const inputLabels = Array.isArray(input.labels) ? input.labels : [];
+  const normalizedLabels = inputLabels
+    .map((label) => {
+      if (!label || typeof label !== "object") return null;
+      const item = label as Record<string, unknown>;
+      const text = typeof item.text === "string" ? item.text.slice(0, 32) : "";
+      const position = asPoint(item.position);
+      if (!text || !position) return null;
+      return {
+        text,
+        position,
+        color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    type: "geometry",
+    shapes: normalizedShapes.slice(0, 12),
+    options,
+    labels: normalizedLabels.slice(0, 12),
+  };
 }
 
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {

@@ -445,9 +445,15 @@ function sanitizeSolutionText(raw: string): string {
   // Strip "Problem:" or "**Problem:**" preamble at the START (up to first blank line)
   text = text.replace(/^\s*(?:\*{0,2}Problem:?\*{0,2})[^\n]*\n+/i, "").trim();
 
+  // Strip conversational greetings/fillers at the start (e.g. "ជំរាបសួរ! ខ្ញុំរីករាយនឹងជួយ...")
+  text = text.replace(/^\s*(?:ជំរាបសួរ|ជម្រាបសួរ|ខ្ញុំរីករាយនឹងជួយ|រីករាយនឹងជួយ)[^\n]*\n*/gi, "").trim();
+
   // Strip trailing "Problem:" / "Final Answer:" tail that Phase 1 sometimes appends
   // e.g. "\n\n**Problem:** ...\n**Final Answer:** ..."
   text = text.replace(/\n+\s*\*{0,2}(?:Problem|Final Answer):?\*{0,2}[\s\S]*$/i, "").trim();
+
+  // Strip conversational sign-offs at the end (e.g. "សង្ឃឹមថាចម្លើយនេះ...")
+  text = text.replace(/\n+\s*(?:ប្រសិនបើអ្នកមានសំណួរ|បើមានសំណួរ|បើមានចម្ងល់|សង្ឃឹមថា|រីករាយនឹងជួយ|សង្ឃឹមថាចម្លើយនេះ)[^\n]*$/gi, "").trim();
 
   // Wrap lines that contain bare LaTeX commands but no $ delimiters
   const BARE_LATEX_LINE = /\\[a-zA-Z]+/;
@@ -1421,13 +1427,13 @@ function inferCircleInscribedAngleBlocks(
 ): RenderBlock[] {
   const source = normalizeDigits(`${problem}\n${solutionText}`);
   const wantsGeometry = emptyBlocks.some((b) => b.diagramType === "geometry")
-    || /(circle|រង្វង់|arc|ធ្នូ|inscribed angle|មុំចារឹក)/i.test(source);
-  if (!wantsGeometry || !/(circle|រង្វង់)/i.test(source) || !/(arc|ធ្នូ|inscribed angle|មុំចារឹក)/i.test(source)) return [];
+    || /(inscribed angle|មុំចារឹក|ចារឹកក្នុងរង្វង់)/i.test(source);
+  if (!wantsGeometry || !/(circle|រង្វង់)/i.test(source) || !/(inscribed angle|មុំចារឹក|ចារឹកក្នុងរង្វង់)/i.test(source)) return [];
 
   const arcMeasure = firstNumberAfter(source, [
     /(?:arc|ធ្នូ)\s*AB[^\d]*(\d+)/i,
     /AB[^\d]*(\d+)\s*(?:\^\\?circ|°|o)?/i,
-    /(\d+)\s*(?:\^\\?circ|°|o)?[^\n]*(?:arc|ធ្នូ)/i,
+    /(\d+)\s*(?:\^\\?circ|°|o)\s*(?:arc|ធ្នូ)/i, // Require degree symbol to prevent greedily matching list numbers like "1. ប្រវែងធ្នូ"
   ]);
   if (!Number.isFinite(arcMeasure) || arcMeasure <= 0 || arcMeasure >= 360) return [];
 

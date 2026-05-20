@@ -127,7 +127,10 @@ function normalizeTextBlockContent(content: string): string {
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     // Ensure numbered items (e.g. 1., 2., 3. or Khmer numbers ១., ២., ៣.) start on a new line for clean lists
-    .replace(/(?<!\n|^)\s*(\b\d+|[\u17E0-\u17E9])\.\s*/g, "\n$1. ");
+    .replace(/(?<!\n|^)\s*(\b\d+|[\u17E0-\u17E9])\.\s*/g, "\n$1. ")
+    // Replace LaTeX thin-space separators (` \ ` or `\ `) used between math expression segments
+    // with a comma+space — prevents adjacent segments from running together without any separator.
+    .replace(/[ \t]*\\[ \t]*/g, "\n");
 
   if (!raw.trim()) return "";
 
@@ -212,7 +215,8 @@ function normalizeLatexForRender(input: string): string {
 
 function normalizeTextCommandsForMath(input: string): string {
   return `${input ?? ""}`
-    .replace(/([A-Za-z])\s*\\text\{([^}]*[\u1780-\u17FF][^}]*)\}/g, "$1_{\\text{$2}}")
+    .replace(/(?<![a-zA-Z\\])([A-Za-z])\s*\\text\{([^}]*[\u1780-\u17FF][^}]*)\}/g, "$1_{\\text{$2}}")
+    .replace(/\\([a-zA-Z]+)_{\\text\{([^}]*[\u1780-\u17FF][^}]*)\}}/g, "\\$1 \\text{$2}")
     .replace(/\\text\{([^}]*[\u1780-\u17FF][^}]*)\}/g, "\\text{$1}");
 }
 

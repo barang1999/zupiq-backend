@@ -415,10 +415,10 @@ function buildFallbackSolutionFirst(
     mode: "solution-first",
     title: problem.slice(0, 70) || "New Solution",
     subject,
-    topic: subject.toLowerCase().includes("physic") 
-      ? "mechanics" 
-      : subject.toLowerCase().includes("chem") 
-        ? "general-chemistry" 
+    topic: subject.toLowerCase().includes("physic")
+      ? "mechanics"
+      : subject.toLowerCase().includes("chem")
+        ? "general-chemistry"
         : "algebra",
     problem,
     finalAnswer: "See solution",
@@ -650,6 +650,7 @@ function inferFunctionGraphBlocks(
   problem: string,
   solutionText: string,
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+  finalAnswer?: string,
 ): RenderBlock[] {
   const source = normalizeDigits(`${problem}\n${solutionText}`);
 
@@ -667,17 +668,23 @@ function inferFunctionGraphBlocks(
     if (value === "-") return -1;
     return Number(value);
   };
-  const lineMatches = Array.from(source.matchAll(/y\s*=\s*([+-]?\s*\d*(?:\.\d+)?)\s*x\s*([+-]\s*\d+(?:\.\d+)?)?/gi))
+  // Match `y = mx + b` and also `y &= mx + b` (LaTeX aligned environments).
+  // Include finalAnswer in search so the result line is always found.
+  const fullSource = normalizeDigits(`${problem}\n${solutionText}\n${finalAnswer ?? ""}`);
+  const lineMatches = Array.from(fullSource.matchAll(/y\s*&?=\s*([+-]?\s*\d*(?:\.\d+)?)\s*x\s*([+-]\s*\d+(?:\.\d+)?)?/gi))
     .map((match) => {
       const m = parseLinearCoefficient(match[1]);
       const b = match[2] ? Number(match[2].replace(/\s/g, "")) : 0;
-      const latex = match[0].replace(/\s+/g, "");
+      const latex = match[0].replace(/\s+/g, "").replace("&", "");
       return Number.isFinite(m) && Number.isFinite(b) ? { m, b, latex } : null;
     })
-    .filter((line): line is { m: number; b: number; latex: string } => Boolean(line));
+    .filter((line): line is { m: number; b: number; latex: string } => Boolean(line))
+    // Deduplicate by (m, b) — the same equation may appear many times in the solution text
+    .filter((line, idx, arr) => arr.findIndex((l) => l.m === line.m && l.b === line.b) === idx);
   if (lineMatches.length >= 2) {
     const [line1, line2] = lineMatches;
     if (line1.m !== line2.m) {
+      // Intersecting lines — mark the intersection point
       const x = (line2.b - line1.b) / (line1.m - line2.m);
       const y = line1.m * x + line1.b;
       const domainMin = Math.floor(x - 4);
@@ -695,6 +702,38 @@ function inferFunctionGraphBlocks(
           { kind: "linear", params: { m: line2.m, b: line2.b }, latex: line2.latex, color: "red" },
         ],
         featurePoints: [{ point: [x, y], label: pointLabel, color: "green" }],
+        domain: [domainMin, domainMax],
+        range: [yMin, yMax],
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    } else {
+      // Parallel lines — same slope, show both with the known point on the new line
+      const evalY = (line: { m: number; b: number }, value: number) => line.m * value + line.b;
+      const domainMin = -2;
+      const domainMax = 6;
+      const yValues = [evalY(line1, domainMin), evalY(line1, domainMax), evalY(line2, domainMin), evalY(line2, domainMax), 0];
+      const yMin = Math.floor(Math.min(...yValues) - 1);
+      const yMax = Math.ceil(Math.max(...yValues) + 1);
+
+      // Try to find the through-point from the problem text (e.g. "(2, 5)")
+      const throughPoint = source.match(/\(\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*\)/);
+      const featurePoints: { point: [number, number]; label: string; color: string }[] = [];
+      if (throughPoint) {
+        const px = Number(throughPoint[1]);
+        const py = Number(throughPoint[2]);
+        if (Number.isFinite(px) && Number.isFinite(py)) {
+          featurePoints.push({ point: [px, py], label: `(${px}, ${py})`, color: "green" });
+        }
+      }
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        functions: [
+          { kind: "linear", params: { m: line1.m, b: line1.b }, latex: line1.latex, color: "primary" },
+          { kind: "linear", params: { m: line2.m, b: line2.b }, latex: line2.latex, color: "red" },
+        ],
+        featurePoints,
         domain: [domainMin, domainMax],
         range: [yMin, yMax],
         xAxisLabel: "x",
@@ -997,7 +1036,7 @@ function inferFunctionGraphBlocks(
 
       const domainMin = 0;
       const domainMax = Math.max(8, Math.ceil(targetVal * 1.6));
-      
+
       const NUM_SAMPLES = 60;
       const samplePoints: [number, number][] = [];
       for (let i = 0; i < NUM_SAMPLES; i++) {
@@ -1046,9 +1085,9 @@ function inferFunctionGraphBlocks(
 
   const b = qMatch[2] !== undefined
     ? (() => {
-        const rawB = qMatch[2].replace(/\s/g, "");
-        return rawB === "" || rawB === "+" ? 1 : rawB === "-" ? -1 : parseFloat(rawB);
-      })()
+      const rawB = qMatch[2].replace(/\s/g, "");
+      return rawB === "" || rawB === "+" ? 1 : rawB === "-" ? -1 : parseFloat(rawB);
+    })()
     : 0;
 
   const c = qMatch[3] ? parseFloat(qMatch[3].replace(/\s/g, "")) : 0;
@@ -1312,7 +1351,7 @@ function inferSignTableBlocks(
       ? criticalXs[0] - 1
       : (criticalXs[i - 1] + criticalXs[i]) / 2;
     signRow.push(evalDerivSign(testX));
-    
+
     if (i > 0) {
       xRow.push(""); // interval spacer between roots in xRow
     }
@@ -1545,7 +1584,7 @@ function inferVectorRightTriangleBlocks(
     const numbers = matches.map(m => Number(m[1]));
     const uniqueNumbers = [...new Set(numbers)];
     uniqueNumbers.sort((a, b) => a - b);
-    
+
     if (uniqueNumbers.length === 2) {
       f1 = uniqueNumbers[0];
       f2 = uniqueNumbers[1];
@@ -1554,7 +1593,7 @@ function inferVectorRightTriangleBlocks(
       f1 = uniqueNumbers[0];
       f2 = uniqueNumbers[1];
       fR = uniqueNumbers[2];
-      
+
       const diff = Math.abs(f1 * f1 + f2 * f2 - fR * fR);
       if (diff > 10) {
         f1 = uniqueNumbers[0];
@@ -1877,6 +1916,7 @@ async function extractDiagramBlocksForSolution(
     prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
 
 If a diagram helps, return one or more diagramBlocks. If not, return {"diagramBlocks":[]}.
+CRITICAL: Every diagramBlock you return MUST have a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
 AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.
 
 Problem:
@@ -1925,7 +1965,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
   const pieChartFallback = inferPieChartBlocks(problem, solutionText, normalized, finalAnswer);
   if (pieChartFallback.length) return pieChartFallback;
 
-  const graphFallback = inferFunctionGraphBlocks(problem, solutionText, normalized);
+  const graphFallback = inferFunctionGraphBlocks(problem, solutionText, normalized, finalAnswer);
   if (graphFallback.length) return graphFallback;
 
   const signTableFallback = inferSignTableBlocks(problem, solutionText, normalized);
@@ -2019,13 +2059,13 @@ async function extractSolutionMetadata(
   const schemaProperties: Record<string, object> = {
     title: { type: Type.STRING },
     subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-    topic: { 
-      type: Type.STRING, 
+    topic: {
+      type: Type.STRING,
       enum: [
         "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
         "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
         "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
-      ] 
+      ]
     },
     problem: { type: Type.STRING },
     finalAnswer: { type: Type.STRING },
@@ -2193,13 +2233,13 @@ Rules:
       mode: { type: Type.STRING, enum: ["solution-first"] },
       title: { type: Type.STRING },
       subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-      topic: { 
-        type: Type.STRING, 
+      topic: {
+        type: Type.STRING,
         enum: [
           "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
           "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
           "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
-        ] 
+        ]
       },
       problem: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
@@ -2391,13 +2431,13 @@ Return a single JSON object only.`;
       mode: { type: Type.STRING, enum: ["solution-first"] },
       title: { type: Type.STRING },
       subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-      topic: { 
-        type: Type.STRING, 
+      topic: {
+        type: Type.STRING,
         enum: [
           "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
           "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
           "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
-        ] 
+        ]
       },
       problem: { type: Type.STRING },
       problemText: { type: Type.STRING },
@@ -2484,8 +2524,8 @@ export async function breakdownProblem(
   const imageContext = imagePart
     ? `The problem text was extracted from an attached image. Use both the image and the extracted text to build the tree.\n\n`
     : "";
-  
-  const solutionRef = solutionContext 
+
+  const solutionRef = solutionContext
     ? `\n\nREFERENCE SOLUTION (Use this to build the steps):
 ${solutionContext}`
     : "";
@@ -2530,8 +2570,8 @@ Rules:
     properties: {
       title: { type: Type.STRING },
       subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-      nodes: { 
-        type: Type.ARRAY, 
+      nodes: {
+        type: Type.ARRAY,
         items: nodeSchema,
         minItems: 5,
         description: "List of at least 5 nodes covering the full solution"
@@ -2580,7 +2620,7 @@ Return ONE complete JSON object only. Ensure every branch includes concrete math
   if (isUsableProblemBreakdown(recovery.data)) {
     return sanitizeBreakdownNodes(recovery.data);
   }
-  
+
   return buildFallbackBreakdown(
     problem,
     options.subject ?? "General",
@@ -2631,8 +2671,8 @@ export async function instantBreakdown(
       problemText: { type: Type.STRING },
       title: { type: Type.STRING },
       subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-      nodes: { 
-        type: Type.ARRAY, 
+      nodes: {
+        type: Type.ARRAY,
         items: nodeSchema,
         minItems: 5
       },
@@ -2682,7 +2722,7 @@ Return ONE complete JSON object only. Ensure all steps are concrete to the extra
     const probText = recovery.data.problemText || primary.data?.problemText || sanitized.title;
     return { ...sanitized, problemText: probText };
   }
-  
+
   return {
     ...buildFallbackBreakdown(
       "Could not analyze image",
@@ -2847,10 +2887,10 @@ function normalizeNodeMathContent(raw: string): string {
 
 function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
   const nodes = Array.isArray(bd?.nodes) ? bd.nodes : [];
-  logger.info(`[DEBUG:AI:BEFORE_SANITIZE] Task: breakdown`, { 
-    nodes: nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent })) 
+  logger.info(`[DEBUG:AI:BEFORE_SANITIZE] Task: breakdown`, {
+    nodes: nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent }))
   });
-  
+
   const sanitized = {
     ...bd,
     nodes: nodes.map((node) => {
@@ -2883,8 +2923,8 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
     }),
   };
 
-  logger.info(`[DEBUG:AI:AFTER_SANITIZE] Task: breakdown`, { 
-    nodes: sanitized.nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent })) 
+  logger.info(`[DEBUG:AI:AFTER_SANITIZE] Task: breakdown`, {
+    nodes: sanitized.nodes.map(n => ({ id: n.id, label: n.label, desc: n.description, math: n.mathContent }))
   });
 
   return sanitized;
@@ -3164,14 +3204,14 @@ function wrapBareMathInDelimiters(input: string): string {
   const processed = parts.map((part, idx) => {
     // If it's a delimited segment, leave it alone
     if (idx % 2 === 1) return part;
-    
+
     // Otherwise, find math-like segments (e.g. expressions with '=') and wrap them
     return part.replace(MATH_EXPRESSION_REGEX, (match) => {
       const trimmed = match.trim();
       // Ensure it doesn't look like a prose sentence and has some math "heavier" than just 'a=b'
       const words = trimmed.match(/\b[A-Za-z]{4,}\b/g) || [];
       if (words.length > 2) return match; // Likely prose
-      
+
       return ` $${trimmed}$ `;
     });
   });
@@ -3227,6 +3267,17 @@ function normalizeDescriptionText(input: string): string {
     .trim();
 }
 
+function isOuterBraceWrapped(str: string, open: string, close: string): boolean {
+  if (!str.startsWith(open) || !str.endsWith(close)) return false;
+  let depth = 0;
+  for (let i = 0; i < str.length - 1; i++) {
+    if (str[i] === open) depth++;
+    if (str[i] === close) depth--;
+    if (depth === 0) return false;
+  }
+  return depth === 1 && str[str.length - 1] === close;
+}
+
 function normalizeMathExpression(expr: string): string {
   let out = (expr ?? "").trim();
   if (!out) return out;
@@ -3235,7 +3286,7 @@ function normalizeMathExpression(expr: string): string {
     // Collapse over-escaped backslashes only if followed by a letter (command),
     // but PRESERVE double backslashes (\\) which mean newline in LaTeX.
     // We do this by collapsing 4 backslashes to 2, or 2 to 1 if not part of a pair.
-    .replace(/\\\\\\\\/g, "\\\\") 
+    .replace(/\\\\\\\\/g, "\\\\")
     .replace(/\\\\([a-zA-Z]+)/g, "\\$1")
     // OCR/model sometimes escapes dollar delimiters inside already-delimited math.
     .replace(/\\\$/g, "$")
@@ -3247,10 +3298,13 @@ function normalizeMathExpression(expr: string): string {
     .replace(/\^(\s+)(\d+)/g, "^$2")
     // Clean up common AI artifacts: stray leading/trailing punctuation/parens
     .replace(/^[:.,\s]+/, "")
-    .replace(/^[(\[]\s*([\s\S]+?)\s*[)\]]$/, "$1") // Strip outer parens if they wrap the whole thing
     .replace(/^[)]\s*/, "") // Remove stray leading closing paren
     .replace(/\s*[(]$/, "") // Remove stray trailing opening paren
     .trim();
+
+  if (isOuterBraceWrapped(out, "(", ")") || isOuterBraceWrapped(out, "[", "]")) {
+    out = out.slice(1, -1).trim();
+  }
 
   return out;
 }
@@ -3503,7 +3557,7 @@ Rules:
     const translationResponse = await client.models.generateContent({
       model: env.GEMINI_MODEL,
       config: {
-      systemInstruction: `You are a precise translator for educational content.
+        systemInstruction: `You are a precise translator for educational content.
 Rules:
 - Translate only non-math text into ${targetLangName}.
 - Never alter placeholders like [[EQ_1]], [[EQ_2]], etc.
@@ -3575,19 +3629,19 @@ export interface GenericTableRow {
   cells: string[];
 }
 
-export type VisualTable = 
-  | { 
-      type: 'sign_analysis'; 
-      parameterName: string;   // "m"
-      columns: string[];       // ["Δ'", "P", "S"]
-      conclusionLabel: string;
-      rows: SignTableRow[];
-    }
-  | { 
-      type: 'generic'; 
-      headers: string[]; 
-      rows: GenericTableRow[];
-    };
+export type VisualTable =
+  | {
+    type: 'sign_analysis';
+    parameterName: string;   // "m"
+    columns: string[];       // ["Δ'", "P", "S"]
+    conclusionLabel: string;
+    rows: SignTableRow[];
+  }
+  | {
+    type: 'generic';
+    headers: string[];
+    rows: GenericTableRow[];
+  };
 
 export interface NodeInsight {
   simpleBreakdown: string;
@@ -3821,9 +3875,9 @@ Return ONLY the JSON object. No markdown, no explanation.`;
   const rowSchema = {
     type: Type.OBJECT,
     properties: {
-      label:      { type: Type.STRING },
-      type:       { type: Type.STRING, enum: ["value", "interval"] },
-      cells:      { type: Type.ARRAY, items: { type: Type.STRING } },
+      label: { type: Type.STRING },
+      type: { type: Type.STRING, enum: ["value", "interval"] },
+      cells: { type: Type.ARRAY, items: { type: Type.STRING } },
       conclusion: { type: Type.STRING },
     },
     required: ["label", "type", "cells"],
@@ -3838,10 +3892,10 @@ Return ONLY the JSON object. No markdown, no explanation.`;
         description: "Table type",
       },
       // sign_analysis fields
-      parameterName:   { type: Type.STRING },
-      columns:         { type: Type.ARRAY, items: { type: Type.STRING } },
+      parameterName: { type: Type.STRING },
+      columns: { type: Type.ARRAY, items: { type: Type.STRING } },
       conclusionLabel: { type: Type.STRING },
-      rows:            { type: Type.ARRAY, items: rowSchema },
+      rows: { type: Type.ARRAY, items: rowSchema },
       // generic fields
       headers: { type: Type.ARRAY, items: { type: Type.STRING } },
     },
@@ -4102,8 +4156,8 @@ Subject: "${subject}"
 
 Rules:
 - ${isKidLevel
-  ? "Write a detailed explanation for a 5-year-old in 5-8 short sentences. Use one simple everyday analogy and keep the language very easy."
-  : "Keep it concise (about 2 short sentences)."}
+        ? "Write a detailed explanation for a 5-year-old in 5-8 short sentences. Use one simple everyday analogy and keep the language very easy."
+        : "Keep it concise (about 2 short sentences)."}
 - Must be ${isKidLevel ? "at least 4 complete sentences and at least 160 characters." : "at least 1 complete sentence and at least 40 characters."}
 - No JSON, no markdown, no bullet points.
 - Keep it clear and student-friendly.
@@ -4521,33 +4575,33 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
   const isKhmer = (language ?? "").toLowerCase() === "km";
   const copy = isKhmer
     ? {
-        title: "ការបំបែកបញ្ហា",
-        rootDesc: "នេះជាចំណោទដើមដែលត្រូវដោះស្រាយ។",
-        branch1Label: "ជំហាន ១",
-        branch1Desc: "កំណត់តម្លៃដែលមាន និងតម្លៃដែលត្រូវរក។",
-        branch1Math: "ទិន្នន័យដែលមាន -> អថេរត្រូវរក",
-        branch2Label: "ជំហាន ២",
-        branch2Desc: "អនុវត្តរូបមន្ត ឬ ទំនាក់ទំនងសំខាន់។",
-        branch2Math: "ប្រើទំនាក់ទំនងដើម្បីគណនា",
-        leafLabel: "គំនិតគន្លឹះ",
-        leafDesc: "ជំនួសតម្លៃ រួចសម្រួលតាមលំដាប់។",
-        leafMath: "ជំនួស -> សម្រួល -> លទ្ធផលចុងក្រោយ",
-        insight: "បំបែកជាចំណុចតូចៗ កំណត់ទិន្នន័យសំខាន់ ហើយគណនាជំហានៗ។",
-      }
+      title: "ការបំបែកបញ្ហា",
+      rootDesc: "នេះជាចំណោទដើមដែលត្រូវដោះស្រាយ។",
+      branch1Label: "ជំហាន ១",
+      branch1Desc: "កំណត់តម្លៃដែលមាន និងតម្លៃដែលត្រូវរក។",
+      branch1Math: "ទិន្នន័យដែលមាន -> អថេរត្រូវរក",
+      branch2Label: "ជំហាន ២",
+      branch2Desc: "អនុវត្តរូបមន្ត ឬ ទំនាក់ទំនងសំខាន់។",
+      branch2Math: "ប្រើទំនាក់ទំនងដើម្បីគណនា",
+      leafLabel: "គំនិតគន្លឹះ",
+      leafDesc: "ជំនួសតម្លៃ រួចសម្រួលតាមលំដាប់។",
+      leafMath: "ជំនួស -> សម្រួល -> លទ្ធផលចុងក្រោយ",
+      insight: "បំបែកជាចំណុចតូចៗ កំណត់ទិន្នន័យសំខាន់ ហើយគណនាជំហានៗ។",
+    }
     : {
-        title: "Problem Breakdown",
-        rootDesc: "The original problem statement to solve.",
-        branch1Label: "Step 1",
-        branch1Desc: "List known values and the target unknown.",
-        branch1Math: "Known values -> target unknown",
-        branch2Label: "Step 2",
-        branch2Desc: "Apply the governing formula or relationship.",
-        branch2Math: "Use problem relationship to connect knowns to unknown",
-        leafLabel: "Key Concept",
-        leafDesc: "Substitute values carefully and simplify in order.",
-        leafMath: "Substitute -> simplify -> compute final value",
-        insight: "Break the problem into known values, apply the key rule, then compute the final result.",
-      };
+      title: "Problem Breakdown",
+      rootDesc: "The original problem statement to solve.",
+      branch1Label: "Step 1",
+      branch1Desc: "List known values and the target unknown.",
+      branch1Math: "Known values -> target unknown",
+      branch2Label: "Step 2",
+      branch2Desc: "Apply the governing formula or relationship.",
+      branch2Math: "Use problem relationship to connect knowns to unknown",
+      leafLabel: "Key Concept",
+      leafDesc: "Substitute values carefully and simplify in order.",
+      leafMath: "Substitute -> simplify -> compute final value",
+      insight: "Break the problem into known values, apply the key rule, then compute the final result.",
+    };
 
   return {
     title: problem.slice(0, 50) || copy.title,

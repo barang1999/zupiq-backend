@@ -5,6 +5,7 @@ import { createSession, getUserSessions, getSessionById, updateSession, deleteSe
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
 import { publishCollabEvent } from "../../services/collab-stream.js";
 import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
+import { upsertBreakdownFeedback, deleteBreakdownFeedback, getBreakdownFeedback } from "../../services/feedback.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -93,6 +94,42 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     await deleteSession(req.params.id, req.user!.sub);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Breakdown Feedback ───────────────────────────────────────────────────────
+
+// GET /api/sessions/:id/feedback — returns the caller's current signal or null
+router.get("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const signal = await getBreakdownFeedback(req.params.id, req.user!.sub);
+    res.json({ signal });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/sessions/:id/feedback — upsert a signal ('positive' | 'negative')
+router.post("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { signal } = req.body as { signal: unknown };
+    if (signal !== "positive" && signal !== "negative") {
+      throw new ValidationError("signal must be 'positive' or 'negative'");
+    }
+    await upsertBreakdownFeedback(req.params.id, req.user!.sub, signal);
+    res.json({ signal });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/sessions/:id/feedback — remove the caller's signal (un-rate)
+router.delete("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await deleteBreakdownFeedback(req.params.id, req.user!.sub);
     res.status(204).send();
   } catch (err) {
     next(err);

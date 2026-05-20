@@ -197,7 +197,10 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
     .map((shape) => {
       if (!shape || typeof shape !== "object") return null;
       const item = shape as Record<string, unknown>;
-      const shapeType = String(item.shape || item.type || "");
+      let shapeType = String(item.shape || item.type || "").toLowerCase().trim();
+      if (shapeType === "rectangle" || shapeType === "square") {
+        shapeType = "polygon";
+      }
       if (!["triangle", "polygon", "circle", "segment", "line", "arrow", "angle", "arc", "semicircle"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)

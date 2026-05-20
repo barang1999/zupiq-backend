@@ -1915,7 +1915,7 @@ async function extractDiagramBlocksForSolution(
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
     prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
 
-If a diagram helps, return one or more diagramBlocks in this exact structure:
+If a diagram helps, return exactly ONE diagramBlock (choose the single most helpful diagram type) in this exact structure:
 {
   "diagramBlocks": [
     {
@@ -1927,7 +1927,8 @@ If a diagram helps, return one or more diagramBlocks in this exact structure:
 
 If no diagram helps, return {"diagramBlocks":[]}.
 
-CRITICAL: Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
+CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
+Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
 AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.
 
 Problem:

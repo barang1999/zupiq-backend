@@ -125,7 +125,9 @@ function normalizeTextBlockContent(content: string): string {
     // Once split into render blocks, they become lonely visible "*" lines.
     .replace(/(^|\n)\s*[*-]\s+(?=[^\n])/g, "$1")
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
-    .replace(/\n{3,}/g, "\n\n");
+    .replace(/\n{3,}/g, "\n\n")
+    // Ensure numbered items (e.g. 1., 2., 3. or Khmer numbers ១., ២., ៣.) start on a new line for clean lists
+    .replace(/(?<!\n|^)\s*(\b\d+|[\u17E0-\u17E9])\.\s*/g, "\n$1. ");
 
   if (!raw.trim()) return "";
 

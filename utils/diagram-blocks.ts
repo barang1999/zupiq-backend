@@ -256,8 +256,8 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
     ...axisBounds,
     grid: inputOptions.grid === true,
     showOrigin: inputOptions.showOrigin === true,
-    xAxisLabel: typeof inputOptions.xAxisLabel === "string" ? inputOptions.xAxisLabel.slice(0, 16) : undefined,
-    yAxisLabel: typeof inputOptions.yAxisLabel === "string" ? inputOptions.yAxisLabel.slice(0, 16) : undefined,
+    xAxisLabel: typeof inputOptions.xAxisLabel === "string" ? inputOptions.xAxisLabel.slice(0, 32) : undefined,
+    yAxisLabel: typeof inputOptions.yAxisLabel === "string" ? inputOptions.yAxisLabel.slice(0, 32) : undefined,
   };
 
   return { type: "geometry", shapes: normalizedShapes.slice(0, 12), options };
@@ -275,7 +275,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
       const params = item.params && typeof item.params === "object" ? item.params : undefined;
-      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal"].includes(kind)) return null;
+      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,
@@ -326,8 +326,8 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     shadedRegions: normalizedShadedRegions,
     domain: Array.isArray(input.domain) ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
     range: Array.isArray(input.range) ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
-    xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 8) : undefined,
-    yAxisLabel: typeof input.yAxisLabel === "string" ? input.yAxisLabel.slice(0, 8) : undefined,
+    xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 32) : undefined,
+    yAxisLabel: typeof input.yAxisLabel === "string" ? input.yAxisLabel.slice(0, 32) : undefined,
   };
 }
 

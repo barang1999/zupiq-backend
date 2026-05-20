@@ -4092,6 +4092,61 @@ function unwrapNestedJsonValue(value: unknown, maxDepth = 3): unknown {
   return current;
 }
 
+function autoCloseTruncatedJson(jsonStr: string): string {
+  let inString = false;
+  let escaped = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+    } else {
+      if (char === '"') {
+        inString = true;
+      } else if (char === '{') {
+        stack.push('}');
+      } else if (char === '[') {
+        stack.push(']');
+      } else if (char === '}') {
+        if (stack[stack.length - 1] === '}') {
+          stack.pop();
+        }
+      } else if (char === ']') {
+        if (stack[stack.length - 1] === ']') {
+          stack.pop();
+        }
+      }
+    }
+  }
+
+  let suffix = "";
+  if (inString) {
+    suffix += '"';
+  }
+
+  let cleaned = jsonStr.trim();
+  while (cleaned && /[,:\s\\[{]+$/.test(cleaned)) {
+    const lastChar = cleaned[cleaned.length - 1];
+    cleaned = cleaned.slice(0, -1);
+    if (lastChar === '{' || lastChar === '[') {
+      stack.pop();
+    }
+  }
+
+  while (stack.length > 0) {
+    suffix += stack.pop();
+  }
+
+  return cleaned + suffix;
+}
+
 function parseJsonLoose<T>(raw: string): T | null {
   const stripped = stripCodeFence(raw).replace(/\u0000/g, "").trim();
   if (!stripped) return null;
@@ -4100,7 +4155,9 @@ function parseJsonLoose<T>(raw: string): T | null {
   // Reverse so the model's LAST (final/complete) output is tried before earlier partial drafts.
   const allExtracted = extractAllJsonCandidates(stripped).reverse();
 
-  const candidates = [stripped, ...allExtracted]
+  const autoClosed = autoCloseTruncatedJson(stripped);
+
+  const candidates = [stripped, autoClosed, ...allExtracted]
     .filter((v): v is string => Boolean(v))
     .map((v) => v.replace(/,\s*([}\]])/g, "$1").replace(/\u2028|\u2029/g, " "));
 
@@ -4123,8 +4180,12 @@ function parseJsonLoose<T>(raw: string): T | null {
 }
 
 function repairCommonJsonIssues(input: string): string {
+  const fixedUnquoted = input
+    .replace(/\b(-?Infinity)\b/g, '"$1"')
+    .replace(/\b(NaN)\b/g, '"$1"');
+
   return escapeInvalidBackslashesInsideJsonStrings(
-    input.replace(/[\u0000-\u001F]/g, (ch) => {
+    fixedUnquoted.replace(/[\u0000-\u001F]/g, (ch) => {
       if (ch === "\n" || ch === "\r" || ch === "\t") return ch;
       return " ";
     })

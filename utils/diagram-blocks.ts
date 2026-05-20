@@ -50,6 +50,8 @@ function cacheKey(diagramType: DiagramType, spec: Record<string, unknown>): stri
 }
 
 function asFiniteNumber(value: unknown, fallback: number): number {
+  if (value === "Infinity" || value === Infinity) return Number.MAX_VALUE;
+  if (value === "-Infinity" || value === -Infinity) return -Number.MAX_VALUE;
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
@@ -287,17 +289,90 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
 }
 
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
-  const functions = Array.isArray(input.functions) ? input.functions : [];
-  const featurePoints = Array.isArray(input.featurePoints) ? input.featurePoints : [];
-  const shadedRegions = Array.isArray(input.shadedRegions) ? input.shadedRegions : [];
+  const functions = Array.isArray(input.functions) ? [...input.functions] : [];
+  const featurePoints = Array.isArray(input.featurePoints) ? [...input.featurePoints] : [];
+  const shadedRegions = Array.isArray(input.shadedRegions) ? [...input.shadedRegions] : [];
+
+  if (Array.isArray(input.segments) && input.segments.length > 0) {
+    const pieces = input.segments.map((seg) => {
+      if (!seg || typeof seg !== "object") return null;
+      const s = seg as Record<string, unknown>;
+      const start = asPoint(s.start);
+      const end = asPoint(s.end);
+      if (!start || !end) return null;
+      const [x1, y1] = start;
+      const [x2, y2] = end;
+      const dx = x2 - x1;
+      let m = 0;
+      let b = y1;
+      if (Math.abs(dx) > 0.0001) {
+        m = (y2 - y1) / dx;
+        b = y1 - m * x1;
+      }
+
+      if (s.closedStart !== undefined) {
+        featurePoints.push({
+          point: start,
+          closed: s.closedStart === true || String(s.closedStart).toLowerCase().includes("closed"),
+        });
+      }
+      if (s.closedEnd !== undefined) {
+        featurePoints.push({
+          point: end,
+          closed: s.closedEnd === true || String(s.closedEnd).toLowerCase().includes("closed"),
+        });
+      }
+
+      return {
+        domain: [x1, x2],
+        function: {
+          kind: "linear",
+          params: { m, b }
+        }
+      };
+    }).filter(Boolean);
+
+    if (pieces.length > 0) {
+      functions.push({
+        kind: "piecewise",
+        pieces: pieces,
+      });
+    }
+  }
+
   const normalizedFunctions = functions
     .map((fn) => {
       if (!fn || typeof fn !== "object") return null;
       const item = fn as Record<string, unknown>;
-      const kind = String(item.kind || "").trim();
+      let kind = String(item.kind || "").trim();
+      if (kind === "line") kind = "linear";
+
+      let params = item.params && typeof item.params === "object" ? item.params : undefined;
+      let domain = Array.isArray(item.domain)
+        ? [asFiniteNumber(item.domain[0], -Number.MAX_VALUE), asFiniteNumber(item.domain[1], Number.MAX_VALUE)]
+        : undefined;
+
+      if (kind === "segment") {
+        kind = "linear";
+        const start = asPoint(item.start);
+        const end = asPoint(item.end);
+        if (start && end) {
+          const [x1, y1] = start;
+          const [x2, y2] = end;
+          const dx = x2 - x1;
+          let m = 0;
+          let b = y1;
+          if (Math.abs(dx) > 0.0001) {
+            m = (y2 - y1) / dx;
+            b = y1 - m * x1;
+          }
+          params = { m, b };
+          domain = [x1, x2];
+        }
+      }
+
       const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
-      const params = item.params && typeof item.params === "object" ? item.params : undefined;
       
       let pieces = undefined;
       if (kind === "piecewise" && Array.isArray(item.pieces)) {
@@ -308,8 +383,27 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             const domain = Array.isArray(p.domain)
               ? [asFiniteNumber(p.domain[0], -Number.MAX_VALUE), asFiniteNumber(p.domain[1], Number.MAX_VALUE)]
               : [-Number.MAX_VALUE, Number.MAX_VALUE];
-            const fnObj = p.function && typeof p.function === "object" ? p.function as Record<string, unknown> : {};
-            const fnKind = String(fnObj.kind || "").trim();
+            
+            let fnObj: Record<string, unknown> = {};
+            if (p.function && typeof p.function === "object") {
+              fnObj = p.function as Record<string, unknown>;
+            } else if (typeof p.function === "string") {
+              const str = p.function.trim().replace(/\s+/g, "");
+              const match = str.match(/^(?:y|f\(x\))=(-?\d+(?:\.\d+)?)$/) || str.match(/^(-?\d+(?:\.\d+)?)$/);
+              if (match) {
+                fnObj = {
+                  kind: "linear",
+                  params: {
+                    m: 0,
+                    b: parseFloat(match[1]),
+                  }
+                };
+              }
+            }
+
+            let fnKind = String(fnObj.kind || "").trim();
+            if (fnKind === "line") fnKind = "linear";
+
             const fnParams = fnObj.params && typeof fnObj.params === "object" ? fnObj.params : undefined;
             if (!["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
             return {
@@ -330,22 +424,39 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         points,
         params,
         pieces,
+        domain,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
       };
     })
     .filter(Boolean)
     .slice(0, 3);
+
   const normalizedFeaturePoints = featurePoints
     .map((point) => {
       if (!point || typeof point !== "object") return null;
       const item = point as Record<string, unknown>;
       const coordinates = asPoint(item.point ?? item.coordinates);
       if (!coordinates) return null;
+
+      let closed = undefined;
+      if (typeof item.closed === "boolean") {
+        closed = item.closed;
+      } else if (typeof item.open === "boolean") {
+        closed = !item.open;
+      } else {
+        const typeStr = String(item.type || item.kind || item.closed || item.open || "").toLowerCase();
+        if (typeStr.includes("open")) {
+          closed = false;
+        } else if (typeStr.includes("closed")) {
+          closed = true;
+        }
+      }
+
       return {
         point: coordinates,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
-        closed: typeof item.closed === "boolean" ? item.closed : undefined,
+        closed: closed,
       };
     })
     .filter(Boolean)

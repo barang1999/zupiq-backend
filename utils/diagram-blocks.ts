@@ -298,12 +298,38 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const latex = String(item.latex || item.label || "").slice(0, 80);
       const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
       const params = item.params && typeof item.params === "object" ? item.params : undefined;
-      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine"].includes(kind)) return null;
+      
+      let pieces = undefined;
+      if (kind === "piecewise" && Array.isArray(item.pieces)) {
+        pieces = item.pieces
+          .map((piece) => {
+            if (!piece || typeof piece !== "object") return null;
+            const p = piece as Record<string, unknown>;
+            const domain = Array.isArray(p.domain)
+              ? [asFiniteNumber(p.domain[0], -Number.MAX_VALUE), asFiniteNumber(p.domain[1], Number.MAX_VALUE)]
+              : [-Number.MAX_VALUE, Number.MAX_VALUE];
+            const fnObj = p.function && typeof p.function === "object" ? p.function as Record<string, unknown> : {};
+            const fnKind = String(fnObj.kind || "").trim();
+            const fnParams = fnObj.params && typeof fnObj.params === "object" ? fnObj.params : undefined;
+            if (!["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
+            return {
+              domain,
+              function: {
+                kind: fnKind,
+                params: fnParams,
+              }
+            };
+          })
+          .filter(Boolean);
+      }
+
+      if (!points.length && !["linear", "quadratic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
       return {
         kind: kind || "points",
         latex,
         points,
         params,
+        pieces,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
       };
     })
@@ -319,6 +345,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         point: coordinates,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+        closed: typeof item.closed === "boolean" ? item.closed : undefined,
       };
     })
     .filter(Boolean)

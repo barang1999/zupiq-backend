@@ -33,7 +33,6 @@ function getMathJaxContext() {
 }
 
 export function shouldRenderMathSvg(latex: string, display: boolean): boolean {
-  if (!display) return false;
   const source = `${latex ?? ""}`.replace(/\\displaystyle\s+/g, "").trim();
   return source.length > 0;
 }
@@ -52,7 +51,8 @@ function renderOnce(source: string, display: boolean, adaptor: any, html: any): 
   try {
     const node = html.convert(source, { display });
     const svgHtml = adaptor.outerHTML(node);
-    return `<span class="mathjax-svg-display">${svgHtml}</span>`;
+    const className = display ? "mathjax-svg-display" : "mathjax-svg-inline";
+    return `<span class="${className}">${svgHtml}</span>`;
   } catch {
     return null;
   }

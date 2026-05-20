@@ -7,7 +7,8 @@ export type DiagramType =
   | "sign-table"
   | "venn-diagram"
   | "solid-geometry"
-  | "pie-chart";
+  | "pie-chart"
+  | "tree-diagram";
 
 export type DiagramRenderBlock = {
   type: "diagram";
@@ -27,6 +28,7 @@ const DIAGRAM_TYPES = new Set<DiagramType>([
   "venn-diagram",
   "solid-geometry",
   "pie-chart",
+  "tree-diagram",
 ]);
 
 function stableStringify(value: unknown): string {
@@ -316,7 +318,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 4);
-  if (!normalizedFunctions.length) warnings.push("empty-function-graph");
+  if (!normalizedFunctions.length && !normalizedFeaturePoints.length) warnings.push("empty-function-graph");
   return {
     type: "function-graph",
     functions: normalizedFunctions,
@@ -372,6 +374,32 @@ function normalizePieChartSpec(input: Record<string, unknown>, warnings: string[
   };
 }
 
+function normalizeTreeDiagramSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const nodes = Array.isArray(input.nodes) ? input.nodes : [];
+  const normalizedNodes = nodes
+    .map((node) => {
+      if (!node || typeof node !== "object") return null;
+      const item = node as Record<string, unknown>;
+      return {
+        id: String(item.id || "").trim(),
+        parentId: item.parentId ? String(item.parentId).trim() : undefined,
+        label: String(item.label || "").trim(),
+        branchLabel: item.branchLabel ? String(item.branchLabel).trim() : undefined,
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalizedNodes.length) {
+    warnings.push("empty-tree-diagram");
+  }
+
+  return {
+    type: "tree-diagram",
+    rootLabel: input.rootLabel ? String(input.rootLabel).trim() : undefined,
+    nodes: normalizedNodes,
+  };
+}
+
 export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null {
   if (!block || typeof block !== "object") return null;
   const raw = block as Record<string, unknown>;
@@ -394,6 +422,8 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
       diagramType = "solid-geometry";
     } else if (Array.isArray(spec.sectors) || Array.isArray(raw.sectors)) {
       diagramType = "pie-chart";
+    } else if (Array.isArray(spec.nodes) || Array.isArray(raw.nodes)) {
+      diagramType = "tree-diagram";
     }
   }
 
@@ -411,7 +441,8 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
           : diagramType === "geometry" ? normalizeGeometrySpec(inputSpec, warnings)
             : diagramType === "function-graph" ? normalizeFunctionGraphSpec(inputSpec, warnings)
               : diagramType === "pie-chart" ? normalizePieChartSpec(inputSpec, warnings)
-                : normalizeSolidGeometrySpec(inputSpec, warnings);
+                : diagramType === "tree-diagram" ? normalizeTreeDiagramSpec(inputSpec, warnings)
+                  : normalizeSolidGeometrySpec(inputSpec, warnings);
 
   return {
     type: "diagram",
@@ -431,6 +462,7 @@ const CRITICAL_WARNINGS = new Set([
   "empty-number-line",
   "empty-venn-diagram",
   "empty-pie-chart",
+  "empty-tree-diagram",
 ]);
 
 export function normalizeDiagramBlocks(blocks: unknown): DiagramRenderBlock[] {

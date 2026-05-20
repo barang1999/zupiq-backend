@@ -91,9 +91,8 @@ export function buildMathBlock(input: string, display: boolean): Extract<RenderB
   const normalizedLatex = normalizeLatexForRender(input);
   const warnings = getLatexWarnings(normalizedLatex);
 
-  // For display math: attempt SVG even with warnings — MathJax is more tolerant
-  // than the static warning heuristics, and rendering is preferred over client fallback.
-  // For inline math: keep client-side KaTeX only.
+  // Attempt SVG rendering for both display and inline math blocks to guarantee
+  // consistent cross-platform rendering quality and high performance.
   const svgHtml = shouldRenderMathSvg(normalizedLatex, display)
     ? renderMathSvg(normalizedLatex, display)
     : null;
@@ -118,7 +117,7 @@ function buildTextBlock(content: string, lang?: string): Extract<RenderBlock, { 
 }
 
 function normalizeTextBlockContent(content: string): string {
-  return `${content ?? ""}`
+  const raw = `${content ?? ""}`
     // Strip fenced code blocks (mermaid, etc.) that can't be rendered in solution text
     .replace(/```[^\n]*\n[\s\S]*?```/g, "")
     .replace(/[ \t]+\n/g, "\n")
@@ -126,8 +125,13 @@ function normalizeTextBlockContent(content: string): string {
     // Once split into render blocks, they become lonely visible "*" lines.
     .replace(/(^|\n)\s*[*-]\s+(?=[^\n])/g, "$1")
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/\n{3,}/g, "\n\n");
+
+  if (!raw.trim()) return "";
+
+  const leadingNewlines = raw.match(/^\n*/)?.[0] || "";
+  const trailingNewlines = raw.match(/\n*$/)?.[0] || "";
+  return leadingNewlines + raw.trim() + trailingNewlines;
 }
 
 function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {
@@ -137,7 +141,7 @@ function compactTextBlocks(blocks: RenderBlock[]): RenderBlock[] {
     if (block.type === "text" && !block.content.trim()) continue;
     const previous = compacted[compacted.length - 1];
     if (block.type === "text" && previous?.type === "text") {
-      previous.content = `${previous.content}\n${block.content}`.trim();
+      previous.content = `${previous.content}\n${block.content}`;
       continue;
     }
     compacted.push(block);

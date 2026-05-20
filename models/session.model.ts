@@ -7,7 +7,8 @@ export type DiagramType =
   | 'sign-table'
   | 'venn-diagram'
   | 'solid-geometry'
-  | 'pie-chart';
+  | 'pie-chart'
+  | 'tree-diagram';
 
 export type RenderBlock =
   | {

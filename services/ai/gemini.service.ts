@@ -568,7 +568,8 @@ Diagram spec examples:
 - function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
-- solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}`;
+- solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a","base":"A","height":"h"}}
+- tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
 
 const KHMER_DIGITS: Record<string, string> = {
   "០": "0",
@@ -1908,8 +1909,8 @@ async function extractDiagramBlocksForSolution(
   const source = `${problem}\n${solutionText}`.toLowerCase();
   const likelyUseful = subject.includes("math")
     || subject.includes("physics")
-    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|sphere|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection|pie.?chart|piechart|force|resultant|vector)/i.test(source)
-    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ)/.test(source);
+    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|cone|sphere|prism|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection|pie.?chart|piechart|force|resultant|vector|tree|probability)/i.test(source)
+    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|កោន|ព្រីស|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ|មែកធាង|ប្រូបាប)/.test(source);
   if (!likelyUseful) return [];
 
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
@@ -1919,7 +1920,7 @@ If a diagram helps, return exactly ONE diagramBlock (choose the single most help
 {
   "diagramBlocks": [
     {
-      "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart",
+      "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart" | "tree-diagram",
       "spec": { ... }
     }
   ]

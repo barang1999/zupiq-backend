@@ -325,6 +325,16 @@ function evalFnAt(fn: Record<string, unknown>, x: number): number {
     return dx >= 0 ? asFiniteNumber(p.a, 1) * Math.sqrt(dx) + asFiniteNumber(p.k, 0) : Number.NaN;
   }
   if (kind === "exponential") return asFiniteNumber(p.a, 1) * Math.pow(asFiniteNumber(p.b, Math.E), x);
+  if (kind === "points") {
+    const pts = Array.isArray(fn.points) ? fn.points as [number, number][] : [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const x0 = pts[i][0], y0 = pts[i][1];
+      const x1 = pts[i + 1][0], y1 = pts[i + 1][1];
+      if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) continue;
+      if (x >= x0 && x <= x1) return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+    }
+    return Number.NaN;
+  }
   return Number.NaN;
 }
 
@@ -407,6 +417,45 @@ function parsePolynomial(latex: string): { a: number; b: number; c: number; d: n
   }
   
   return foundPower ? coefficients : null;
+}
+
+/**
+ * Detect a normal-distribution (Gaussian) PDF in a LaTeX string by looking for
+ * a standardisation sub-expression \frac{x - mean}{std}.
+ * Returns { mean, std } on success, null otherwise.
+ */
+function tryParseGaussianLatex(latex: string): { mean: number; std: number } | null {
+  const clean = latex.replace(/\s+/g, "");
+  // Pattern 1: standardisation form \frac{x-mean}{std}
+  const m1 = clean.match(/\\frac\{x[-−](\d+(?:\.\d+)?)\}\{(\d+(?:\.\d+)?)\}/);
+  if (m1) {
+    const mean = parseFloat(m1[1]);
+    const std = parseFloat(m1[2]);
+    if (Number.isFinite(mean) && Number.isFinite(std) && std > 0) return { mean, std };
+  }
+  // Pattern 2: squared form (x-mean)^2 / (2*std^2) e.g. e^{-\frac{(x-70)^2}{2\cdot10^2}}
+  const m2 = clean.match(/\(x[-−](\d+(?:\.\d+)?)\)\^(?:2|\{2\})/) ;
+  if (m2) {
+    const mean = parseFloat(m2[1]);
+    // Extract std from the denominator: look for \cdot or \times followed by std^2, or 2std^2
+    const stdMatch = clean.match(/(?:\\cdot|\\times|[*·])(\d+(?:\.\d+)?)\^(?:2|\{2\})|[{(]2[*·]?(\d+(?:\.\d+)?)\^(?:2|\{2\})/);
+    if (stdMatch) {
+      const std = parseFloat(stdMatch[1] ?? stdMatch[2]);
+      if (Number.isFinite(mean) && Number.isFinite(std) && std > 0) return { mean, std };
+    }
+  }
+  return null;
+}
+
+function sampleGaussian(mean: number, std: number, xMin: number, xMax: number, n = 80): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const x = xMin + ((xMax - xMin) * i) / (n - 1);
+    const z = (x - mean) / std;
+    const y = (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * z * z);
+    if (Number.isFinite(y)) pts.push([x, y]);
+  }
+  return pts;
 }
 
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
@@ -567,7 +616,39 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           .filter(Boolean);
       }
 
-      if (!points.length && !["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"].includes(kind)) return null;
+      const KNOWN_KINDS = ["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"];
+      if (!points.length && !KNOWN_KINDS.includes(kind)) {
+        // Explicit normal-distribution kind with params { mean, stdDev/std/sigma }
+        let gauss: { mean: number; std: number } | null = null;
+        if (kind === "normal-distribution" && params && typeof params === "object") {
+          const p = params as Record<string, unknown>;
+          const mean = asFiniteNumber(p.mean as number, Number.NaN);
+          const std = asFiniteNumber((p.stdDev ?? p.std ?? p.sigma ?? p.standardDeviation) as number, Number.NaN);
+          if (Number.isFinite(mean) && Number.isFinite(std) && std > 0) gauss = { mean, std };
+        }
+        // Fall back: detect and sample a gaussian bell curve from the latex
+        if (!gauss) gauss = tryParseGaussianLatex(latex);
+        if (gauss) {
+          const rawDom = Array.isArray(item.domain)
+            ? [asFiniteNumber(item.domain[0], gauss.mean - 4 * gauss.std), asFiniteNumber(item.domain[1], gauss.mean + 4 * gauss.std)]
+            : [gauss.mean - 4 * gauss.std, gauss.mean + 4 * gauss.std];
+          const sampledPoints = sampleGaussian(gauss.mean, gauss.std, rawDom[0], rawDom[1]);
+          if (sampledPoints.length > 0) {
+            return {
+              kind: "points",
+              // Clear the raw PDF formula — the SVG label renderer can't handle
+              // nested fracs and would show garbled text like "frac110sqrt2pi e".
+              latex: "",
+              points: sampledPoints,
+              params: undefined,
+              pieces: undefined,
+              domain: undefined,
+              color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+            };
+          }
+        }
+        return null;
+      }
       return {
         kind: kind || "points",
         latex,
@@ -749,7 +830,10 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
       // Don't restrict the domain of rational-reciprocal functions whose vertical
       // asymptote falls within the shaded range — that would clip a valid branch.
+      // Don't restrict point-sampled functions (e.g. gaussian bell curves) — they
+      // need their full pre-sampled x range to render the correct curve shape.
       const f = fn as Record<string, unknown>;
+      if (f.kind === "points") return fn;
       if (f.kind === "rational-reciprocal") {
         const p = (f.params && typeof f.params === "object" ? f.params : {}) as Record<string, unknown>;
         const h = asFiniteNumber(((p.verticalAsymptote ?? p.h) as number | undefined) ?? Number.NaN, Number.NaN);

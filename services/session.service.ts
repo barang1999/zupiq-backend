@@ -198,6 +198,7 @@ async function resolveTopicId(subjectId: string | null, topicSlug: string | null
 const MATH_ID = "017d3f2f-f212-4cf1-b522-c176b7027acf";
 const PHYSICS_ID = "cc02b7ca-a34b-4010-b7e4-bffb9be2a3cb";
 const CHEMISTRY_ID = "98dca07b-2f9f-4e8b-83a0-428863d1e527";
+const SESSION_LIST_SELECT = "id,user_id,title,subject_id,topic_id,problem,node_count,duration_seconds,image_url,created_at";
 
 function resolveSubjectNameFromId(subjectId: string | null | undefined): string | null {
   if (!subjectId) return null;
@@ -579,7 +580,7 @@ export async function getUserSessions(userId: string): Promise<(StudySession & {
   // Owned sessions
   const { data: ownedData, error: ownedError } = await db
     .from("study_sessions")
-    .select("*")
+    .select(SESSION_LIST_SELECT)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -598,7 +599,7 @@ export async function getUserSessions(userId: string): Promise<(StudySession & {
 
     const { data: sharedData } = await db
       .from("study_sessions")
-      .select("*")
+      .select(SESSION_LIST_SELECT)
       .in("id", sharedIds)
       .order("created_at", { ascending: false });
 

@@ -1246,6 +1246,118 @@ function inferNumberLineBlocks(
   return [];
 }
 
+type SimpleRationalInequality = {
+  numeratorRoot: number;
+  denominatorRoot: number;
+  numeratorLabel: string;
+  denominatorLabel: string;
+  operator: "<" | "<=" | ">" | ">=";
+};
+
+function parseSimpleLinearFactorRoot(raw: string): { root: number; label: string } | null {
+  const clean = raw.replace(/\s+/g, "");
+  const match = clean.match(/^x([+-]\d+(?:\.\d+)?)?$/i);
+  if (!match) return null;
+  const constant = match[1] ? Number(match[1]) : 0;
+  if (!Number.isFinite(constant)) return null;
+  return {
+    root: -constant,
+    label: constant === 0 ? "x" : `x${constant > 0 ? "+" : ""}${constant}`,
+  };
+}
+
+function parseSimpleRationalInequality(source: string): SimpleRationalInequality | null {
+  const normalized = normalizeDigits(source)
+    .replace(/≤/g, "<=")
+    .replace(/≥/g, ">=")
+    .replace(/\\leq?/g, "<=")
+    .replace(/\\geq?/g, ">=")
+    .replace(/\\lt/g, "<")
+    .replace(/\\gt/g, ">");
+
+  const match = normalized.match(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}\s*(<=|>=|<|>)\s*0/i)
+    || normalized.match(/\(\s*([^()]+)\s*\)\s*\/\s*\(\s*([^()]+)\s*\)\s*(<=|>=|<|>)\s*0/i);
+  if (!match) return null;
+
+  const numerator = parseSimpleLinearFactorRoot(match[1]);
+  const denominator = parseSimpleLinearFactorRoot(match[2]);
+  if (!numerator || !denominator || numerator.root === denominator.root) return null;
+
+  return {
+    numeratorRoot: numerator.root,
+    denominatorRoot: denominator.root,
+    numeratorLabel: numerator.label,
+    denominatorLabel: denominator.label,
+    operator: match[3] as SimpleRationalInequality["operator"],
+  };
+}
+
+function inferRationalInequalitySignTableBlocks(problem: string, solutionText: string): ReturnType<typeof normalizeDiagramBlocks> {
+  const parsed = parseSimpleRationalInequality(`${problem}\n${solutionText}`);
+  if (!parsed) return [];
+
+  const critical = [
+    { value: parsed.numeratorRoot, type: "zero" as const },
+    { value: parsed.denominatorRoot, type: "undefined" as const },
+  ].sort((a, b) => a.value - b.value);
+
+  const testPoints = [
+    critical[0].value - 1,
+    (critical[0].value + critical[1].value) / 2,
+    critical[1].value + 1,
+  ];
+  const factorSign = (x: number, root: number): "+" | "-" => x - root > 0 ? "+" : "-";
+  const quotientSign = (x: number): "+" | "-" => {
+    const numerator = x - parsed.numeratorRoot;
+    const denominator = x - parsed.denominatorRoot;
+    return numerator / denominator > 0 ? "+" : "-";
+  };
+  const pointMarker = (value: number, root: number): string => {
+    if (root === parsed.denominatorRoot && value === root) return "∅";
+    if (root === parsed.numeratorRoot && value === root) return "0";
+    return "";
+  };
+
+  return normalizeDiagramBlocks([{
+    diagramType: "sign-table",
+    spec: {
+      rows: [
+        { label: "x", cells: ["-∞", String(critical[0].value), "", String(critical[1].value), "+∞"] },
+        {
+          label: parsed.numeratorLabel,
+          cells: [
+            factorSign(testPoints[0], parsed.numeratorRoot),
+            pointMarker(critical[0].value, parsed.numeratorRoot),
+            factorSign(testPoints[1], parsed.numeratorRoot),
+            pointMarker(critical[1].value, parsed.numeratorRoot),
+            factorSign(testPoints[2], parsed.numeratorRoot),
+          ],
+        },
+        {
+          label: parsed.denominatorLabel,
+          cells: [
+            factorSign(testPoints[0], parsed.denominatorRoot),
+            pointMarker(critical[0].value, parsed.denominatorRoot),
+            factorSign(testPoints[1], parsed.denominatorRoot),
+            pointMarker(critical[1].value, parsed.denominatorRoot),
+            factorSign(testPoints[2], parsed.denominatorRoot),
+          ],
+        },
+        {
+          label: "f(x)",
+          cells: [
+            quotientSign(testPoints[0]),
+            critical[0].type === "zero" ? "0" : "∅",
+            quotientSign(testPoints[1]),
+            critical[1].type === "zero" ? "0" : "∅",
+            quotientSign(testPoints[2]),
+          ],
+        },
+      ],
+    },
+  }]);
+}
+
 function parseMarkdownTable(text: string): { label: string; cells: string[] }[] | null {
   const lines = text.split("\n");
   const tableRows: string[][] = [];
@@ -2011,11 +2123,12 @@ If a diagram helps, return exactly ONE diagramBlock (choose the single most help
 If no diagram helps, return {"diagramBlocks":[]}.
 
 DIAGRAM SELECTION RULES (CRITICAL):
-1. ALWAYS prefer "function-graph" over "sign-table" if the problem or solution involves:
+1. For rational inequalities such as "\\frac{x+1}{x-2} \\le 0", prefer "sign-table" or "number-line" over "function-graph". Do not rewrite "\\frac{x+1}{x-2}" as "x+1/(x-2)".
+2. Prefer "function-graph" over "sign-table" if the problem or solution involves:
    - Calculating derivatives, concavity, inflection points, or extrema of a function (e.g. f(x) = x^3 - 6x^2 + 9x).
    - Drawing, sketching, or analyzing any linear, quadratic, cubic, exponential, logarithmic, rational, or trigonometric curve.
    Plotting the actual curve is infinitely more helpful to the student than showing a sign table.
-2. In "function-graph" specs, always specify the "latex" representation of the function (e.g., "y = x^3 - 6x^2 + 9x") and supply a sensible domain (e.g., [-1, 5]) and range (e.g., [-5, 5]) that clearly captures any extrema or inflection points.
+3. In "function-graph" specs, always specify the "latex" representation of the function (e.g., "y = x^3 - 6x^2 + 9x") and supply a sensible domain (e.g., [-1, 5]) and range (e.g., [-5, 5]) that clearly captures any extrema or inflection points.
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -2097,6 +2210,9 @@ ${DIAGRAM_SPEC_GUIDE}`,
     const solidFallback = inferSolidGeometryBlocks(problem, solutionText, normalized);
     if (solidFallback.length) return solidFallback;
   }
+
+  const rationalInequalityFallback = inferRationalInequalitySignTableBlocks(problem, solutionText);
+  if (rationalInequalityFallback.length) return rationalInequalityFallback;
 
   const useful = normalized.filter(
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
@@ -3951,10 +4067,12 @@ export function requiresVisualTable(problem: string): boolean {
   const hasVietaOrPS = /\bP\s*[=:]|\bS\s*[=:]|\bVieta\b|\bproduct.{0,10}root|sum.{0,10}root/i.test(problem);
   const hasParametricQuadratic = /[a-z]\s*x\s*[\^²2]|x\s*[\^²]\s*2?\s*[+\-*]/i.test(problem);
   const hasRootCondition = /x\s*[₁1]\s*[<>=≤≥]|x\s*[₂2]\s*[<>=≤≥]|both.{0,15}(positive|negative)|opposite.{0,10}sign|no.{0,10}real.{0,10}root/i.test(problem);
+  const hasRationalInequality = parseSimpleRationalInequality(problem) !== null;
 
   const result =
     hasExplicitTable ||
     hasColumnHeaders ||
+    hasRationalInequality ||
     (hasDiscriminant && hasVietaOrPS) ||
     (hasDiscriminant && hasParametricQuadratic && hasRootCondition);
 
@@ -3966,6 +4084,7 @@ export function requiresVisualTable(problem: string): boolean {
     hasVietaOrPS,
     hasParametricQuadratic,
     hasRootCondition,
+    hasRationalInequality,
     problemPreview: problem.slice(0, 120),
   });
 

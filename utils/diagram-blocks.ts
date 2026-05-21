@@ -332,12 +332,48 @@ function fmtCoord(v: number): string {
   return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
 }
 
-function parsePolynomial(latex: string): { a: number; b: number; c: number; d: number } | null {
+/**
+ * Returns the coefficient of the standalone linear (x) term in a compound rational
+ * expression like "x + 1/(x-2)" or "2x - 3/(x+1)".
+ * Returns 0 when no linear term is present.
+ */
+function extractLinearCoeff(latex: string): number {
   const clean = String(latex || "")
     .replace(/\s+/g, "")
-    .replace(/^(?:f\(x\)|y)=/, "");
-  
+    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
+
+  // Normalise variable to x
+  const v = (clean.match(/[a-zA-Z]/) || ["x"])[0];
+  const s = v !== "x" ? clean.split(v).join("x") : clean;
+
+  // Strip all rational sub-expressions (±coeff/(…)) so only the polynomial residual remains
+  const residual = s.replace(/[+-]?\d*\.?\d*\/\([^)]+\)/g, "");
+
+  // Look for a bare x term in the residual
+  const m = residual.match(/([+-]?\d*\.?\d*)x/);
+  if (!m) return 0;
+  const c = m[1];
+  if (c === "" || c === "+") return 1;
+  if (c === "-") return -1;
+  const n = parseFloat(c);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parsePolynomial(latex: string): { a: number; b: number; c: number; d: number } | null {
+  let clean = String(latex || "")
+    .replace(/\s+/g, "")
+    // Strip common LHS prefixes: y=, f(x)=, s(t)=, v(t)=, a(t)=, g(x)=, etc.
+    .replace(/^[a-zA-Z]\([a-zA-Z]\)=/, "")
+    .replace(/^[a-zA-Z]=/, "");
+
   if (!clean) return null;
+
+  // Detect polynomial variable (first letter in the RHS) and normalize it to 'x'
+  const varMatch = clean.match(/[a-zA-Z]/);
+  const varName = varMatch ? varMatch[0] : "x";
+  if (varName !== "x") {
+    clean = clean.split(varName).join("x");
+  }
 
   const matches = clean.matchAll(/([+-]?(?:\d+(?:\.\d+)?)?)(x(?:\^(\d+))?|(?!\d))/g);
   const coefficients = { a: 0, b: 0, c: 0, d: 0 };
@@ -645,6 +681,42 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
     : ([-5, 5] as [number, number]);
 
+  // Enhance rational-reciprocal functions that have a compound form (linear + rational).
+  // The renderer only draws a/(x-h)+k — if the latex includes an "x" term the AI dropped
+  // into params as k, we regenerate accurate sample points for the full expression and
+  // suppress the horizontal asymptote label (which is meaningless for oblique asymptotes).
+  const normalizedFunctionsEnhanced = normalizedFunctions.map((fn) => {
+    const f = fn as Record<string, unknown>;
+    if (f.kind !== "rational-reciprocal") return fn;
+    const lat = String(f.latex || "");
+    const m = extractLinearCoeff(lat);
+    if (m === 0) return fn; // pure rational — no change needed
+
+    const p = (f.params && typeof f.params === "object" ? f.params : {}) as Record<string, unknown>;
+    const a = asFiniteNumber(p.a as number, 1);
+    const h = asFiniteNumber(((p.verticalAsymptote ?? p.h) as number | undefined) ?? Number.NaN, 0);
+    const k = asFiniteNumber(((p.horizontalAsymptote ?? p.k) as number | undefined) ?? 0, 0);
+
+    // Sample f(x) = m·x + a/(x-h) + k across the full viewport domain
+    const [dMin, dMax] = rawDomain;
+    const samples: [number, number][] = [];
+    const N = 120;
+    for (let i = 0; i < N; i++) {
+      const x = dMin + ((dMax - dMin) * i) / (N - 1);
+      const dx = x - h;
+      if (Math.abs(dx) < 0.08) continue; // skip near vertical asymptote
+      const y = m * x + a / dx + k;
+      if (Number.isFinite(y)) samples.push([x, y]);
+    }
+
+    return {
+      ...f,
+      points: samples,
+      // Clear k so the renderer won't draw a spurious horizontal asymptote line
+      params: { ...p, k: undefined, horizontalAsymptote: undefined },
+    };
+  }) as typeof normalizedFunctions;
+
   // When all shaded regions are strictly in the first quadrant (from≥0, baseline≥0),
   // snap the lower bounds to 0 so the viewport focuses on the relevant area, and
   // restrict each function's plotted domain to its shading extent so the line
@@ -660,7 +732,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ? [Math.max(0, rawRange[0]), rawRange[1]]
     : rawRange;
 
-  let resolvedFunctions = normalizedFunctions;
+  let resolvedFunctions = normalizedFunctionsEnhanced;
   if (allShadedFirstQuadrant) {
     // Build per-function shading extents, then clamp each function's domain to them.
     const shadingExtents = new Map<number, [number, number]>();
@@ -671,9 +743,19 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         ? [Math.min(existing[0], r.from), Math.max(existing[1], r.to)]
         : [r.from, r.to]);
     }
-    resolvedFunctions = normalizedFunctions.map((fn, i) => {
+    resolvedFunctions = normalizedFunctionsEnhanced.map((fn, i) => {
       const ext = shadingExtents.get(i);
       if (!ext) return fn;
+
+      // Don't restrict the domain of rational-reciprocal functions whose vertical
+      // asymptote falls within the shaded range — that would clip a valid branch.
+      const f = fn as Record<string, unknown>;
+      if (f.kind === "rational-reciprocal") {
+        const p = (f.params && typeof f.params === "object" ? f.params : {}) as Record<string, unknown>;
+        const h = asFiniteNumber(((p.verticalAsymptote ?? p.h) as number | undefined) ?? Number.NaN, Number.NaN);
+        if (Number.isFinite(h) && h > ext[0] && h <= ext[1]) return fn;
+      }
+
       const fnDomain = Array.isArray(fn.domain) ? fn.domain as [number, number] : null;
       return {
         ...fn,
@@ -690,7 +772,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   if (allShadedFirstQuadrant && normalizedFeaturePoints.length === 0) {
     const vertexSet = new Map<string, { point: [number, number]; label: string; color: string; closed: boolean }>();
     for (const r of normalizedShadedRegions) {
-      const fn = resolvedFunctions[r.functionIndex] as Record<string, unknown> | undefined;
+      const fn = normalizedFunctionsEnhanced[r.functionIndex] as Record<string, unknown> | undefined;
       const yAtFrom = fn ? evalFnAt(fn, r.from) : Number.NaN;
       const candidates: Array<[number, number]> = [
         [r.from, r.baseline],

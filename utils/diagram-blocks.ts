@@ -808,10 +808,12 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
 function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const shape = String(input.shape || "").trim();
-  const allowed = ["cube", "cuboid", "pyramid", "prism", "cylinder", "cone", "sphere"];
+  const allowed = ["cube", "cuboid", "pyramid", "prism", "cylinder", "cone", "frustum", "sphere"];
   if (!allowed.includes(shape)) warnings.push("unsupported-solid-shape");
   const dimensions = input.dimensions && typeof input.dimensions === "object" ? input.dimensions as Record<string, unknown> : {};
   const radius = asFiniteNumber(dimensions.radius, Number.NaN);
+  const topRadius = asFiniteNumber(dimensions.topRadius, Number.NaN);
+  const bottomRadius = asFiniteNumber(dimensions.bottomRadius, Number.NaN);
   return {
     type: "solid-geometry",
     shape: allowed.includes(shape) ? shape : "cube",
@@ -820,6 +822,8 @@ function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: st
       height: asFiniteNumber(dimensions.height, 100),
       depth: asFiniteNumber(dimensions.depth, 80),
       ...(Number.isFinite(radius) ? { radius } : {}),
+      ...(Number.isFinite(topRadius) ? { topRadius } : {}),
+      ...(Number.isFinite(bottomRadius) ? { bottomRadius } : {}),
     },
     labels: input.labels && typeof input.labels === "object" ? input.labels : {},
     showSpaceDiagonal: Boolean(input.showSpaceDiagonal),

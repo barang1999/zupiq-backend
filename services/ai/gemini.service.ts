@@ -575,7 +575,7 @@ Diagram spec examples:
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
-- solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a","base":"A","height":"h"}}
+- solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","base":"A","height":"h","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 - tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
 
 const KHMER_DIGITS: Record<string, string> = {
@@ -604,6 +604,13 @@ function firstNumberAfter(source: string, patterns: RegExp[]): number | null {
     if (Number.isFinite(value)) return value;
   }
   return null;
+}
+
+function firstNumberAfterLabel(source: string, labelPattern: RegExp): number | null {
+  const match = source.match(labelPattern);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
 }
 
 function inferVennDiagramBlocks(
@@ -1969,7 +1976,7 @@ function inferSolidGeometryBlocks(
 ): RenderBlock[] {
   const source = normalizeDigits(`${problem}\n${solutionText}`);
   const hasSolidBlock = emptyBlocks.some((b) => b.diagramType === "solid-geometry");
-  const hasKeywords = /(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cube|គូប|cuboid|rectangular\s+prism|គូបូអ៊ីត|pyramid|ពីរ៉ាមីត)/i.test(source);
+  const hasKeywords = /(cylinder|ស៊ីឡាំង|cone|កោន|frustum|truncated\s+cone|sphere|ស្វ៊ែរ|cube|គូប|cuboid|rectangular\s+prism|គូបូអ៊ីត|pyramid|ពីរ៉ាមីត)/i.test(source);
 
   if (!hasSolidBlock && !hasKeywords) return [];
 
@@ -2006,7 +2013,32 @@ function inferSolidGeometryBlocks(
     }]);
   }
 
-  // 2. Cylinder or Cone
+  // 2. Cone frustum
+  if (/(frustum|truncated\s+cone)/i.test(source)) {
+    const topRadius = firstNumberAfterLabel(source, /(?:top\s+radius|small\s+radius|កាំខាងលើ)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+      ?? firstNumberAfterLabel(source, /\br\s*=\s*(\d+(?:\.\d+)?)/);
+    const bottomRadius = firstNumberAfterLabel(source, /(?:bottom\s+radius|large\s+radius|កាំខាងក្រោម)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+      ?? firstNumberAfterLabel(source, /\bR\s*=\s*(\d+(?:\.\d+)?)/);
+    const height = firstNumberAfterLabel(source, /(?:height|កម្ពស់)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+      ?? firstNumberAfterLabel(source, /\bh\s*=\s*(\d+(?:\.\d+)?)/i);
+    const rVal = Number.isFinite(topRadius) ? topRadius : 3;
+    const RVal = Number.isFinite(bottomRadius) ? bottomRadius : 6;
+    const hVal = Number.isFinite(height) ? height : 8;
+    return normalizeDiagramBlocks([{
+      diagramType: "solid-geometry",
+      spec: {
+        shape: "frustum",
+        dimensions: { topRadius: rVal, bottomRadius: RVal, height: hVal },
+        labels: {
+          topRadius: `r=${rVal}`,
+          bottomRadius: `R=${RVal}`,
+          height: `h=${hVal}`,
+        },
+      },
+    }]);
+  }
+
+  // 3. Cylinder or Cone
   if (/(cylinder|ស៊ីឡាំង|cone|កោន)/i.test(source)) {
     const radius = firstNumberAfter(source, [
       /(?:radius|កាំ|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -2029,7 +2061,7 @@ function inferSolidGeometryBlocks(
     }]);
   }
 
-  // 3. Sphere
+  // 4. Sphere
   if (/(sphere|ស្វ៊ែរ)/i.test(source)) {
     const radius = firstNumberAfter(source, [
       /(?:radius|កាំ|R|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -2047,7 +2079,7 @@ function inferSolidGeometryBlocks(
     }]);
   }
 
-  // 4. Cube or Pyramid
+  // 5. Cube or Pyramid
   if (/(cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source) || hasSolidBlock) {
     const edge = firstNumberAfter(source, [
       /(?:edge|side|ជ្រុង|ទ្រនុង|a)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -2349,7 +2381,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
   // If the problem needs solid-geometry, prioritize our highly robust solid geometry inference.
   // This prevents AI errors (like returning empty specs or defaulting cylinders to cubes).
-  if (/(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(problem + "\n" + solutionText)) {
+  if (/(cylinder|ស៊ីឡាំង|cone|កោន|frustum|truncated\s+cone|sphere|ស្វ៊ែរ|cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(problem + "\n" + solutionText)) {
     const solidFallback = inferSolidGeometryBlocks(problem, solutionText, normalized);
     if (solidFallback.length) return solidFallback;
   }
@@ -2827,7 +2859,7 @@ Rules for solutionText:
   venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
   geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
   function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
-  solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a"}}
+  solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 
 Return a single JSON object only.`;
 

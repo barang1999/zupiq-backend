@@ -455,6 +455,11 @@ function sanitizeSolutionText(raw: string): string {
   // Strip conversational sign-offs at the end (e.g. "សង្ឃឹមថាចម្លើយនេះ...")
   text = text.replace(/\n+\s*(?:ប្រសិនបើអ្នកមានសំណួរ|បើមានសំណួរ|បើមានចម្ងល់|សង្ឃឹមថា|រីករាយនឹងជួយ|សង្ឃឹមថាចម្លើយនេះ)[^\n]*$/gi, "").trim();
 
+  // Strip "Diagram" description sections where the AI says it cannot draw —
+  // these are redundant since the actual diagram is rendered separately.
+  // Matches a bold heading containing "Diagram" or "ដ្យាក្រាម" and strips it plus everything after.
+  text = text.replace(/\n+\*\*[^*\n]*(?:ដ្យាក្រាម|Diagram)[^*\n]*\*\*:?[^\n]*\n[\s\S]*$/gi, "").trim();
+
   // Wrap lines that contain bare LaTeX commands but no $ delimiters
   const BARE_LATEX_LINE = /\\[a-zA-Z]+/;
   const HAS_DELIMITER = /\$/;

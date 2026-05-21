@@ -924,14 +924,38 @@ function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: st
 }
 
 function normalizePieChartSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
-  const sectors = Array.isArray(input.sectors) ? input.sectors : [];
-  const normalizedSectors = sectors
-    .map((sector) => {
+  // Accept both "sectors" and "slices" (AI commonly uses the latter)
+  const rawItems = Array.isArray(input.sectors) ? input.sectors
+    : Array.isArray(input.slices) ? input.slices
+    : [];
+
+  // If items use raw counts/values instead of percentages, convert proportionally
+  const rawValues = rawItems.map((item) => {
+    if (!item || typeof item !== "object") return null;
+    const it = item as Record<string, unknown>;
+    const pct = asFiniteNumber(it.percentage, Number.NaN);
+    if (Number.isFinite(pct)) return pct;
+    const val = asFiniteNumber(it.value ?? it.count ?? it.amount, Number.NaN);
+    return Number.isFinite(val) && val > 0 ? val : null;
+  });
+
+  const hasPercentages = rawValues.every((v, i) => {
+    if (v === null) return false;
+    const item = rawItems[i] as Record<string, unknown>;
+    return Number.isFinite(asFiniteNumber(item.percentage, Number.NaN));
+  });
+
+  const total = hasPercentages ? 100 : rawValues.reduce((sum, v) => sum + (v ?? 0), 0);
+
+  const normalizedSectors = rawItems
+    .map((sector, i) => {
       if (!sector || typeof sector !== "object") return null;
       const item = sector as Record<string, unknown>;
       const label = typeof item.label === "string" ? item.label.slice(0, 80) : "Category";
-      const percentage = asFiniteNumber(item.percentage, Number.NaN);
-      if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) return null;
+      const raw = rawValues[i];
+      if (raw === null) return null;
+      const percentage = hasPercentages ? raw : total > 0 ? (raw / total) * 100 : 0;
+      if (!Number.isFinite(percentage) || percentage <= 0) return null;
       return {
         label,
         percentage
@@ -995,7 +1019,7 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
       diagramType = "venn-diagram";
     } else if (spec.shape || raw.shape) {
       diagramType = "solid-geometry";
-    } else if (Array.isArray(spec.sectors) || Array.isArray(raw.sectors)) {
+    } else if (Array.isArray(spec.sectors) || Array.isArray(raw.sectors) || Array.isArray(spec.slices) || Array.isArray(raw.slices)) {
       diagramType = "pie-chart";
     } else if (Array.isArray(spec.nodes) || Array.isArray(raw.nodes)) {
       diagramType = "tree-diagram";

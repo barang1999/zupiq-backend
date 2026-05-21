@@ -1358,6 +1358,116 @@ function inferRationalInequalitySignTableBlocks(problem: string, solutionText: s
   }]);
 }
 
+function inferRationalInequalityVisualTable(problem: string): VisualTable | null {
+  const parsed = parseSimpleRationalInequality(problem);
+  if (!parsed) return null;
+
+  const critical = [
+    { value: parsed.numeratorRoot, type: "zero" as const },
+    { value: parsed.denominatorRoot, type: "undefined" as const },
+  ].sort((a, b) => a.value - b.value);
+  const [low, high] = critical;
+
+  const factorSign = (x: number, root: number): "+" | "-" => x - root > 0 ? "+" : "-";
+  const quotientSign = (x: number): "+" | "-" => {
+    const numerator = x - parsed.numeratorRoot;
+    const denominator = x - parsed.denominatorRoot;
+    return numerator / denominator > 0 ? "+" : "-";
+  };
+  const satisfies = (sign: "+" | "-" | "0"): boolean => {
+    switch (parsed.operator) {
+      case "<": return sign === "-";
+      case "<=": return sign === "-" || sign === "0";
+      case ">": return sign === "+";
+      case ">=": return sign === "+" || sign === "0";
+      default: return false;
+    }
+  };
+  const intervalRow = (label: string, testPoint: number): SignTableRow => {
+    const sign = quotientSign(testPoint);
+    return {
+      label,
+      type: "interval",
+      cells: [
+        factorSign(testPoint, parsed.numeratorRoot),
+        factorSign(testPoint, parsed.denominatorRoot),
+        sign,
+      ],
+      conclusion: satisfies(sign) ? "ដំណោះស្រាយ" : "",
+    };
+  };
+  const valueRow = (point: typeof critical[number]): SignTableRow => {
+    const numeratorCell = point.value === parsed.numeratorRoot ? "0" : factorSign(point.value, parsed.numeratorRoot);
+    const denominatorCell = point.value === parsed.denominatorRoot ? "0" : factorSign(point.value, parsed.denominatorRoot);
+    const quotientCell = point.type === "zero" ? "0" : "";
+    return {
+      label: String(point.value),
+      type: "value",
+      cells: [numeratorCell, denominatorCell, quotientCell],
+      conclusion: point.type === "undefined"
+        ? "មិនកំណត់"
+        : satisfies("0") ? "ដំណោះស្រាយ" : "",
+    };
+  };
+
+  return {
+    type: "sign_analysis",
+    parameterName: "x",
+    columns: [parsed.numeratorLabel, parsed.denominatorLabel, `\\frac{${parsed.numeratorLabel}}{${parsed.denominatorLabel}}`],
+    conclusionLabel: "ដំណោះស្រាយ",
+    rows: [
+      { label: "+∞", type: "value", cells: ["", "", ""], conclusion: "" },
+      intervalRow(`(${high.value}, +∞)`, high.value + 1),
+      valueRow(high),
+      intervalRow(`(${low.value}, ${high.value})`, (low.value + high.value) / 2),
+      valueRow(low),
+      intervalRow(`(-∞, ${low.value})`, low.value - 1),
+      { label: "-∞", type: "value", cells: ["", "", ""], conclusion: "" },
+    ],
+  };
+}
+
+function sanitizeVisualTable(table: VisualTable): VisualTable | null {
+  if (table.type === "generic") {
+    if (!Array.isArray(table.headers) || !Array.isArray(table.rows)) return null;
+    const rows = table.rows
+      .filter((row): row is GenericTableRow => Array.isArray(row?.cells))
+      .map((row) => ({ cells: row.cells.map((cell) => String(cell ?? "").trim()) }));
+    return rows.length > 0 ? { type: "generic", headers: table.headers.map(String), rows } : null;
+  }
+
+  const columns = Array.isArray(table.columns) ? table.columns.map((column) => String(column ?? "").trim()) : [];
+  if (columns.length === 0 || !Array.isArray(table.rows)) return null;
+
+  const allowedCells = new Set(["+", "-", "0", ""]);
+  const rows: SignTableRow[] = [];
+  for (const row of table.rows) {
+    if (!row || !Array.isArray(row.cells)) return null;
+    const cells = row.cells.map((cell) => String(cell ?? "").replace(/\u2212/g, "-").trim());
+    if (cells.length !== columns.length || cells.some((cell) => !allowedCells.has(cell))) {
+      logger.warn("[generateVisualTable] rejected invalid sign-analysis cells", {
+        label: row.label,
+        cells,
+      });
+      return null;
+    }
+    rows.push({
+      label: String(row.label ?? "").trim(),
+      type: row.type === "value" ? "value" : "interval",
+      cells,
+      conclusion: String(row.conclusion ?? "").trim(),
+    });
+  }
+
+  return rows.length > 0 ? {
+    type: "sign_analysis",
+    parameterName: String(table.parameterName ?? "x").trim() || "x",
+    columns,
+    conclusionLabel: String(table.conclusionLabel ?? "").trim(),
+    rows,
+  } : null;
+}
+
 function parseMarkdownTable(text: string): { label: string; cells: string[] }[] | null {
   const lines = text.split("\n");
   const tableRows: string[][] = [];
@@ -1859,11 +1969,44 @@ function inferSolidGeometryBlocks(
 ): RenderBlock[] {
   const source = normalizeDigits(`${problem}\n${solutionText}`);
   const hasSolidBlock = emptyBlocks.some((b) => b.diagramType === "solid-geometry");
-  const hasKeywords = /(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source);
+  const hasKeywords = /(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cube|គូប|cuboid|rectangular\s+prism|គូបូអ៊ីត|pyramid|ពីរ៉ាមីត)/i.test(source);
 
   if (!hasSolidBlock && !hasKeywords) return [];
 
-  // 1. Cylinder or Cone
+  // 1. Cuboid / rectangular prism space diagonal
+  if (/(cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(source)) {
+    const length = firstNumberAfter(source, [
+      /(?:length|ប្រវែង|l)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\bl\s*=\s*(\d+(?:\.\d+)?)/i,
+    ]);
+    const width = firstNumberAfter(source, [
+      /(?:width|ទទឹង|w)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\bw\s*=\s*(\d+(?:\.\d+)?)/i,
+    ]);
+    const height = firstNumberAfter(source, [
+      /(?:height|កម្ពស់|h)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /\bh\s*=\s*(\d+(?:\.\d+)?)/i,
+    ]);
+    const lVal = Number.isFinite(length) ? length : 8;
+    const wVal = Number.isFinite(width) ? width : 6;
+    const hVal = Number.isFinite(height) ? height : 3;
+    return normalizeDiagramBlocks([{
+      diagramType: "solid-geometry",
+      spec: {
+        shape: "cuboid",
+        dimensions: { width: lVal, depth: wVal, height: hVal },
+        labels: {
+          width: `${lVal}`,
+          depth: `${wVal}`,
+          height: `${hVal}`,
+          diagonal: "D",
+        },
+        showSpaceDiagonal: true,
+      },
+    }]);
+  }
+
+  // 2. Cylinder or Cone
   if (/(cylinder|ស៊ីឡាំង|cone|កោន)/i.test(source)) {
     const radius = firstNumberAfter(source, [
       /(?:radius|កាំ|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -1886,7 +2029,7 @@ function inferSolidGeometryBlocks(
     }]);
   }
 
-  // 2. Sphere
+  // 3. Sphere
   if (/(sphere|ស្វ៊ែរ)/i.test(source)) {
     const radius = firstNumberAfter(source, [
       /(?:radius|កាំ|R|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -1904,7 +2047,7 @@ function inferSolidGeometryBlocks(
     }]);
   }
 
-  // 3. Cube or Pyramid
+  // 4. Cube or Pyramid
   if (/(cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source) || hasSolidBlock) {
     const edge = firstNumberAfter(source, [
       /(?:edge|side|ជ្រុង|ទ្រនុង|a)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
@@ -2206,7 +2349,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
   // If the problem needs solid-geometry, prioritize our highly robust solid geometry inference.
   // This prevents AI errors (like returning empty specs or defaulting cylinders to cubes).
-  if (/(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ)/i.test(problem + "\n" + solutionText)) {
+  if (/(cylinder|ស៊ីឡាំង|cone|កោន|sphere|ស្វ៊ែរ|cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(problem + "\n" + solutionText)) {
     const solidFallback = inferSolidGeometryBlocks(problem, solutionText, normalized);
     if (solidFallback.length) return solidFallback;
   }
@@ -4097,6 +4240,15 @@ export async function generateVisualTable(
   options: AIRequestOptions,
   imagePart?: ImagePart | null
 ): Promise<VisualTable | null> {
+  const deterministicRationalTable = inferRationalInequalityVisualTable(problem);
+  if (deterministicRationalTable) {
+    logger.info("[generateVisualTable] deterministic rational inequality table", {
+      rowCount: deterministicRationalTable.rows.length,
+      rows: deterministicRationalTable.rows,
+    });
+    return deterministicRationalTable;
+  }
+
   const imageNote = imagePart
     ? `An image of the problem is also attached — read the table directly from it if visible.\n`
     : "";
@@ -4180,7 +4332,9 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     responseSchema: visualTableSchema,
   });
 
-  if (!data || !['sign_analysis', 'generic'].includes(data.type) || !Array.isArray(data.rows) || data.rows.length === 0) {
+  const sanitized = data ? sanitizeVisualTable(data) : null;
+
+  if (!sanitized || !['sign_analysis', 'generic'].includes(sanitized.type) || !Array.isArray(sanitized.rows) || sanitized.rows.length === 0) {
     logger.warn("[generateVisualTable] invalid or empty result", {
       hasData: !!data,
       type: (data as VisualTable | null)?.type ?? null,
@@ -4190,12 +4344,12 @@ Return ONLY the JSON object. No markdown, no explanation.`;
   }
 
   logger.info("[generateVisualTable] success", {
-    type: data.type,
-    rowCount: data.rows.length,
-    rows: data.rows,
+    type: sanitized.type,
+    rowCount: sanitized.rows.length,
+    rows: sanitized.rows,
   });
 
-  return data;
+  return sanitized;
 }
 
 // ─── Internal helper ──────────────────────────────────────────────────────────

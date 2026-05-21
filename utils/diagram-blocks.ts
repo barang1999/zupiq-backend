@@ -811,6 +811,7 @@ function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: st
   const allowed = ["cube", "cuboid", "pyramid", "prism", "cylinder", "cone", "sphere"];
   if (!allowed.includes(shape)) warnings.push("unsupported-solid-shape");
   const dimensions = input.dimensions && typeof input.dimensions === "object" ? input.dimensions as Record<string, unknown> : {};
+  const radius = asFiniteNumber(dimensions.radius, Number.NaN);
   return {
     type: "solid-geometry",
     shape: allowed.includes(shape) ? shape : "cube",
@@ -818,8 +819,10 @@ function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: st
       width: asFiniteNumber(dimensions.width, 100),
       height: asFiniteNumber(dimensions.height, 100),
       depth: asFiniteNumber(dimensions.depth, 80),
+      ...(Number.isFinite(radius) ? { radius } : {}),
     },
     labels: input.labels && typeof input.labels === "object" ? input.labels : {},
+    showSpaceDiagonal: Boolean(input.showSpaceDiagonal),
   };
 }
 

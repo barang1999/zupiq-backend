@@ -266,10 +266,15 @@ function getLatexWarnings(latex: string): string[] {
   const warnings: string[] = [];
   if (!latex) warnings.push("empty-latex");
   if (hasUnbalanced(latex, "{", "}")) warnings.push("unbalanced-braces");
-  if (hasUnbalanced(latex, "(", ")")) warnings.push("unbalanced-parentheses");
+  if (hasUnbalancedParenthesesOutsideIntervals(latex)) warnings.push("unbalanced-parentheses");
   if (/\$\s*\$/.test(latex) || /\$/.test(latex)) warnings.push("contains-delimiter");
   if (/\\(?:frac|sqrt)\b(?!\s*\{)/.test(latex)) warnings.push("possibly-malformed-command");
   return warnings;
+}
+
+function hasUnbalancedParenthesesOutsideIntervals(input: string): boolean {
+  const withoutIntervalNotation = input.replace(/[\[(]\s*[+-]?\d+(?:\.\d+)?\s*,\s*[+-]?\d+(?:\.\d+)?\s*[\])]/g, "");
+  return hasUnbalanced(withoutIntervalNotation, "(", ")");
 }
 
 function hasUnbalanced(input: string, open: string, close: string): boolean {

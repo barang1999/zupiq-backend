@@ -487,11 +487,11 @@ function repairGeneratedMathText(input: string): string {
 
   // Fix LaTeX commands corrupted by JSON escape sequence parsing:
   const repaired = text
-    .replace(/\n(otin|umber|ame|ew)/g, "\\n$1")
-    .replace(/\t(an|heta|imes)/g, "\\t$1")
+    .replace(/\n(otin|umber|ame|ew|eigh)/g, "\\n$1")
+    .replace(/\t(ext|heta|imes|an|o|ilde|angle|frac)/g, "\\t$1")
     .replace(/[\b](eta)/g, "\\b$1")
     .replace(/\f(rac)/g, "\\f$1")
-    .replace(/\r(ight)/g, "\\r$1");
+    .replace(/\r(ight|ho)/g, "\\r$1");
 
   return repaired
     .split("\n")
@@ -572,6 +572,7 @@ Diagram spec examples:
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
 - function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
+- function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
 - solid-geometry: {"shape":"cube" | "pyramid" | "cylinder" | "cone" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80},"labels":{"edge":"a","base":"A","height":"h"}}
@@ -4302,19 +4303,20 @@ function escapeInvalidBackslashesInsideJsonStrings(input: string): string {
 
     if (ch === "\\") {
       const next = input[i + 1];
-      // Exclude \b, \f, and \r from the valid-escape list:
-      // the model frequently writes LaTeX commands that start with those letters
-      // (\frac, \because, \right, \rho, \rightarrow, \beta …) and they must be
-      // doubled to \\ so JSON.parse produces the literal backslash math renderers need.
-      // \r is excluded for the same reason \b and \f already were — \right is far
-      // more common in model output than an intentional carriage-return escape.
+      const nextNext = input[i + 2];
+      
+      // Check if this is a valid unicode escape sequence: \uXXXX
+      const isUnicodeEscape = next === "u" && /^[0-9a-fA-F]{4}$/.test(input.slice(i + 2, i + 6));
+      
+      // Exclude \b, \f, and \r.
+      // Also exclude \t, \n, and \u when they are followed by a letter (which makes them LaTeX commands like \text, \neq, \underline).
       const validEscape =
         next === "\"" ||
         next === "\\" ||
         next === "/" ||
-        next === "n" ||
-        next === "t" ||
-        next === "u";
+        (next === "n" && !/^[a-zA-Z]/.test(nextNext || "")) ||
+        (next === "t" && !/^[a-zA-Z]/.test(nextNext || "")) ||
+        isUnicodeEscape;
 
       if (validEscape) {
         out += ch;

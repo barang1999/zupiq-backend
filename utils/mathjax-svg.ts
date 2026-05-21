@@ -41,7 +41,7 @@ export function shouldRenderMathSvg(latex: string, display: boolean): boolean {
 function stripForRetry(latex: string): string {
   return latex
     .replace(/\\{2,}([a-zA-Z])/g, "\\$1")   // over-escaped backslashes: \\frac → \frac
-    .replace(/\t([a-zA-Z]+)/g, "\\$1")        // tab artifacts: \tfrac → \frac
+    .replace(/\t([a-zA-Z]+)/g, "\\t$1")       // tab artifacts: [TAB]ext → \text
     .replace(/\\displaystyle\s*/g, "")
     .replace(/\s+/g, " ")
     .trim();

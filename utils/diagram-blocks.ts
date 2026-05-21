@@ -312,6 +312,26 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
   };
 }
 
+function evalFnAt(fn: Record<string, unknown>, x: number): number {
+  const kind = String(fn.kind || "");
+  const p = (fn.params && typeof fn.params === "object" ? fn.params : {}) as Record<string, unknown>;
+  if (kind === "linear") return asFiniteNumber(p.m, 1) * x + asFiniteNumber(p.b, 0);
+  if (kind === "quadratic") return asFiniteNumber(p.a, 1) * x * x + asFiniteNumber(p.b, 0) * x + asFiniteNumber(p.c, 0);
+  if (kind === "cubic") {
+    return asFiniteNumber(p.a, 1) * x ** 3 + asFiniteNumber(p.b, 0) * x ** 2 + asFiniteNumber(p.c, 0) * x + asFiniteNumber(p.d, 0);
+  }
+  if (kind === "square-root") {
+    const dx = x - asFiniteNumber(p.h, 0);
+    return dx >= 0 ? asFiniteNumber(p.a, 1) * Math.sqrt(dx) + asFiniteNumber(p.k, 0) : Number.NaN;
+  }
+  if (kind === "exponential") return asFiniteNumber(p.a, 1) * Math.pow(asFiniteNumber(p.b, Math.E), x);
+  return Number.NaN;
+}
+
+function fmtCoord(v: number): string {
+  return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
+}
+
 function parsePolynomial(latex: string): { a: number; b: number; c: number; d: number } | null {
   const clean = String(latex || "")
     .replace(/\s+/g, "")
@@ -356,7 +376,19 @@ function parsePolynomial(latex: string): { a: number; b: number; c: number; d: n
 function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const functions = Array.isArray(input.functions) ? [...input.functions] : [];
   const featurePoints = Array.isArray(input.featurePoints) ? [...input.featurePoints] : [];
-  const shadedRegions = Array.isArray(input.shadedRegions) ? [...input.shadedRegions] : [];
+  
+  const rawRegions: unknown[] = [];
+  if (Array.isArray(input.shadedRegions)) rawRegions.push(...input.shadedRegions);
+  else if (input.shadedRegions && typeof input.shadedRegions === "object") rawRegions.push(input.shadedRegions);
+  
+  if (Array.isArray(input.shadedRegion)) rawRegions.push(...input.shadedRegion);
+  else if (input.shadedRegion && typeof input.shadedRegion === "object") rawRegions.push(input.shadedRegion);
+  
+  if (Array.isArray(input.fillRegions)) rawRegions.push(...input.fillRegions);
+  else if (input.fillRegions && typeof input.fillRegions === "object") rawRegions.push(input.fillRegions);
+  
+  if (Array.isArray(input.fillRegion)) rawRegions.push(...input.fillRegion);
+  else if (input.fillRegion && typeof input.fillRegion === "object") rawRegions.push(input.fillRegion);
 
   if (Array.isArray(input.segments) && input.segments.length > 0) {
     const pieces = input.segments.map((seg) => {
@@ -543,32 +575,150 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 8);
-  const normalizedShadedRegions = shadedRegions
+  const normalizedShadedRegions = rawRegions
     .map((region) => {
       if (!region || typeof region !== "object") return null;
       const item = region as Record<string, unknown>;
-      const from = asFiniteNumber(item.from ?? item.xMin ?? item.start, Number.NaN);
-      const to = asFiniteNumber(item.to ?? item.xMax ?? item.end, Number.NaN);
+
+      let points: [number, number][] = [];
+      if (Array.isArray(item.points)) {
+        points = item.points.map(asPoint).filter((p): p is [number, number] => p !== null);
+      } else if (Array.isArray(item.vertices)) {
+        points = item.vertices.map(asPoint).filter((p): p is [number, number] => p !== null);
+      } else if (Array.isArray(item.coordinates)) {
+        points = item.coordinates.map(asPoint).filter((p): p is [number, number] => p !== null);
+      } else if (Array.isArray(region)) {
+        points = (region as unknown[]).map(asPoint).filter((p): p is [number, number] => p !== null);
+      }
+
+      let from = asFiniteNumber(item.from ?? item.xMin ?? item.start, Number.NaN);
+      let to = asFiniteNumber(item.to ?? item.xMax ?? item.end, Number.NaN);
+      let baseline = asFiniteNumber(item.baseline, 0);
+      let functionIndex = Math.max(0, Math.floor(asFiniteNumber(item.functionIndex, 0)));
+
+      if (points.length >= 2) {
+        const xs = points.map((p) => p[0]);
+        const ys = points.map((p) => p[1]);
+        from = Math.min(...xs);
+        to = Math.max(...xs);
+        
+        // Find the most common Y value as baseline
+        const yCounts: Record<number, number> = {};
+        let maxCount = 0;
+        let mostCommonY = 0;
+        for (const y of ys) {
+          yCounts[y] = (yCounts[y] || 0) + 1;
+          if (yCounts[y] > maxCount) {
+            maxCount = yCounts[y];
+            mostCommonY = y;
+          }
+        }
+        baseline = mostCommonY;
+        functionIndex = 0;
+      }
+
       if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
       return {
         from: Math.min(from, to),
         to: Math.max(from, to),
-        baseline: asFiniteNumber(item.baseline, 0),
-        functionIndex: Math.max(0, Math.floor(asFiniteNumber(item.functionIndex, 0))),
+        baseline,
+        functionIndex,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
         color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
       };
     })
-    .filter(Boolean)
+    .filter((region): region is {
+      from: number;
+      to: number;
+      baseline: number;
+      functionIndex: number;
+      label: string | undefined;
+      color: string;
+    } => region !== null)
     .slice(0, 4);
   if (!normalizedFunctions.length && !normalizedFeaturePoints.length) warnings.push("empty-function-graph");
+
+  const rawDomain = Array.isArray(input.domain)
+    ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
+    : ([-5, 5] as [number, number]);
+  const rawRange = Array.isArray(input.range)
+    ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
+    : ([-5, 5] as [number, number]);
+
+  // When all shaded regions are strictly in the first quadrant (from≥0, baseline≥0),
+  // snap the lower bounds to 0 so the viewport focuses on the relevant area, and
+  // restrict each function's plotted domain to its shading extent so the line
+  // stops at the x-axis intercept rather than dipping below y=0.
+  const allShadedFirstQuadrant =
+    normalizedShadedRegions.length > 0 &&
+    normalizedShadedRegions.every((r) => r.from >= 0 && r.baseline >= 0);
+
+  const domain = allShadedFirstQuadrant
+    ? [Math.max(0, rawDomain[0]), rawDomain[1]]
+    : rawDomain;
+  const range = allShadedFirstQuadrant
+    ? [Math.max(0, rawRange[0]), rawRange[1]]
+    : rawRange;
+
+  let resolvedFunctions = normalizedFunctions;
+  if (allShadedFirstQuadrant) {
+    // Build per-function shading extents, then clamp each function's domain to them.
+    const shadingExtents = new Map<number, [number, number]>();
+    for (const r of normalizedShadedRegions) {
+      const fi = r.functionIndex;
+      const existing = shadingExtents.get(fi);
+      shadingExtents.set(fi, existing
+        ? [Math.min(existing[0], r.from), Math.max(existing[1], r.to)]
+        : [r.from, r.to]);
+    }
+    resolvedFunctions = normalizedFunctions.map((fn, i) => {
+      const ext = shadingExtents.get(i);
+      if (!ext) return fn;
+      const fnDomain = Array.isArray(fn.domain) ? fn.domain as [number, number] : null;
+      return {
+        ...fn,
+        domain: fnDomain
+          ? [Math.max(ext[0], fnDomain[0]), Math.min(ext[1], fnDomain[1])]
+          : ext,
+      };
+    });
+  }
+
+  // Auto-inject triangle vertex featurePoints for first-quadrant shaded regions
+  // so students see labeled dots at (from, baseline), (to, baseline), (from, f(from)).
+  let resolvedFeaturePoints = normalizedFeaturePoints;
+  if (allShadedFirstQuadrant && normalizedFeaturePoints.length === 0) {
+    const vertexSet = new Map<string, { point: [number, number]; label: string; color: string; closed: boolean }>();
+    for (const r of normalizedShadedRegions) {
+      const fn = resolvedFunctions[r.functionIndex] as Record<string, unknown> | undefined;
+      const yAtFrom = fn ? evalFnAt(fn, r.from) : Number.NaN;
+      const candidates: Array<[number, number]> = [
+        [r.from, r.baseline],
+        [r.to, r.baseline],
+        ...(Number.isFinite(yAtFrom) && yAtFrom !== r.baseline ? [[r.from, yAtFrom] as [number, number]] : []),
+      ];
+      for (const [vx, vy] of candidates) {
+        const key = `${vx}_${vy}`;
+        if (!vertexSet.has(key)) {
+          vertexSet.set(key, {
+            point: [vx, vy],
+            label: `(${fmtCoord(vx)}, ${fmtCoord(vy)})`,
+            color: "primary",
+            closed: true,
+          });
+        }
+      }
+    }
+    resolvedFeaturePoints = Array.from(vertexSet.values());
+  }
+
   return {
     type: "function-graph",
-    functions: normalizedFunctions,
-    featurePoints: normalizedFeaturePoints,
+    functions: resolvedFunctions,
+    featurePoints: resolvedFeaturePoints,
     shadedRegions: normalizedShadedRegions,
-    domain: Array.isArray(input.domain) ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
-    range: Array.isArray(input.range) ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) : [-5, 5],
+    domain,
+    range,
     xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 32) : undefined,
     yAxisLabel: typeof input.yAxisLabel === "string" ? input.yAxisLabel.slice(0, 32) : undefined,
   };

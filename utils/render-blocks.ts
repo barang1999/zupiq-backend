@@ -165,11 +165,14 @@ function normalizeLatexForRender(input: string): string {
     .replace(/\u00a0/g, " ")
     // Over-escaped backslashes from JSON serialization (\\frac → \frac)
     .replace(/\\{2,}([a-zA-Z])/g, "\\$1")
-    // Tab artifacts from JSON deserialization (\t + remainder → \command)
-    .replace(/\tfrac/gi, "\\frac")
-    .replace(/\theta/gi, (m, o, s) => s[o - 1] === "\\" ? m : `\\theta`)
-    .replace(/\ttimes/gi, "\\times")
-    .replace(/\text(?=[{\\s])/gi, "\\text")
+    // Tab and other control character artifacts from JSON deserialization:
+    .replace(/\t([a-zA-Z]+)/g, "\\t$1")
+    .replace(/\n([a-zA-Z]+)/g, "\\n$1")
+    .replace(/\r([a-zA-Z]+)/g, "\\r$1")
+    .replace(/\f([a-zA-Z]+)/g, "\\f$1")
+    .replace(/[\b]([a-zA-Z]+)/g, "\\b$1")
+    // Keep standard replacement for specific malformed commands just in case
+    .replace(/\\tfrac\b/gi, "\\frac")
     // Unicode operators → LaTeX
     .replace(/[−–]/g, "-")
     .replace(/[×·]/g, "\\times ")

@@ -692,6 +692,13 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 8);
+
+  // Compute rawDomain early so shaded-region normalization can use it as
+  // a fallback when the AI omits "to" or "from" (e.g. "to": null meaning "right tail").
+  const rawDomain = Array.isArray(input.domain)
+    ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
+    : ([-5, 5] as [number, number]);
+
   const normalizedShadedRegions = rawRegions
     .map((region) => {
       if (!region || typeof region !== "object") return null;
@@ -708,8 +715,8 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         points = (region as unknown[]).map(asPoint).filter((p): p is [number, number] => p !== null);
       }
 
-      let from = asFiniteNumber(item.from ?? item.xMin ?? item.start, Number.NaN);
-      let to = asFiniteNumber(item.to ?? item.xMax ?? item.end, Number.NaN);
+      let from = asFiniteNumber(item.from ?? item.xMin ?? item.start, rawDomain[0]);
+      let to = asFiniteNumber(item.to ?? item.xMax ?? item.end, rawDomain[1]);
       let baseline = asFiniteNumber(item.baseline, 0);
       let functionIndex = Math.max(0, Math.floor(asFiniteNumber(item.functionIndex, 0)));
 
@@ -735,13 +742,16 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       }
 
       if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
+      // Only allow design-system tokens for shading color; raw CSS names like "red"/"blue" → "primary"
+      const rawColor = typeof item.color === "string" ? item.color : "";
+      const shadingColor = ["primary", "muted", "secondary"].includes(rawColor) ? rawColor : "primary";
       return {
         from: Math.min(from, to),
         to: Math.max(from, to),
         baseline,
         functionIndex,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
-        color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+        color: shadingColor,
       };
     })
     .filter((region): region is {
@@ -755,9 +765,6 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     .slice(0, 4);
   if (!normalizedFunctions.length && !normalizedFeaturePoints.length) warnings.push("empty-function-graph");
 
-  const rawDomain = Array.isArray(input.domain)
-    ? input.domain.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
-    : ([-5, 5] as [number, number]);
   const rawRange = Array.isArray(input.range)
     ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
     : ([-5, 5] as [number, number]);
@@ -858,10 +865,12 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     for (const r of normalizedShadedRegions) {
       const fn = normalizedFunctionsEnhanced[r.functionIndex] as Record<string, unknown> | undefined;
       const yAtFrom = fn ? evalFnAt(fn, r.from) : Number.NaN;
+      const hasCurvePoint = Number.isFinite(yAtFrom) && yAtFrom !== r.baseline;
       const candidates: Array<[number, number]> = [
-        [r.from, r.baseline],
+        // Skip (from, baseline) when there's already a curve point at x=from — it's redundant
+        ...(hasCurvePoint ? [] : [[r.from, r.baseline] as [number, number]]),
         [r.to, r.baseline],
-        ...(Number.isFinite(yAtFrom) && yAtFrom !== r.baseline ? [[r.from, yAtFrom] as [number, number]] : []),
+        ...(hasCurvePoint ? [[r.from, yAtFrom] as [number, number]] : []),
       ];
       for (const [vx, vy] of candidates) {
         const key = `${vx}_${vy}`;

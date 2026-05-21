@@ -2331,6 +2331,46 @@ ${DIAGRAM_SPEC_GUIDE}`,
       const diagramType = diagramTypeMatch[1];
 
       if (diagramType === "function-graph") {
+        // Try to salvage a gaussian bell-curve spec from the partial latex before
+        // falling back to the feature-point reconstruction path.
+        const latexMatch = raw.match(/"latex"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (latexMatch) {
+          const latex = latexMatch[1].replace(/\\"/g, '"');
+          // Extract partial shadedRegion fields that were emitted before truncation
+          const fromMatch = raw.match(/"from"\s*:\s*(-?\d+(?:\.\d+)?)/);
+          const toMatch = raw.match(/"to"\s*:\s*(-?\d+(?:\.\d+)?)/);
+          const domainMatch = Array.from(raw.matchAll(/"domain"\s*:\s*\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g)).pop();
+          const rangeMatch = Array.from(raw.matchAll(/"range"\s*:\s*\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g)).pop();
+          const shadingFrom = fromMatch ? Number(fromMatch[1]) : null;
+          const shadingTo = toMatch ? Number(toMatch[1]) : null;
+          const kindMatch = raw.match(/"kind"\s*:\s*"([^"]+)"/);
+          const meanMatch = raw.match(/"mean"\s*:\s*(-?\d+(?:\.\d+)?)/);
+          const stdMatch = raw.match(/"std(?:Dev|dev|_dev)?"\s*:\s*(-?\d+(?:\.\d+)?)/);
+          const spec: Record<string, unknown> = {
+            functions: [{
+              kind: kindMatch?.[1] ?? "",
+              latex,
+              params: meanMatch && stdMatch ? {
+                mean: Number(meanMatch[1]),
+                stdDev: Number(stdMatch[1]),
+              } : undefined,
+            }],
+            domain: domainMatch ? [Number(domainMatch[1]), Number(domainMatch[2])] : undefined,
+            range: rangeMatch ? [Number(rangeMatch[1]), Number(rangeMatch[2])] : undefined,
+          };
+          if (shadingFrom !== null) {
+            spec.shadedRegions = [{
+              from: shadingFrom,
+              to: shadingTo,
+              baseline: 0,
+              functionIndex: 0,
+              color: "primary",
+            }];
+          }
+          logger.info("[extractDiagramBlocksForSolution] recovered truncated gaussian function-graph", { latex: latex.slice(0, 80) });
+          return { diagramBlocks: [{ diagramType: "function-graph", spec }] };
+        }
+
         const pointMatches = Array.from(
           raw.matchAll(/"point"\s*:\s*\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g)
         );

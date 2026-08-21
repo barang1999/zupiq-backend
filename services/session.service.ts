@@ -176,28 +176,38 @@ async function resolveTopicId(subjectId: string | null, topicSlug: string | null
   }
 
   // ── Hardcoded fallback (known canonical IDs from seed_taxonomy) ────────────
-  if (slug.includes("algebra")) return "topic-math-algebra";
-  if (slug.includes("geometry")) return "topic-math-geometry";
-  if (slug.includes("calculus")) return "topic-math-calculus";
-  if (slug.includes("probability")) return "topic-math-probability-stats";
-  if (slug.includes("arithmetic")) return "topic-math-arithmetic";
-  if (slug.includes("mechanic")) return "topic-physics-mechanics";
-  if (slug.includes("electromagnetism")) return "topic-physics-electromagnetism";
-  if (slug.includes("thermodynamics")) return "topic-physics-thermodynamics";
-  if (slug.includes("optics")) return "topic-physics-optics-waves";
-  if (slug.includes("modern")) return "topic-physics-modern-physics";
-  if (slug.includes("organic")) return "topic-chemistry-organic-chemistry";
-  if (slug.includes("inorganic")) return "topic-chemistry-inorganic-chemistry";
-  if (slug.includes("biochem")) return "topic-chemistry-biochemistry";
-  if (slug.includes("physical")) return "topic-chemistry-physical-chemistry";
-  if (slug.includes("general")) return "topic-chemistry-general-chemistry";
+  // Only use these IDs when the topics table is seeded; verify existence first.
+  const candidateId = (() => {
+    if (slug.includes("algebra")) return "topic-math-algebra";
+    if (slug.includes("geometry")) return "topic-math-geometry";
+    if (slug.includes("calculus")) return "topic-math-calculus";
+    if (slug.includes("probability")) return "topic-math-probability-stats";
+    if (slug.includes("arithmetic")) return "topic-math-arithmetic";
+    if (slug.includes("mechanic")) return "topic-physics-mechanics";
+    if (slug.includes("electromagnetism")) return "topic-physics-electromagnetism";
+    if (slug.includes("thermodynamics")) return "topic-physics-thermodynamics";
+    if (slug.includes("optics")) return "topic-physics-optics-waves";
+    if (slug.includes("modern")) return "topic-physics-modern-physics";
+    if (slug.includes("organic")) return "topic-chemistry-organic-chemistry";
+    if (slug.includes("inorganic")) return "topic-chemistry-inorganic-chemistry";
+    if (slug.includes("biochem")) return "topic-chemistry-biochemistry";
+    if (slug.includes("physical")) return "topic-chemistry-physical-chemistry";
+    if (slug.includes("general")) return "topic-chemistry-general-chemistry";
+    return null;
+  })();
+
+  if (candidateId) {
+    const db = getSupabaseAdmin();
+    const { data: exists } = await db.from("topics").select("id").eq("id", candidateId).maybeSingle();
+    if (exists?.id) return candidateId;
+  }
 
   return null;
 }
 
-const MATH_ID = "017d3f2f-f212-4cf1-b522-c176b7027acf";
-const PHYSICS_ID = "cc02b7ca-a34b-4010-b7e4-bffb9be2a3cb";
-const CHEMISTRY_ID = "98dca07b-2f9f-4e8b-83a0-428863d1e527";
+const MATH_ID = "a02678fd-382c-48dd-9ad9-cce00a642b7d";
+const PHYSICS_ID = "cdeb148b-8345-4166-a4f3-122362f999f7";
+const CHEMISTRY_ID = "963a5e0a-7e16-4933-a57a-b0e3f137d44d";
 const SESSION_LIST_SELECT = "id,user_id,title,subject_id,topic_id,problem,node_count,duration_seconds,image_url,created_at";
 
 function resolveSubjectNameFromId(subjectId: string | null | undefined): string | null {
@@ -539,6 +549,21 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
       const normalized = normalizeSessionRow((legacyData ?? {}) as Record<string, unknown>);
       return { ...normalized, subject_id: subjectId };
     }
+
+    // FK violation on topic_id: the resolved topic ID doesn't exist in the topics table.
+    // Retry with topic_id = null so the session is still created.
+    if (error.message.includes("study_sessions_topic_id_fkey") || (error.message.includes("topic_id") && error.message.includes("foreign key"))) {
+      const { topic_id: _omitTopicId, ...payloadWithoutTopic } = insertPayload;
+      const { data: retryData, error: retryError } = await db
+        .from("study_sessions")
+        .insert({ ...payloadWithoutTopic, topic_id: null })
+        .select()
+        .single();
+      if (retryError) throw new AppError(retryError.message, 500);
+      const normalized = normalizeSessionRow((retryData ?? {}) as Record<string, unknown>);
+      return { ...normalized, topic_id: null };
+    }
+
     throw new AppError(error.message, 500);
   }
 

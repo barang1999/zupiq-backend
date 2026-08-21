@@ -3,9 +3,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const MATH_ID = "017d3f2f-f212-4cf1-b522-c176b7027acf";
-const PHYSICS_ID = "cc02b7ca-a34b-4010-b7e4-bffb9be2a3cb";
-const CHEMISTRY_ID = "98dca07b-2f9f-4e8b-83a0-428863d1e527";
+const MATH_ID = "a02678fd-382c-48dd-9ad9-cce00a642b7d";
+const PHYSICS_ID = "cdeb148b-8345-4166-a4f3-122362f999f7";
+const CHEMISTRY_ID = "963a5e0a-7e16-4933-a57a-b0e3f137d44d";
 
 const SUBJECTS_TO_SEED = [
   { id: MATH_ID, name: "Math", slug: "mathematics", description: "Mathematics, Algebra, Geometry, Calculus" },

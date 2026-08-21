@@ -576,21 +576,27 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
 
 export async function getUserSessions(userId: string): Promise<(StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[]> {
   const db = getSupabaseAdmin();
+  console.log("[getUserSessions] SUPABASE_URL:", process.env.SUPABASE_URL);
+  console.log("[getUserSessions] userId:", userId);
 
   // Owned sessions
+  console.log("[getUserSessions] querying study_sessions...");
   const { data: ownedData, error: ownedError } = await db
     .from("study_sessions")
     .select(SESSION_LIST_SELECT)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
+  console.log("[getUserSessions] study_sessions result:", { count: ownedData?.length, error: ownedError?.message });
   if (ownedError) throw new AppError(ownedError.message, 500);
 
   // Sessions where the user is a member (editor/viewer)
-  const { data: memberRows } = await db
+  console.log("[getUserSessions] querying session_members...");
+  const { data: memberRows, error: memberError } = await db
     .from("session_members")
     .select("session_id, role")
     .eq("user_id", userId);
+  console.log("[getUserSessions] session_members result:", { count: (memberRows as any)?.length, error: memberError?.message });
 
   let sharedSessions: (StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[] = [];
 

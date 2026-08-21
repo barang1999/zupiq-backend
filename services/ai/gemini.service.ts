@@ -2843,8 +2843,15 @@ End your response with:
     const metadata = await extractSolutionMetadata(rawSolution, extractedHint, options, true);
     const finalProblemText = (metadata.problemText || extractedHint || "").trim();
 
-    if (finalProblemText && !isFallbackContent(finalProblemText) && !isFallbackContent(metadata.finalAnswer)) {
-      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, metadata.finalAnswer).catch((err) => {
+    if (finalProblemText && !isFallbackContent(finalProblemText)) {
+      // Extract finalAnswer from rawSolution directly if metadata didn't get it
+      let resolvedFinalAnswer = metadata.finalAnswer;
+      if (!resolvedFinalAnswer || isFallbackContent(resolvedFinalAnswer)) {
+        const finalAnswerMatch = rawSolution.match(/\*\*Final Answer:\*\*\s*(.+?)(?:\n|$)/i);
+        resolvedFinalAnswer = finalAnswerMatch?.[1]?.trim() || "";
+      }
+
+      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer).catch((err) => {
         logger.warn("[solveFromImageDirect] diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -2858,7 +2865,7 @@ End your response with:
           subject: metadata.subject,
           topic: metadata.topic,
           problem: metadata.problem || finalProblemText,
-          finalAnswer: metadata.finalAnswer,
+          finalAnswer: resolvedFinalAnswer,
           solutionText: rawSolution,
           solutionFormat: "markdown-latex",
           diagramBlocks,
@@ -2958,7 +2965,7 @@ Return a single JSON object only.`;
     prompt,
     options,
     temperature: 0.1,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 16384,
     taskName: "solveFromImageDirect",
     maxAttempts: 2,
     imagePart,
@@ -2984,6 +2991,40 @@ Return a single JSON object only.`;
       data.subject ?? "General"
     );
     return { problemText: extractedProblemText, solution };
+  }
+
+  // Phase 2 truncated or failed — if Phase 1 produced a valid raw solution, use it
+  if (rawSolution && !isFallbackContent(rawSolution)) {
+    const finalAnswerMatch = rawSolution.match(/\*\*Final Answer:\*\*\s*(.+?)(?:\n|$)/i);
+    const recoveredAnswer = finalAnswerMatch?.[1]?.trim() || (data?.finalAnswer ?? "").trim();
+    const recoveredProblem = extractedProblemText || (data?.problemText ?? "").trim() || "Problem";
+    const recoveredSubject = (data as any)?.subject ?? "Math";
+    const recoveredTitle = (data as any)?.title?.trim() || recoveredProblem.slice(0, 70);
+    const recoveredTopic = (data as any)?.topic ?? "algebra";
+    logger.warn("[solveFromImageDirect] Phase 2 unusable, recovering from Phase 1 raw", {
+      recoveredProblem: recoveredProblem.slice(0, 80),
+      recoveredAnswer: recoveredAnswer.slice(0, 80),
+    });
+    const solution = normalizeSolutionFirstPayload(
+      {
+        version: 2,
+        mode: "solution-first",
+        title: recoveredTitle,
+        subject: recoveredSubject,
+        topic: recoveredTopic,
+        problem: recoveredProblem,
+        finalAnswer: recoveredAnswer,
+        solutionText: rawSolution,
+        solutionFormat: "markdown-latex",
+        diagramBlocks: [],
+        explanationStatus: "not_generated",
+        explanation: null,
+        insights: { simpleBreakdown: "", keyFormula: "" },
+      },
+      recoveredProblem,
+      recoveredSubject
+    );
+    return { problemText: recoveredProblem, solution };
   }
 
   const fallbackProblem = extractedProblemText || "Problem could not be read from image";

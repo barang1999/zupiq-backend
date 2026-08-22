@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "path";
-import { getUserById, updateUser } from "../../services/user.service.js";
+import { getUserById, updateUser, deleteUser } from "../../services/user.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { AppError, NotFoundError } from "../middlewares/error.middleware.js";
 import { STORAGE_BUCKETS } from "../../config/supabase.js";
@@ -9,6 +9,7 @@ import { signAccessToken } from "../../services/auth.service.js";
 import type { UpdateUserDTO } from "../../models/user.model.js";
 import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
 import { getUserMastery } from "../../services/quiz.service.js";
+import { sendAccountDeletionEmails } from "../../services/email.service.js";
 
 const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -191,6 +192,32 @@ router.get(
       const user = await getUserById(req.params.id);
       if (!user) throw new NotFoundError("User");
       res.json({ user });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/users/delete-request ─────────────────────────────────────────
+
+router.post(
+  "/delete-request",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = await getUserById(req.user!.sub);
+      if (!user) throw new NotFoundError("User");
+
+      const { reason } = req.body;
+
+      // Send confirmation emails first (fire-and-forget — don't block deletion if email fails)
+      sendAccountDeletionEmails(user.email, user.full_name, reason).catch((err) =>
+        console.error("[users] deletion email failed:", err)
+      );
+
+      // Hard delete the user record
+      await deleteUser(user.id);
+
+      res.json({ message: "Your account has been permanently deleted." });
     } catch (err) {
       next(err);
     }

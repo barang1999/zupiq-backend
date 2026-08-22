@@ -599,7 +599,7 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
   return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }
 
-export async function getUserSessions(userId: string): Promise<(StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[]> {
+export async function getUserSessions(userId: string, limit?: number, offset?: number): Promise<(StudySession & { user_role: 'owner' | 'editor' | 'viewer' })[]> {
   const db = getSupabaseAdmin();
   console.log("[getUserSessions] SUPABASE_URL:", process.env.SUPABASE_URL);
   console.log("[getUserSessions] userId:", userId);
@@ -663,8 +663,15 @@ export async function getUserSessions(userId: string): Promise<(StudySession & {
   // Sort by created_at descending
   merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
+  let paginatedMerged = merged;
+  if (typeof offset === 'number' || typeof limit === 'number') {
+    const start = offset ?? 0;
+    const end = typeof limit === 'number' ? start + limit : undefined;
+    paginatedMerged = merged.slice(start, end);
+  }
+
   // Batch-fetch chat message counts for all sessions in one query.
-  const sessionIds = merged.map((s) => s.id);
+  const sessionIds = paginatedMerged.map((s) => s.id);
   console.log("[getUserSessions] chat_count: sessionIds", sessionIds.length, sessionIds.slice(0, 3));
   if (sessionIds.length > 0) {
     const { data: chatRows, error: chatError } = await db
@@ -680,12 +687,12 @@ export async function getUserSessions(userId: string): Promise<(StudySession & {
       chatCountMap.set(row.session_id, (chatCountMap.get(row.session_id) ?? 0) + 1);
     }
     console.log("[getUserSessions] chat_count: countMap entries", chatCountMap.size, [...chatCountMap.entries()].slice(0, 3));
-    for (const s of merged) {
+    for (const s of paginatedMerged) {
       s.chat_count = chatCountMap.get(s.id) ?? 0;
     }
   }
 
-  return merged;
+  return paginatedMerged;
 }
 
 export async function deleteSession(id: string, userId: string): Promise<void> {

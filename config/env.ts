@@ -75,6 +75,15 @@ export const env = {
   // e.g. CORS_ORIGIN=https://zupiq.ai,https://www.zupiq.ai
   CORS_ORIGIN: optionalEnv("CORS_ORIGIN", "http://localhost:5173,http://localhost:3000"),
 
+  // Apple Sign-In
+  APPLE_CLIENT_ID: optionalEnv("APPLE_CLIENT_ID", ""),
+
+  // Resend (transactional email)
+  RESEND_API_KEY: optionalEnv("RESEND_API_KEY", process.env.RESENT_API_KEY ?? ""),
+
+  // App URL (used in email links)
+  APP_URL: optionalEnv("APP_URL", "https://zupiq.ai"),
+
   // Stripe Billing
   STRIPE_SECRET_KEY: optionalEnv("STRIPE_SECRET_KEY", ""),
   STRIPE_WEBHOOK_SECRET: optionalEnv("STRIPE_WEBHOOK_SECRET", ""),

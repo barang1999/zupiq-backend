@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.100.0",
+    "apple-signin-auth": "^2.1.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
@@ -20,6 +21,7 @@
     "jsonwebtoken": "^9.0.3",
     "mathjax-full": "^3.2.1",
     "multer": "^2.1.1",
+    "resend": "^6.22.0",
     "sqlite3": "^6.0.1",
     "stripe": "^21.0.1"
   },

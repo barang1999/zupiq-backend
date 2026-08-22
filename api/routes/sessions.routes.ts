@@ -72,7 +72,9 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
 // GET /api/sessions
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const sessions = await getUserSessions(req.user!.sub);
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 15;
+    const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+    const sessions = await getUserSessions(req.user!.sub, limit, offset);
     res.json({ sessions });
   } catch (err) {
     next(err);

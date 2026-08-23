@@ -31,7 +31,7 @@ import { buildAIOptions } from "../../services/ai/personalization.service.js";
 import { getUserById } from "../../services/user.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { aiRateLimit } from "../middlewares/rateLimit.middleware.js";
-import { ForbiddenError, ValidationError } from "../middlewares/error.middleware.js";
+import { BillingUsageLimitError, ForbiddenError, ValidationError } from "../middlewares/error.middleware.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
@@ -461,8 +461,14 @@ async function reserveTokenBudget(userId: string): Promise<TokenBudget> {
     dailyLimit
   );
   if (dailyLimit !== null && usageBefore.used >= dailyLimit) {
-    throw new ForbiddenError(
-      `Daily Deep Dive token limit reached (${usageBefore.used}/${dailyLimit} tokens today).`
+    throw new BillingUsageLimitError(
+      `Daily free usage limit reached (${usageBefore.used}/${dailyLimit} tokens today).`,
+      {
+        featureKey: DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+        used: usageBefore.used,
+        limit: dailyLimit,
+        remaining: 0,
+      }
     );
   }
 

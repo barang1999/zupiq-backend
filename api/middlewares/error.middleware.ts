@@ -6,11 +6,21 @@ import { logger } from "../../utils/logger.js";
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
+  public readonly code?: string;
+  public readonly details?: Record<string, unknown>;
 
-  constructor(message: string, statusCode = 500, isOperational = true) {
+  constructor(
+    message: string,
+    statusCode = 500,
+    isOperational = true,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
+    this.code = code;
+    this.details = details;
     Object.setPrototypeOf(this, AppError.prototype);
   }
 }
@@ -36,6 +46,12 @@ export class UnauthorizedError extends AppError {
 export class ForbiddenError extends AppError {
   constructor(message = "Forbidden") {
     super(message, 403);
+  }
+}
+
+export class BillingUsageLimitError extends AppError {
+  constructor(message = "Daily free usage limit reached.", details?: Record<string, unknown>) {
+    super(message, 402, true, "BILLING_USAGE_LIMIT_REACHED", details);
   }
 }
 
@@ -65,7 +81,11 @@ export function globalErrorHandler(
     if (!err.isOperational) {
       logger.error(`Non-operational error on ${req.method} ${req.path}:`, err.message);
     }
-    res.status(err.statusCode).json({ error: err.message });
+    res.status(err.statusCode).json({
+      error: err.message,
+      ...(err.code ? { code: err.code } : {}),
+      ...(err.details ? { details: err.details } : {}),
+    });
     return;
   }
 

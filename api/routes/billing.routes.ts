@@ -4,6 +4,13 @@ import { requireAuth } from "../middlewares/auth.middleware.js";
 import { AppError, ValidationError } from "../middlewares/error.middleware.js";
 import { getEntitlementValue } from "../../billing/entitlements.js";
 import {
+  extractRevenueCatEntitlementState,
+  fetchRevenueCatSubscriber,
+  parseRevenueCatWebhookEvent,
+  verifyRevenueCatWebhookRequest,
+  type RevenueCatEntitlementState,
+} from "../../billing/providers/revenuecat.js";
+import {
   mapStripeStatus,
   resolvePlanFromStripePriceId,
   startStripeCheckout,
@@ -29,6 +36,8 @@ import {
   sendUsageSnapshot,
   setupUsageStreamHeaders,
 } from "../../billing/usage-stream.js";
+import { getSupabaseAdmin } from "../../config/supabase.js";
+import { logger } from "../../utils/logger.js";
 
 const router = Router();
 const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
@@ -101,6 +110,73 @@ async function syncFromStripeSubscription(
           ? subscription.latest_invoice
           : subscription.latest_invoice?.id ?? null,
       cancelAt: toIsoFromUnix(subscription.cancel_at),
+    },
+  });
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value && value.trim())).map((value) => value.trim()))];
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function resolveRevenueCatUserId(state: RevenueCatEntitlementState, fallbackUserId?: string | null): Promise<string | null> {
+  if (fallbackUserId) return fallbackUserId;
+
+  const candidates = uniqueStrings([
+    state.appUserId,
+    ...state.aliases,
+  ]).filter((candidate) => isUuidLike(candidate));
+
+  if (!candidates.length) return null;
+
+  const db = getSupabaseAdmin();
+  const { data, error } = await db
+    .from("users")
+    .select("id")
+    .in("id", candidates)
+    .limit(1);
+
+  if (error) {
+    throw new AppError(error.message, 500);
+  }
+
+  return data?.[0]?.id ?? null;
+}
+
+async function applyRevenueCatState(
+  state: RevenueCatEntitlementState,
+  fallbackUserId?: string | null
+) {
+  const userId = await resolveRevenueCatUserId(state, fallbackUserId);
+  if (!userId) {
+    throw new AppError("Could not resolve userId for RevenueCat event", 400);
+  }
+
+  return await syncSubscriptionFromProvider({
+    userId,
+    provider: "revenuecat",
+    planKey: state.isActive ? "pro" : "free",
+    status: state.isActive ? state.status : "expired",
+    billingInterval: state.isActive ? state.billingInterval ?? "monthly" : null,
+    amount: 0,
+    currency: state.currency || "USD",
+    cancelAtPeriodEnd: state.status === "canceled",
+    currentPeriodStart: state.purchasedAt,
+    currentPeriodEnd: state.expiresAt,
+    trialStart: null,
+    trialEnd: null,
+    providerCustomerId: state.appUserId,
+    providerSubscriptionId: state.originalTransactionId ?? state.transactionId ?? state.productId,
+    metadata: {
+      source: "revenuecat",
+      productId: state.productId,
+      store: state.store,
+      revenuecatAppUserId: state.appUserId,
+      aliases: state.aliases,
+      raw: state.raw,
     },
   });
 }
@@ -225,6 +301,54 @@ router.post(
   }
 );
 
+router.post(
+  "/webhook/revenuecat",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!Buffer.isBuffer(req.body)) {
+        throw new AppError("RevenueCat webhook requires raw request body", 400);
+      }
+
+      verifyRevenueCatWebhookRequest(req.body, req.headers);
+
+      const payload = JSON.parse(req.body.toString("utf8")) as Record<string, unknown>;
+      const state = parseRevenueCatWebhookEvent(payload);
+      const event = (payload.event && typeof payload.event === "object" ? payload.event : payload) as Record<string, unknown>;
+      const eventType = String(event.type ?? event.event_type ?? "unknown");
+      const externalEventId = String(event.id ?? event.event_timestamp_ms ?? event.transaction_id ?? "");
+
+      await logBillingEvent({
+        provider: "revenuecat",
+        eventType,
+        externalEventId: externalEventId || null,
+        payload: {
+          productId: state?.productId ?? null,
+          appUserId: state?.appUserId ?? null,
+          aliases: state?.aliases ?? [],
+        },
+        processedAt: new Date().toISOString(),
+      });
+
+      if (!state) {
+        res.json({ received: true, ignored: true });
+        return;
+      }
+
+      const subscription = await applyRevenueCatState(state);
+      logger.info("[revenuecat.webhook] subscription state applied", {
+        userId: subscription.userId,
+        planKey: subscription.planKey,
+        status: subscription.status,
+        productId: state.productId,
+      });
+
+      res.json({ received: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 router.get(
   "/catalog",
   async (_req: Request, res: Response, next: NextFunction) => {
@@ -287,6 +411,72 @@ router.get(
         DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
         dailyLimit
       );
+      res.json({ access, usage });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+router.post(
+  "/subscription/sync",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user!.sub;
+      const revenuecatAppUserId = String(req.body?.revenuecatAppUserId ?? "").trim();
+      const appUserIds = uniqueStrings([userId, revenuecatAppUserId || null]);
+
+      logger.info("[revenuecat.sync] request received", {
+        userId,
+        revenuecatAppUserId: revenuecatAppUserId || null,
+        lookupAppUserIds: appUserIds,
+      });
+
+      let bestState: RevenueCatEntitlementState | null = null;
+      for (const appUserId of appUserIds) {
+        const subscriber = await fetchRevenueCatSubscriber(appUserId);
+        const state = extractRevenueCatEntitlementState(appUserId, subscriber);
+        logger.info("[revenuecat.sync] subscriber state loaded", {
+          userId,
+          lookupAppUserId: appUserId,
+          isActive: state.isActive,
+          planKey: state.planKey,
+          status: state.status,
+          productId: state.productId,
+          expiresAt: state.expiresAt,
+          store: state.store,
+        });
+        const bestTime = bestState?.expiresAt ? new Date(bestState.expiresAt).getTime() : 0;
+        const stateTime = state.expiresAt ? new Date(state.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+        if (!bestState || (state.isActive && !bestState.isActive) || (state.isActive === bestState.isActive && stateTime > bestTime)) {
+          bestState = state;
+        }
+      }
+
+      if (!bestState) {
+        throw new AppError("RevenueCat subscriber state could not be loaded", 502);
+      }
+
+      await applyRevenueCatState(bestState, userId);
+
+      const access = await getEffectiveAccessState(userId);
+      const dailyLimit = resolveEntitlementLimit(
+        access.entitlements,
+        DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY
+      );
+      const usage = await getTodayUsageSnapshot(
+        userId,
+        DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+        dailyLimit
+      );
+
+      logger.info("[revenuecat.sync] subscription state synced", {
+        userId,
+        planKey: access.subscription.planKey,
+        status: access.subscription.status,
+        revenuecatAppUserId: bestState.appUserId,
+      });
+
       res.json({ access, usage });
     } catch (err) {
       next(err);

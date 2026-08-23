@@ -54,17 +54,20 @@ export async function createApp(): Promise<Express> {
     next();
   });
 
-  // Stripe webhook requires raw request body for signature verification.
+  // Payment provider webhooks require raw request bodies for signature verification.
   app.use("/api/billing/webhook/stripe", express.raw({ type: "application/json" }));
+  app.use("/api/billing/webhook/revenuecat", express.raw({ type: "application/json" }));
 
   const jsonParser = express.json({ limit: "10mb" });
   const urlEncodedParser = express.urlencoded({ extended: true, limit: "10mb" });
   app.use((req, res, next) => {
     if (req.path === "/api/billing/webhook/stripe") return next();
+    if (req.path === "/api/billing/webhook/revenuecat") return next();
     return jsonParser(req, res, next);
   });
   app.use((req, res, next) => {
     if (req.path === "/api/billing/webhook/stripe") return next();
+    if (req.path === "/api/billing/webhook/revenuecat") return next();
     return urlEncodedParser(req, res, next);
   });
 

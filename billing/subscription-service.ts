@@ -163,6 +163,7 @@ function shouldAutoDowngradeToFree(row: SubscriptionRow): boolean {
   const hasPeriodEnded = periodEndAt !== null && Number.isFinite(periodEndAt) && periodEndAt <= now;
 
   if (row.cancel_at_period_end && hasPeriodEnded) return true;
+  if (hasPeriodEnded) return true;
   if (row.status === "expired" || row.status === "paused" || row.status === "incomplete") return true;
   if (row.status === "canceled" && (periodEndAt === null || hasPeriodEnded)) return true;
 

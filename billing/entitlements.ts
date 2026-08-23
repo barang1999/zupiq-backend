@@ -12,7 +12,10 @@ const PAID_ACCESS_STATUSES: SubscriptionStatus[] = ["active", "trialing", "past_
 function hasPaidAccessWindow(subscription: NormalizedSubscription, now = new Date()): boolean {
   if (subscription.planKey === "free") return true;
 
-  if (PAID_ACCESS_STATUSES.includes(subscription.status)) return true;
+  if (PAID_ACCESS_STATUSES.includes(subscription.status)) {
+    if (!subscription.currentPeriodEnd) return true;
+    return new Date(subscription.currentPeriodEnd).getTime() > now.getTime();
+  }
 
   if (subscription.status === "canceled" && subscription.currentPeriodEnd) {
     return new Date(subscription.currentPeriodEnd).getTime() > now.getTime();

@@ -310,43 +310,76 @@ router.post(
       if (!idToken) throw new ValidationError("idToken is required");
 
       const { uid, email, name, picture } = await verifyOAuthIdentity(idToken);
+      logger.info("[auth:google] token verified", { email });
 
       const db = getSupabaseAdmin();
 
       // Check if user already exists by email
-      let { data: existingUser } = await db
-        .from("users")
-        .select("*")
-        .eq("email", email)
-        .single();
+      let existingUser: any = null;
+      try {
+        const result = await db
+          .from("users")
+          .select("*")
+          .eq("email", email)
+          .single();
+
+        if (result.error && result.error.code !== "PGRST116") {
+          throw new Error(result.error.message);
+        }
+        existingUser = result.data;
+      } catch (err) {
+        logger.error("[auth:google] Supabase user lookup failed", {
+          email,
+          error: formatUnknownError(err),
+        });
+        throw new AppError("Authentication storage is temporarily unavailable. Please try again.", 503);
+      }
 
       if (!existingUser) {
         // Create new user — password hash placeholder for OAuth-only account.
         const id = generateId();
-        const { data: newUser, error } = await db
-          .from("users")
-          .insert({
-            id,
-            email,
-            password_hash: `oauth_google:${uid}`,
-            full_name: name ?? email.split("@")[0],
-            avatar_url: picture ?? null,
-            education_level: "high_school",
-            language: "en",
-            preferences: {},
-            created_at: nowISO(),
-            updated_at: nowISO(),
-          })
-          .select()
-          .single();
+        try {
+          const { data: newUser, error } = await db
+            .from("users")
+            .insert({
+              id,
+              email,
+              password_hash: `oauth_google:${uid}`,
+              full_name: name ?? email.split("@")[0],
+              avatar_url: picture ?? null,
+              education_level: "high_school",
+              language: "en",
+              preferences: {},
+              created_at: nowISO(),
+              updated_at: nowISO(),
+            })
+            .select()
+            .single();
 
-        if (error) throw new Error(error.message);
-        existingUser = newUser;
+          if (error) throw new Error(error.message);
+          existingUser = newUser;
+          logger.info("[auth:google] created OAuth user", { userId: id, email });
+        } catch (err) {
+          logger.error("[auth:google] Supabase user insert failed", {
+            email,
+            error: formatUnknownError(err),
+          });
+          throw new AppError("Authentication storage is temporarily unavailable. Please try again.", 503);
+        }
       }
 
       const { password_hash, ...publicUser } = existingUser as any;
-      await ensureSubscriptionSeed(publicUser.id);
-      const billing = await getEffectiveAccessState(publicUser.id);
+      let billing;
+      try {
+        await ensureSubscriptionSeed(publicUser.id);
+        billing = await getEffectiveAccessState(publicUser.id);
+      } catch (err) {
+        logger.error("[auth:google] post-auth account setup failed", {
+          userId: publicUser.id,
+          error: formatUnknownError(err),
+        });
+        throw new AppError("Authentication setup is temporarily unavailable. Please try again.", 503);
+      }
       const tokens = buildAuthTokens(publicUser);
 
       res.json({ user: publicUser, billing, ...tokens });

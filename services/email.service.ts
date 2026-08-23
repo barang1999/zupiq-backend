@@ -1,7 +1,19 @@
 import { Resend } from "resend";
 import { env } from "../config/env.js";
+import { logger } from "../utils/logger.js";
 
-const resend = new Resend(env.RESEND_API_KEY);
+let resend: Resend | null = null;
+
+function getResend(): Resend | null {
+  const apiKey = env.RESEND_API_KEY.trim();
+  if (!apiKey) return null;
+  resend ??= new Resend(apiKey);
+  return resend;
+}
+
+function warnMissingResend(context: string): void {
+  logger.warn(`[email] ${context} skipped: RESEND_API_KEY is not configured`);
+}
 
 const FROM = "Zupiq <support@zupiq.ai>";
 const SUPPORT_EMAIL = "support@zupiq.ai";
@@ -154,7 +166,13 @@ function accountDeletionAdminHtml(email: string, reason?: string): string {
 // ─── Send helpers ─────────────────────────────────────────────────────────────
 
 export async function sendWelcomeEmail(to: string, name: string): Promise<void> {
-  const { error } = await resend.emails.send({
+  const client = getResend();
+  if (!client) {
+    warnMissingResend("sendWelcomeEmail");
+    return;
+  }
+
+  const { error } = await client.emails.send({
     from: FROM,
     to: [to],
     subject: "Welcome to Zupiq",
@@ -171,7 +189,13 @@ export async function sendPasswordResetEmail(
   name: string,
   code: string
 ): Promise<void> {
-  const { error } = await resend.emails.send({
+  const client = getResend();
+  if (!client) {
+    warnMissingResend("sendPasswordResetEmail");
+    throw new Error("Email service is not configured");
+  }
+
+  const { error } = await client.emails.send({
     from: FROM,
     to: [to],
     subject: `${code} is your Zupiq reset code`,
@@ -189,14 +213,20 @@ export async function sendAccountDeletionEmails(
   userName: string,
   reason?: string
 ): Promise<void> {
-  const userResult = await resend.emails.send({
+  const client = getResend();
+  if (!client) {
+    warnMissingResend("sendAccountDeletionEmails");
+    return;
+  }
+
+  const userResult = await client.emails.send({
     from: FROM,
     to: [userEmail],
     subject: "We received your account deletion request",
     html: accountDeletionUserHtml(userName),
   });
 
-  const adminResult = await resend.emails.send({
+  const adminResult = await client.emails.send({
     from: FROM,
     to: [SUPPORT_EMAIL],
     replyTo: userEmail,

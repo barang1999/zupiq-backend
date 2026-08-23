@@ -109,9 +109,11 @@ export const apiRateLimit = createRateLimit({ scopeByPath: true });
 
 /** Stricter limit for register/google auth endpoints */
 export const authRateLimit = createRateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: env.NODE_ENV === "development" ? 100 : 10,
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  maxRequests: env.NODE_ENV === "development" ? 100 : env.AUTH_RATE_LIMIT_MAX_REQUESTS,
   message: "Too many authentication attempts. Please try again in 15 minutes.",
+  scopeByPath: true,
+  skipSuccessfulRequests: true,
 });
 
 /**

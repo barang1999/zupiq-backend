@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { randomBytes } from "crypto";
+import https from "node:https";
+import { lookup } from "node:dns";
 import appleSignin from "apple-signin-auth";
 import { createUser, getUserByEmail, getUserById } from "../../services/user.service.js";
 import {
@@ -16,6 +18,7 @@ import { firebaseAdmin } from "../../config/firebase.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { env } from "../../config/env.js";
+import { logger } from "../../utils/logger.js";
 import type { CreateUserDTO } from "../../models/user.model.js";
 import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "../../services/email.service.js";
@@ -41,16 +44,98 @@ function normalizeAudienceConfig(): string[] {
     .filter(Boolean);
 }
 
-async function verifyGoogleIdTokenViaTokenInfo(idToken: string): Promise<VerifiedOAuthIdentity | null> {
-  const response = await fetch(
-    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-  );
+function formatUnknownError(err: unknown): string {
+  if (err instanceof Error) {
+    const cause = (err as Error & { cause?: unknown }).cause;
+    return cause ? `${err.message}; cause=${formatUnknownError(cause)}` : err.message;
+  }
+  return String(err);
+}
 
-  if (!response.ok) {
-    return null;
+function getJsonViaHttpsIpv4(url: string, timeoutMs = 10000): Promise<{ ok: boolean; status: number; data: Record<string, string> }> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        timeout: timeoutMs,
+        lookup: (hostname, options, callback) => {
+          lookup(hostname, { ...options, family: 4 }, callback);
+        },
+      },
+      (res) => {
+        let raw = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          raw += chunk;
+        });
+        res.on("end", () => {
+          let data: Record<string, string> = {};
+          try {
+            data = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+          } catch {
+            reject(new Error(`Google tokeninfo returned invalid JSON with status ${res.statusCode ?? 0}`));
+            return;
+          }
+
+          const status = res.statusCode ?? 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            data,
+          });
+        });
+      }
+    );
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`Google tokeninfo request timed out after ${timeoutMs}ms`));
+    });
+    req.on("error", reject);
+  });
+}
+
+async function verifyGoogleIdTokenViaTokenInfo(idToken: string): Promise<VerifiedOAuthIdentity | null> {
+  const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
+  let ok = false;
+  let tokenInfo: Record<string, string> = {};
+
+  try {
+    const response = await fetch(tokenInfoUrl, {
+      signal: AbortSignal.timeout(10000),
+    });
+
+    ok = response.ok;
+    if (ok) {
+      tokenInfo = (await response.json()) as Record<string, string>;
+    }
+  } catch (err) {
+    logger.warn("[auth:google] tokeninfo fetch failed; retrying via IPv4 HTTPS", {
+      error: formatUnknownError(err),
+    });
   }
 
-  const tokenInfo = (await response.json()) as Record<string, string>;
+  if (!ok) {
+    try {
+      const fallback = await getJsonViaHttpsIpv4(tokenInfoUrl);
+      ok = fallback.ok;
+      tokenInfo = fallback.data;
+      if (!ok) {
+        logger.warn("[auth:google] tokeninfo rejected token", {
+          status: fallback.status,
+          error: tokenInfo.error,
+          errorDescription: tokenInfo.error_description,
+        });
+      }
+    } catch (err) {
+      logger.error("[auth:google] tokeninfo IPv4 HTTPS fallback failed", {
+        error: formatUnknownError(err),
+      });
+      throw new AppError("Google sign-in verification is temporarily unavailable. Please try again.", 503);
+    }
+  }
+
+  if (!ok) return null;
+
   const sub = tokenInfo.sub;
   const email = tokenInfo.email;
   const emailVerified = tokenInfo.email_verified;

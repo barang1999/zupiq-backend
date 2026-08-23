@@ -70,6 +70,8 @@ export const env = {
   // Rate limiting
   RATE_LIMIT_WINDOW_MS: parseInt(optionalEnv("RATE_LIMIT_WINDOW_MS", "900000"), 10),
   RATE_LIMIT_MAX_REQUESTS: parseInt(optionalEnv("RATE_LIMIT_MAX_REQUESTS", "100"), 10),
+  AUTH_RATE_LIMIT_WINDOW_MS: parseInt(optionalEnv("AUTH_RATE_LIMIT_WINDOW_MS", "900000"), 10),
+  AUTH_RATE_LIMIT_MAX_REQUESTS: parseInt(optionalEnv("AUTH_RATE_LIMIT_MAX_REQUESTS", "60"), 10),
 
   // CORS — comma-separated list of allowed origins
   // e.g. CORS_ORIGIN=https://zupiq.ai,https://www.zupiq.ai

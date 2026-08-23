@@ -111,6 +111,11 @@ export const env = {
     "REVENUECAT_ANDROID_PRODUCT_PRO_MONTHLY",
     "zupiq.premium.monthly"
   ),
+
+  // Review/test accounts
+  TEST_PREMIUM_EMAIL: optionalEnv("TEST_PREMIUM_EMAIL", ""),
+  TEST_PREMIUM_PASSWORD: optionalEnv("TEST_PREMIUM_PASSWORD", ""),
+  TEST_PREMIUM_FULL_NAME: optionalEnv("TEST_PREMIUM_FULL_NAME", "Jenny"),
 } as const;
 
 export type Env = typeof env;

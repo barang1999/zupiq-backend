@@ -20,10 +20,32 @@ import { generateId, nowISO } from "../../utils/helpers.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 import type { CreateUserDTO } from "../../models/user.model.js";
-import { ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
+import { changeUserPlan, ensureSubscriptionSeed, getEffectiveAccessState } from "../../billing/subscription-service.js";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "../../services/email.service.js";
 
 const router = Router();
+
+function isConfiguredPremiumTester(email: string | null | undefined): boolean {
+  return Boolean(
+    env.TEST_PREMIUM_EMAIL &&
+    email &&
+    email.toLowerCase().trim() === env.TEST_PREMIUM_EMAIL.toLowerCase().trim()
+  );
+}
+
+function isConfiguredPremiumTesterLogin(email: string, password: string): boolean {
+  return isConfiguredPremiumTester(email) && Boolean(env.TEST_PREMIUM_PASSWORD) && password === env.TEST_PREMIUM_PASSWORD;
+}
+
+async function ensurePremiumTesterPlan(userId: string, email: string): Promise<void> {
+  if (!isConfiguredPremiumTester(email)) return;
+  await changeUserPlan({
+    userId,
+    planKey: "pro",
+    provider: "manual",
+    billingInterval: "monthly",
+  });
+}
 
 interface VerifiedOAuthIdentity {
   uid: string;
@@ -214,6 +236,7 @@ router.post(
       });
 
       await ensureSubscriptionSeed(user.id);
+      await ensurePremiumTesterPlan(user.id, user.email);
       const billing = await getEffectiveAccessState(user.id);
       const tokens = buildAuthTokens(user);
 
@@ -242,18 +265,46 @@ router.post(
         throw new ValidationError("email and password are required");
       }
 
-      const user = await getUserByEmail(email);
+      let user = await getUserByEmail(email);
+      if (!user && isConfiguredPremiumTesterLogin(email, password)) {
+        const publicCreated = await createUser({
+          email,
+          password,
+          full_name: env.TEST_PREMIUM_FULL_NAME,
+          education_level: "high_school",
+          language: "en",
+        });
+        await ensurePremiumTesterPlan(publicCreated.id, publicCreated.email);
+        const billing = await getEffectiveAccessState(publicCreated.id);
+        const tokens = buildAuthTokens(publicCreated);
+        res.json({ user: publicCreated, billing, ...tokens });
+        return;
+      }
       if (!user) {
         throw new UnauthorizedError("Invalid email or password");
       }
 
-      const isValid = await comparePassword(password, user.password_hash);
+      let isValid = await comparePassword(password, user.password_hash);
+      if (!isValid && isConfiguredPremiumTesterLogin(email, password)) {
+        const passwordHash = await hashPassword(password);
+        const db = getSupabaseAdmin();
+        const { error: passwordUpdateError } = await db
+          .from("users")
+          .update({ password_hash: passwordHash, updated_at: nowISO() })
+          .eq("id", user.id);
+        if (passwordUpdateError) {
+          throw new AppError("Failed to update tester password", 500);
+        }
+        user = { ...user, password_hash: passwordHash };
+        isValid = true;
+      }
       if (!isValid) {
         throw new UnauthorizedError("Invalid email or password");
       }
 
       const publicUser = toPublicUser(user);
       await ensureSubscriptionSeed(publicUser.id);
+      await ensurePremiumTesterPlan(publicUser.id, publicUser.email);
       const billing = await getEffectiveAccessState(publicUser.id);
       const tokens = buildAuthTokens(publicUser);
 
@@ -278,6 +329,7 @@ router.post(
       if (!user) throw new UnauthorizedError("User not found");
 
       await ensureSubscriptionSeed(user.id);
+      await ensurePremiumTesterPlan(user.id, user.email);
       const billing = await getEffectiveAccessState(user.id);
       const tokens = buildAuthTokens(user);
       res.json({ user, billing, ...tokens });
@@ -620,6 +672,7 @@ router.get(
       const user = await getUserById(req.user!.sub);
       if (!user) throw new UnauthorizedError("User not found");
       await ensureSubscriptionSeed(user.id);
+      await ensurePremiumTesterPlan(user.id, user.email);
       const billing = await getEffectiveAccessState(user.id);
       res.json({ user, billing });
     } catch (err) {

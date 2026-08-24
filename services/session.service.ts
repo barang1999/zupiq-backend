@@ -323,6 +323,10 @@ function normalizeSessionRow(row: Record<string, unknown>): StudySession {
     image_url: typeof row.image_url === "string" ? row.image_url : null,
     bookmarked: Boolean(row.bookmarked ?? false),
     created_at: String(row.created_at),
+    prompt_tokens:     typeof row.prompt_tokens     === "number" ? row.prompt_tokens     : null,
+    completion_tokens: typeof row.completion_tokens === "number" ? row.completion_tokens : null,
+    total_tokens:      typeof row.total_tokens      === "number" ? row.total_tokens      : null,
+    ai_cost_usd:       typeof row.ai_cost_usd       === "number" ? row.ai_cost_usd       : null,
   };
 }
 

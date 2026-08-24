@@ -6,6 +6,7 @@ import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.mo
 import { publishCollabEvent } from "../../services/collab-stream.js";
 import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
 import { upsertBreakdownFeedback, deleteBreakdownFeedback, getBreakdownFeedback } from "../../services/feedback.service.js";
+import { indexSession } from "../../services/resolver.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -126,6 +127,29 @@ router.post("/:id/feedback", async (req: Request, res: Response, next: NextFunct
       ? reasons.filter((r): r is string => typeof r === "string").slice(0, 10)
       : undefined;
     await upsertBreakdownFeedback(req.params.id, req.user!.sub, signal, validReasons);
+
+    // When a user gives positive feedback, index the session into the semantic cache.
+    if (signal === "positive") {
+      getSessionById(req.params.id, req.user!.sub)
+        .then((session) => {
+          if (!session) return;
+          let payload: Record<string, unknown> = {};
+          try { payload = JSON.parse(session.breakdown_json as string) as Record<string, unknown>; } catch { /* ignore */ }
+          indexSession({
+            session_id: session.id,
+            user_id: session.user_id,
+            problem_text: session.problem,
+            subject: session.subject,
+            topic: session.topic,
+            language: req.user!.language ?? "en",
+            final_answer: String(payload?.finalAnswer ?? "").trim() || null,
+            solution_text: String(payload?.solutionText ?? "").trim() || null,
+            breakdown_json: payload,
+          });
+        })
+        .catch(() => { /* indexing is non-critical */ });
+    }
+
     res.json({ signal });
   } catch (err) {
     next(err);

@@ -271,6 +271,8 @@ export interface ProblemSolutionFirst {
     simpleBreakdown: string;
     keyFormula: string;
   };
+  /** Accumulated token usage across all AI phases — for billing/analytics only, not stored in breakdown_json. */
+  _usage?: ChatUsage;
 }
 
 interface JsonGenerationConfig<T> {
@@ -550,7 +552,7 @@ function normalizeSolutionFirstPayload(
     afterRepair: afterRepair.slice(0, 600),
   });
 
-  return {
+  const result: ProblemSolutionFirst = {
     ...payload,
     version: 3,
     mode: "solution-first",
@@ -564,7 +566,9 @@ function normalizeSolutionFirstPayload(
     diagramBlocks: normalizeDiagramBlocks(payload.diagramBlocks),
     explanationStatus: "not_generated",
     explanation: null,
+    _usage: payload._usage,  // carried forward for the route to read, stripped before DB storage
   };
+  return result;
 }
 
 const DIAGRAM_SPEC_GUIDE = `
@@ -2488,7 +2492,7 @@ async function generateRawSolution(
   prompt: string,
   options: AIRequestOptions,
   imagePart?: ImagePart,
-): Promise<string> {
+): Promise<{ text: string; usage: ChatUsage }> {
   const client = getGeminiClient();
   const parts: Part[] = [
     ...(imagePart
@@ -2518,7 +2522,11 @@ async function generateRawSolution(
   );
 
   const response = await Promise.race([generatePromise, timeoutPromise]);
-  return (response.text ?? "").trim();
+  const providerUsage = extractProviderUsage(response);
+  const usage: ChatUsage = providerUsage
+    ? { ...providerUsage, source: "provider" }
+    : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+  return { text: (response.text ?? "").trim(), usage };
 }
 
 interface SolutionMetadata {
@@ -2640,8 +2648,11 @@ Requirements:
 - End with: **Final Answer:** [result]`;
 
   let rawSolution = "";
+  let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
   try {
-    rawSolution = await generateRawSolution(phase1Prompt, options, imagePart);
+    const phase1Result = await generateRawSolution(phase1Prompt, options, imagePart);
+    rawSolution = phase1Result.text;
+    phase1Usage = phase1Result.usage;
   } catch (err) {
     logger.warn("[solveProblemSolutionFirst] Phase 1 failed, falling back to single-phase", {
       err: err instanceof Error ? err.message : String(err),
@@ -2672,6 +2683,7 @@ Requirements:
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
+          _usage: phase1Usage,
         },
         problem,
         subject,
@@ -2769,7 +2781,7 @@ Rules:
     const diagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks).length
       ? primary.data.diagramBlocks
       : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }).catch(() => []);
-    return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks }, problem, subject);
+    return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
   }
 
   const recovery = await generateStructuredJson<ProblemSolutionFirst>({
@@ -2786,11 +2798,11 @@ Return ONE complete JSON object only. Keep it compact and include a usable solut
   });
 
   if (isUsableProblemSolutionFirst(recovery.data)) {
-    return normalizeSolutionFirstPayload(recovery.data, problem, subject);
+    return normalizeSolutionFirstPayload({ ...recovery.data, _usage: recovery.usage }, problem, subject);
   }
 
   return normalizeSolutionFirstPayload(
-    buildFallbackSolutionFirst(problem, subject, recovery.raw || primary.raw),
+    { ...buildFallbackSolutionFirst(problem, subject, recovery.raw || primary.raw), _usage: recovery.usage },
     problem,
     subject,
   );
@@ -2828,8 +2840,11 @@ End your response with:
 **Final Answer:** [the final result]`;
 
   let rawSolution = "";
+  let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
   try {
-    rawSolution = await generateRawSolution(phase1Prompt, options, imagePart);
+    const phase1Result = await generateRawSolution(phase1Prompt, options, imagePart);
+    rawSolution = phase1Result.text;
+    phase1Usage = phase1Result.usage;
   } catch (err) {
     logger.warn("[solveFromImageDirect] Phase 1 failed, falling back to single-phase", {
       err: err instanceof Error ? err.message : String(err),
@@ -2872,6 +2887,7 @@ End your response with:
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
+          _usage: phase1Usage,
         },
         finalProblemText,
         metadata.subject,
@@ -2976,6 +2992,8 @@ Return a single JSON object only.`;
   const data = result.data;
   const extractedProblemText = (data?.problemText ?? "").trim();
 
+  const fallbackUsage = result.usage;
+
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
     const diagramBlocks = normalizeDiagramBlocks(data.diagramBlocks).length
       ? data.diagramBlocks
@@ -2986,7 +3004,7 @@ Return a single JSON object only.`;
         return [];
       });
     const solution = normalizeSolutionFirstPayload(
-      { ...data, diagramBlocks },
+      { ...data, diagramBlocks, _usage: fallbackUsage },
       extractedProblemText,
       data.subject ?? "General"
     );
@@ -3020,6 +3038,7 @@ Return a single JSON object only.`;
         explanationStatus: "not_generated",
         explanation: null,
         insights: { simpleBreakdown: "", keyFormula: "" },
+        _usage: phase1Usage,
       },
       recoveredProblem,
       recoveredSubject
@@ -3030,7 +3049,7 @@ Return a single JSON object only.`;
   const fallbackProblem = extractedProblemText || "Problem could not be read from image";
   const fallbackSubject = (data as any)?.subject ?? "General";
   const solution = normalizeSolutionFirstPayload(
-    buildFallbackSolutionFirst(fallbackProblem, fallbackSubject, result.raw),
+    { ...buildFallbackSolutionFirst(fallbackProblem, fallbackSubject, result.raw), _usage: fallbackUsage },
     fallbackProblem,
     fallbackSubject
   );
@@ -5062,7 +5081,7 @@ function decodeJsonStringLoose(chunk: string): string {
 
 async function generateStructuredJson<T>(
   config: JsonGenerationConfig<T>
-): Promise<{ data: T | null; raw: string; source: StructuredJsonSource }> {
+): Promise<{ data: T | null; raw: string; source: StructuredJsonSource; usage: ChatUsage }> {
   const client = getGeminiClient();
   const attempts = Math.max(1, config.maxAttempts ?? 2);
   let lastRaw = "";
@@ -5071,6 +5090,19 @@ async function generateStructuredJson<T>(
   let modelName = config.taskName.toLowerCase().includes("breakdown") || config.taskName.toLowerCase().includes("solve")
     ? env.GEMINI_PRO_MODEL
     : env.GEMINI_MODEL;
+
+  let accUsage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+
+  function mergeUsage(a: ChatUsage, b: ChatUsage): ChatUsage {
+    const prompt = (a.promptTokens ?? 0) + (b.promptTokens ?? 0);
+    const completion = (a.completionTokens ?? 0) + (b.completionTokens ?? 0);
+    return {
+      promptTokens: prompt || null,
+      completionTokens: completion || null,
+      totalTokens: (a.totalTokens ?? 0) + (b.totalTokens ?? 0),
+      source: (a.source === "provider" || b.source === "provider") ? "provider" : "estimate",
+    };
+  }
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const retrySuffix = attempt === 1
@@ -5081,7 +5113,7 @@ async function generateStructuredJson<T>(
 
     let response;
     try {
-      logger.info(`[DEBUG:AI:PROMPT] Task: ${config.taskName}`, {
+      logger.debug(`[DEBUG:AI:PROMPT] Task: ${config.taskName}`, {
         model: modelName,
         systemInstruction: buildSystemInstruction(config.options),
         prompt: `${config.prompt}${retrySuffix}`
@@ -5121,16 +5153,22 @@ async function generateStructuredJson<T>(
       throw err;
     }
 
+    const providerUsage = extractProviderUsage(response);
+    const callUsage: ChatUsage = providerUsage
+      ? { ...providerUsage, source: "provider" }
+      : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+    accUsage = mergeUsage(accUsage, callUsage);
+
     const raw = response.text ?? "";
     lastRaw = raw;
-    logger.info(`[DEBUG:AI:RAW_RESPONSE] Task: ${config.taskName}`, { raw });
+    logger.debug(`[DEBUG:AI:RAW_RESPONSE] Task: ${config.taskName}`, { raw });
     const parsed = parseJsonLoose<T>(raw);
     if (parsed !== null) {
-      return { data: parsed, raw, source: "parsed" };
+      return { data: parsed, raw, source: "parsed", usage: accUsage };
     }
     const recovered = config.recoverFromRaw?.(raw) ?? null;
     if (recovered !== null) {
-      return { data: recovered, raw, source: "recovered" };
+      return { data: recovered, raw, source: "recovered", usage: accUsage };
     }
 
     if (attempt < attempts) {
@@ -5150,7 +5188,7 @@ async function generateStructuredJson<T>(
     }
   }
 
-  return { data: null, raw: lastRaw, source: "none" };
+  return { data: null, raw: lastRaw, source: "none", usage: accUsage };
 }
 
 function debugPreview(input: string, max = 140): string {

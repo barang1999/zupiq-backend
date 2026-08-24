@@ -55,6 +55,7 @@ import {
   incrementTodayUsage,
 } from "../../billing/usage-service.js";
 import { publishUsageUpdate } from "../../billing/usage-stream.js";
+import { resolveFromCache, RESOLVE_TIMEOUT_POST_OCR_MS } from "../../services/resolver.service.js";
 
 const router = Router();
 const DAILY_DEEP_DIVE_TOKEN_LIMIT_ENTITLEMENT_KEY = "daily_deep_dive_token_limit";
@@ -122,6 +123,9 @@ async function resolveAIOptions(
   const latestUser = await getUserById(tokenUser.sub);
 
   // Prefer DB profile (source of truth for language/grade), fall back to token.
+  const resolvedLanguage = latestUser?.language ?? tokenUser.language ?? "en";
+  logger.info(`[ai-options] language resolution: jwt=${tokenUser.language ?? "n/a"} db=${latestUser?.language ?? "n/a"} → using=${resolvedLanguage} userId=${tokenUser.sub}`);
+
   let aiOptions = latestUser
     ? buildAIOptions(latestUser, { subject })
     : buildAIOptions(
@@ -421,6 +425,7 @@ interface MeteredUsage {
   promptTokens: number | null;
   completionTokens: number | null;
   source: "provider" | "estimate";
+  ai_cost_usd: number;
 }
 
 function estimateTokensFromText(text: string): number {
@@ -504,7 +509,7 @@ async function consumeTokenBudget(
     consumedTokens
   );
 
-  const meteredUsage: MeteredUsage = {
+  const meteredUsage: Omit<MeteredUsage, "ai_cost_usd"> = {
     featureKey: DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
     used: nextUsed,
     limit: budget.limit,
@@ -521,12 +526,32 @@ async function consumeTokenBudget(
     source: payload.source ?? (providerTotal !== null ? "provider" : "estimate"),
   };
 
+  // Cost estimate using Gemini 2.5 Flash pricing
+  const INPUT_COST_PER_TOKEN  = 0.075 / 1_000_000;  // $0.075 per 1M input tokens
+  const OUTPUT_COST_PER_TOKEN = 0.300 / 1_000_000;  // $0.300 per 1M output tokens
+  const inputTokens  = meteredUsage.promptTokens     ?? estimatedInput;
+  const outputTokens = meteredUsage.completionTokens ?? estimatedOutput;
+  const ai_cost_usd  = +((inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN)).toFixed(6);
+
+  const finalUsage: MeteredUsage = { ...meteredUsage, ai_cost_usd };
+
+  logger.info("[token-usage] consumed", {
+    userId: budget.userId,
+    source: finalUsage.source,
+    promptTokens: inputTokens,
+    completionTokens: outputTokens,
+    totalTokens: consumedTokens,
+    estimatedCostUsd: ai_cost_usd,
+    dailyUsed: nextUsed,
+    dailyLimit: budget.limit,
+  });
+
   publishUsageUpdate(budget.userId, {
-    ...meteredUsage,
+    ...finalUsage,
     updatedAt: new Date().toISOString(),
   });
 
-  return meteredUsage;
+  return finalUsage;
 }
 
 // ─── POST /api/ai/chat ────────────────────────────────────────────────────────
@@ -1114,7 +1139,7 @@ router.post(
       }
 
       const budget = await reserveTokenBudget(userId);
-      const aiOptions = await buildContextualAIOptions(req, {
+      let aiOptions = await buildContextualAIOptions(req, {
         subject,
         referenceQuery: typeof problem_text === "string" ? problem_text : subject,
       });
@@ -1134,6 +1159,51 @@ router.post(
         }
 
         ocrSource = "on-device";
+
+        // ── Semantic cache check ──────────────────────────────────────────────
+        // Check if we have a highly similar past problem before calling AI.
+        stage = "resolver:check";
+        const cached = await resolveFromCache(text, subject, req.user!.language);
+        logger.info(`[instant-session] ⚡ RESOLVER: mode=${cached.mode} confidence=${cached.confidence.toFixed(3)} language=${req.user!.language ?? "en"}`, { traceId });
+
+        if (cached.mode === "instant" && cached.breakdown_json) {
+          // Similarity ≥ 0.92 — serve directly from cache, skip AI entirely.
+          emitProgress(traceId, { stage: "BUILDING", progress: 85, message: "Found cached solution..." });
+          const cachedPayload = attachRenderBlocksToPayload(cached.breakdown_json as any);
+          const cachedSession = await createSession(userId, {
+            title: ((cachedPayload as any).title || "New Session").trim(),
+            subject: ((cachedPayload as any).subject || subject || "General").trim(),
+            topic: (cachedPayload as any).topic || null,
+            problem: text,
+            node_count: 0,
+            breakdown_json: cachedPayload,
+            visual_table_json: null,
+            image_url: null,
+          });
+          emitProgress(traceId, { stage: "DONE", progress: 100, message: "Redirecting..." });
+          res.status(201).json({
+            session: cachedSession,
+            ocr: { text, source: ocrSource, warnings: [] },
+            cached: true,
+            resolver_confidence: cached.confidence,
+          });
+          logger.info("[instant-session] served from cache", {
+            traceId, confidence: cached.confidence, cachedSessionId: cached.session_id,
+          });
+          return;
+        }
+
+        // mode='hint': inject cached solution as few-shot context into AI options
+        if (cached.mode === "hint" && cached.solution_text) {
+          aiOptions = {
+            ...aiOptions,
+            referenceContext: [
+              aiOptions.referenceContext,
+              `SIMILAR SOLVED PROBLEM (use as a guide, do not copy directly):\n${cached.solution_text}`,
+            ].filter(Boolean).join("\n\n"),
+          };
+        }
+
         emitProgress(traceId, { stage: "SOLVING", progress: 30, message: "Solving problem..." });
 
         stage = "ai:solve-text";
@@ -1188,6 +1258,38 @@ router.post(
 
         if (!problemText || looksLikeImagePlaceholder(problemText)) {
           throw new ValidationError("Could not read the problem from this image. Please try a clearer photo.");
+        }
+
+        // ── Post-OCR semantic cache check ────────────────────────────────────
+        // Vision already solved, but if cache has a high-confidence match use
+        // the cached (positively-rated) breakdown instead of the fresh AI one.
+        const cachedFromImage = await resolveFromCache(problemText, solution.subject ?? subject, req.user!.language, RESOLVE_TIMEOUT_POST_OCR_MS);
+        logger.info(`[instant-session] ⚡ RESOLVER (post-ocr): mode=${cachedFromImage.mode} confidence=${cachedFromImage.confidence.toFixed(3)} language=${req.user!.language ?? "en"}`, { traceId });
+
+        if (cachedFromImage.mode === "instant" && cachedFromImage.breakdown_json) {
+          emitProgress(traceId, { stage: "BUILDING", progress: 85, message: "Found cached solution..." });
+          const cachedPayload = attachRenderBlocksToPayload(cachedFromImage.breakdown_json as any);
+          const cachedSession = await createSession(userId, {
+            title: ((cachedPayload as any).title || "New Session").trim(),
+            subject: ((cachedPayload as any).subject || subject || "General").trim(),
+            topic: (cachedPayload as any).topic || null,
+            problem: problemText,
+            node_count: 0,
+            breakdown_json: cachedPayload,
+            visual_table_json: null,
+            image_url: uploadRecord?.storage_url ?? null,
+          });
+          emitProgress(traceId, { stage: "DONE", progress: 100, message: "Redirecting..." });
+          res.status(201).json({
+            session: cachedSession,
+            ocr: { text: problemText, source: ocrSource, warnings: [] },
+            cached: true,
+            resolver_confidence: cachedFromImage.confidence,
+          });
+          logger.info("[instant-session] image path served from cache", {
+            traceId, confidence: cachedFromImage.confidence, cachedSessionId: cachedFromImage.session_id,
+          });
+          return;
         }
       }
 
@@ -1250,13 +1352,15 @@ router.post(
 
       stage = "session:create";
       solution = attachRenderBlocksToPayload(solution) as typeof solution;
+      // Strip internal _usage field before storing in breakdown_json
+      const { _usage: solutionUsage, ...solutionForStorage } = solution;
       const session = await createSession(userId, {
         title: (solution.title || "New Session").trim(),
         subject: (solution.subject || subject || "General").trim(),
         topic: solution.topic || null,
         problem: problemText,
         node_count: 0,
-        breakdown_json: solution,
+        breakdown_json: solutionForStorage,
         visual_table_json: visualTable,
         image_url: sessionImageUrl,
       });
@@ -1272,7 +1376,19 @@ router.post(
       const usage = await consumeTokenBudget(budget, {
         input: { upload_id: upload_id ?? null, subject, source: "instant_photo" },
         output: { session_id: session.id, problem: problemText },
+        providerTotalTokens: solutionUsage?.totalTokens ?? null,
+        promptTokens: solutionUsage?.promptTokens ?? null,
+        completionTokens: solutionUsage?.completionTokens ?? null,
+        source: solutionUsage?.source ?? "estimate",
       });
+
+      // Persist token usage and cost to the session record (fire-and-forget)
+      updateSession(session.id, userId, {
+        prompt_tokens:     usage.promptTokens,
+        completion_tokens: usage.completionTokens,
+        total_tokens:      usage.consumedTokens,
+        ai_cost_usd:       usage.ai_cost_usd,
+      }).catch((err) => logger.warn("[instant-session] token usage save failed", { error: String(err?.message ?? err) }));
 
       emitProgress(traceId, { stage: "DONE", progress: 100, message: "Redirecting..." });
 
@@ -1282,9 +1398,7 @@ router.post(
         ocr: { text: problemText, source: ocrSource, warnings: [] },
       });
 
-      logger.info("[instant-session] trace:done", {
-        traceId, sessionId: session.id, elapsedMs: Date.now() - startedAt,
-      });
+      logger.info(`[instant-session] ✅ SERVED BY AI (no cache hit) — sessionId=${session.id} elapsed=${Date.now() - startedAt}ms`, { traceId });
     } catch (err) {
       logger.error("[instant-session] trace:error", {
         traceId, stage, userId: req.user?.sub ?? null,

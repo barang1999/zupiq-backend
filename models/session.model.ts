@@ -101,6 +101,11 @@ export interface StudySession {
   chat_count?: number;
   /** Whether the user has bookmarked this session. */
   bookmarked?: boolean;
+  /** AI token usage for this session. */
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+  ai_cost_usd?: number | null;
 }
 
 export interface CreateSessionDTO {
@@ -134,6 +139,10 @@ export interface UpdateSessionDTO {
   breakdown_json?: unknown;
   visual_table_json?: unknown | null;
   bookmarked?: boolean;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+  ai_cost_usd?: number | null;
 }
 
 // ─── DB Schema SQL ────────────────────────────────────────────────────────────

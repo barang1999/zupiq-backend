@@ -208,7 +208,7 @@ async function resolveTopicId(subjectId: string | null, topicSlug: string | null
 const MATH_ID = "a02678fd-382c-48dd-9ad9-cce00a642b7d";
 const PHYSICS_ID = "cdeb148b-8345-4166-a4f3-122362f999f7";
 const CHEMISTRY_ID = "963a5e0a-7e16-4933-a57a-b0e3f137d44d";
-const SESSION_LIST_SELECT = "id,user_id,title,subject_id,topic_id,problem,node_count,duration_seconds,image_url,created_at";
+const SESSION_LIST_SELECT = "id,user_id,title,subject_id,topic_id,problem,node_count,duration_seconds,image_url,bookmarked,created_at";
 
 function resolveSubjectNameFromId(subjectId: string | null | undefined): string | null {
   if (!subjectId) return null;
@@ -321,6 +321,7 @@ function normalizeSessionRow(row: Record<string, unknown>): StudySession {
     breakdown_json: toCanonicalJsonString(row.breakdown_json, {}),
     visual_table_json: toCanonicalNullableJsonString(row.visual_table_json),
     image_url: typeof row.image_url === "string" ? row.image_url : null,
+    bookmarked: Boolean(row.bookmarked ?? false),
     created_at: String(row.created_at),
   };
 }

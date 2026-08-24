@@ -99,6 +99,8 @@ export interface StudySession {
   user_role?: 'owner' | 'editor' | 'viewer';
   /** Number of chat messages in this session — populated by getUserSessions. */
   chat_count?: number;
+  /** Whether the user has bookmarked this session. */
+  bookmarked?: boolean;
 }
 
 export interface CreateSessionDTO {
@@ -131,6 +133,7 @@ export interface UpdateSessionDTO {
   duration_seconds?: number;
   breakdown_json?: unknown;
   visual_table_json?: unknown | null;
+  bookmarked?: boolean;
 }
 
 // ─── DB Schema SQL ────────────────────────────────────────────────────────────
@@ -148,6 +151,7 @@ export const STUDY_SESSIONS_TABLE_SQL = `
     breakdown_json JSONB NOT NULL DEFAULT '{}',
     visual_table_json TEXT,
     image_url TEXT,
+    bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TEXT DEFAULT (datetime('now'))
   )
 `;

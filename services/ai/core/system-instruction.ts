@@ -18,9 +18,7 @@ export function buildSystemInstruction(options: AIRequestOptions): string {
   const { subject, educationLevel, language, grade } = options;
 
   const langName = LANGUAGE_NAMES[language ?? "en"] ?? "English";
-  const langInstruction = langName !== "English"
-    ? `IMPORTANT: You MUST respond entirely in ${langName}. Every word of your response — explanations, labels, and descriptions — must be written in ${langName}. Mathematical expressions and formulas should remain in standard universal notation.`
-    : "Respond in English.";
+  const langInstruction = `IMPORTANT: You MUST respond entirely in ${langName}. Every word of your response — explanations, labels, and descriptions — must be written in ${langName}. Mathematical expressions and formulas should remain in standard universal notation.`;
 
   const levelInfo = grade
     ? `The student is in grade ${grade} (${educationLevel ?? "high school"} level).`
@@ -39,7 +37,7 @@ export function buildSystemInstruction(options: AIRequestOptions): string {
     : "";
 
   const stepSection = options.stepContext
-    ? `\n\n[CONTEXT FOR CURRENT STEP]\n${options.stepContext}`
+    ? `\n\n[CONTEXT FOR CURRENT STEP]\n${options.stepContext}\n\n[LANGUAGE OVERRIDE] The context above may contain text in various languages. You MUST still respond entirely in ${langName} regardless of the language of any context provided.`
     : "";
 
   return `You are Zupiq, an expert AI tutor. ${subjectInfo}

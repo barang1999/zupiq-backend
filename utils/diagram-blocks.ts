@@ -10,14 +10,76 @@ export type DiagramType =
   | "pie-chart"
   | "tree-diagram";
 
+export type DiagramMathFamily =
+  | "linear"
+  | "quadratic"
+  | "cubic"
+  | "polynomial"
+  | "absolute-value"
+  | "rational-reciprocal"
+  | "inverse-square"
+  | "rational-even"
+  | "exponential"
+  | "logarithmic"
+  | "square-root"
+  | "trigonometric"
+  | "piecewise"
+  | "number-line"
+  | "sign-table"
+  | "venn"
+  | "geometry"
+  | "solid-geometry"
+  | "pie-chart"
+  | "tree-diagram"
+  | "unknown";
+
+export type DiagramProblemIntent =
+  | "average-rate"
+  | "point-membership"
+  | "range"
+  | "integral"
+  | "function-value"
+  | "variation"
+  | "other";
+
+export type DiagramIntent =
+  | "interval-points"
+  | "secant-interval"
+  | "shaded-interval"
+  | "point-check"
+  | "function-value"
+  | "variation"
+  | "range"
+  | "basic-graph"
+  | "unknown";
+
 export type DiagramRenderBlock = {
   type: "diagram";
   diagramType: DiagramType;
+  mathFamily?: DiagramMathFamily;
+  problemIntent?: DiagramProblemIntent;
+  diagramIntent?: DiagramIntent;
+  renderTemplate?: string;
   spec: Record<string, unknown>;
   renderer: "zupiq-svg";
   version: 1;
   cacheKey: string;
   warnings?: string[];
+};
+
+type SupportedFunctionGraphFamily = "rational-reciprocal" | "inverse-square" | "rational-even";
+
+type FunctionGraphIntentBuildInput = {
+  mathFamily: SupportedFunctionGraphFamily;
+  problemIntent?: DiagramProblemIntent;
+  diagramIntent?: DiagramIntent;
+  renderTemplate?: string;
+  interval: [number, number];
+  closedStart?: boolean;
+  closedEnd?: boolean;
+  params: Record<string, unknown>;
+  latex?: string;
+  existingSpec?: Record<string, unknown>;
 };
 
 const DIAGRAM_TYPES = new Set<DiagramType>([
@@ -47,6 +109,114 @@ function cacheKey(diagramType: DiagramType, spec: Record<string, unknown>): stri
     .update(`${diagramType}:${stableStringify(spec)}`)
     .digest("hex")
     .slice(0, 24);
+}
+
+function cleanToken(value: unknown, max = 48): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return normalized ? normalized.slice(0, max) : undefined;
+}
+
+/** Map raw AI color names to the canonical tokens understood by diagramColor(). */
+function normalizeDiagramColor(value: string, fallback = "primary"): string {
+  const c = value.trim().toLowerCase();
+  if (c === "blue" || c === "primary") return "primary";
+  if (c === "red" || c === "danger") return "red";
+  if (c === "green" || c === "success") return "green";
+  if (c === "cyan" || c === "focus") return "focus";
+  if (c === "warm" || c === "accent" || c === "tertiary" || c === "orange" || c === "yellow") return "warm";
+  if (c === "muted" || c === "secondary" || c === "grey" || c === "gray") return "muted";
+  // Unknown token — fall back so the frontend defaults to primary.
+  return fallback;
+}
+
+export function normalizeProblemIntent(value: unknown): DiagramProblemIntent | undefined {
+  const normalized = cleanToken(value);
+  return normalized && ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"].includes(normalized)
+    ? normalized as DiagramProblemIntent
+    : undefined;
+}
+
+function normalizeDiagramIntent(value: unknown): DiagramIntent | undefined {
+  const normalized = cleanToken(value);
+  return normalized && [
+    "interval-points",
+    "secant-interval",
+    "shaded-interval",
+    "point-check",
+    "function-value",
+    "variation",
+    "range",
+    "basic-graph",
+    "unknown",
+  ].includes(normalized)
+    ? normalized as DiagramIntent
+    : undefined;
+}
+
+function normalizeMathFamily(value: unknown): DiagramMathFamily | undefined {
+  const normalized = cleanToken(value);
+  return normalized && [
+    "linear",
+    "quadratic",
+    "cubic",
+    "polynomial",
+    "absolute-value",
+    "rational-reciprocal",
+    "inverse-square",
+    "rational-even",
+    "exponential",
+    "logarithmic",
+    "square-root",
+    "trigonometric",
+    "piecewise",
+    "number-line",
+    "sign-table",
+    "venn",
+    "geometry",
+    "solid-geometry",
+    "pie-chart",
+    "tree-diagram",
+    "unknown",
+  ].includes(normalized)
+    ? normalized as DiagramMathFamily
+    : undefined;
+}
+
+function inferMathFamily(diagramType: DiagramType, spec: Record<string, unknown>): DiagramMathFamily {
+  if (diagramType !== "function-graph") {
+    if (diagramType === "venn-diagram") return "venn";
+    return diagramType as DiagramMathFamily;
+  }
+  const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+  const kinds = functions.map((fn) => String(fn.kind || "").trim()).filter(Boolean);
+  if (kinds.some((kind) => ["sine", "trig-sine", "cosine", "trig-cosine"].includes(kind))) return "trigonometric";
+  if (kinds.includes("rational-even")) return "rational-even";
+  if (kinds.includes("inverse-square")) return "inverse-square";
+  if (kinds.includes("rational-reciprocal")) return "rational-reciprocal";
+  if (kinds.includes("piecewise")) return "piecewise";
+  if (kinds.includes("absolute-value")) return "absolute-value";
+  if (kinds.includes("square-root")) return "square-root";
+  if (kinds.includes("logarithmic")) return "logarithmic";
+  if (kinds.includes("exponential")) return "exponential";
+  if (kinds.includes("cubic")) return "cubic";
+  if (kinds.includes("quadratic")) return "quadratic";
+  if (kinds.includes("linear")) return "linear";
+  return functions.length > 1 ? "polynomial" : "unknown";
+}
+
+function defaultDiagramIntent(problemIntent: DiagramProblemIntent | undefined): DiagramIntent | undefined {
+  if (problemIntent === "average-rate") return "secant-interval";
+  if (problemIntent === "integral") return "shaded-interval";
+  if (problemIntent === "point-membership") return "point-check";
+  if (problemIntent === "function-value") return "function-value";
+  if (problemIntent === "variation") return "variation";
+  if (problemIntent === "range") return "range";
+  return undefined;
+}
+
+function normalizeRenderTemplate(value: unknown, fallback: unknown): string | undefined {
+  return cleanToken(value, 64) || cleanToken(fallback, 64);
 }
 
 function asFiniteNumber(value: unknown, fallback: number): number {
@@ -256,7 +426,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
         endAngle: Number.isFinite(endAngle) ? endAngle : undefined,
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
-        color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
+        color: typeof item.color === "string" ? normalizeDiagramColor(item.color, "primary") : undefined,
         fill: typeof item.fill === "string" ? item.fill.slice(0, 24) : undefined,
       };
     })
@@ -299,7 +469,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       return {
         text,
         position,
-        color: typeof item.color === "string" ? item.color.slice(0, 24) : undefined,
+        color: typeof item.color === "string" ? normalizeDiagramColor(item.color, "primary") : undefined,
       };
     })
     .filter(Boolean);
@@ -971,6 +1141,18 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         }
       }
 
+      // Normalize vertex-form quadratic params {a, h, k} → standard form {a, b, c}.
+      // The evaluator (evalFnAt) expects a·x² + b·x + c; h/k are unknown to it.
+      if (kind === "quadratic" && params && typeof params === "object") {
+        const p = params as Record<string, unknown>;
+        if (!("b" in p) && !("c" in p) && ("h" in p || "k" in p)) {
+          const a = asFiniteNumber(p.a, 1);
+          const h = asFiniteNumber(p.h, 0);
+          const k = asFiniteNumber(p.k, 0);
+          params = { a, b: -2 * a * h, c: a * h * h + k };
+        }
+      }
+
       let domain = Array.isArray(item.domain)
         ? [asFiniteNumber(item.domain[0], -Number.MAX_VALUE), asFiniteNumber(item.domain[1], Number.MAX_VALUE)]
         : undefined;
@@ -1066,7 +1248,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
               params: undefined,
               pieces: undefined,
               domain: undefined,
-              color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+              color: typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary",
             };
           }
         }
@@ -1080,7 +1262,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         params,
         pieces,
         domain,
-        color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+        color: typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary",
       };
     })
     .filter(Boolean)
@@ -1110,7 +1292,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       return {
         point: coordinates,
         label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
-        color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+        color: typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary",
         closed: closed,
       };
     })
@@ -1182,9 +1364,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       }
 
       if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
-      // Only allow design-system tokens for shading color; raw CSS names like "red"/"blue" → "primary"
-      const rawColor = typeof item.color === "string" ? item.color : "";
-      const shadingColor = ["primary", "muted", "secondary"].includes(rawColor) ? rawColor : "primary";
+      const shadingColor = typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary";
       return {
         from: Math.min(from, to),
         to: Math.max(from, to),
@@ -1485,7 +1665,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       from: Number.isFinite(from) ? from : undefined,
       to: Number.isFinite(to) ? to : undefined,
       label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
-      color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+      color: typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary",
     };
   };
 
@@ -1671,6 +1851,62 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       })
       .filter((point): point is { point: [number, number]; label: string; color: string; closed: boolean } => point !== null);
   }
+  // For basic-graph quadratic diagrams, ensure each function's vertex is present
+  // and correct. This handles two cases:
+  //   (a) featurePoints is empty — inject all vertices.
+  //   (b) featurePoints exist but some don't lie on any function (AI gave wrong
+  //       coordinates) — replace each wrong point with the vertex of the function
+  //       whose color matches.
+  if (!graphStyle) {
+    const allQuadraticFns = resolvedFunctions.filter(
+      (fn) => (fn as Record<string, unknown>).kind === "quadratic"
+    );
+    if (allQuadraticFns.length > 0 && allQuadraticFns.length === resolvedFunctions.length) {
+      const computedVertices = allQuadraticFns
+        .map((fn) => {
+          const item = fn as Record<string, unknown>;
+          const p = (item.params && typeof item.params === "object" ? item.params : {}) as Record<string, unknown>;
+          const a = asFiniteNumber(p.a, 1);
+          const b = asFiniteNumber(p.b, 0);
+          const c = asFiniteNumber(p.c, 0);
+          if (Math.abs(a) < 0.0001) return null;
+          const vx = -b / (2 * a);
+          const vy = c - (b * b) / (4 * a);
+          if (!Number.isFinite(vx) || !Number.isFinite(vy)) return null;
+          const color = typeof item.color === "string" ? item.color : "primary";
+          return { point: [vx, vy] as [number, number], label: `(${fmtCoord(vx)}, ${fmtCoord(vy)})`, color, closed: true };
+        })
+        .filter((v): v is { point: [number, number]; label: string; color: string; closed: boolean } => v !== null);
+
+      if (computedVertices.length) {
+        if (resolvedFeaturePoints.length === 0) {
+          resolvedFeaturePoints = computedVertices;
+        } else {
+          // Repair any feature point that doesn't lie on any quadratic function.
+          resolvedFeaturePoints = resolvedFeaturePoints.map((point) => {
+            const item = point as Record<string, unknown>;
+            const coords = item.point as [number, number] | undefined;
+            if (!Array.isArray(coords)) return point;
+            const [px, py] = coords;
+            // Prefer validating against the color-matched function so that a
+            // point like (0,0) marked "red" is caught even though it lies on
+            // the "primary" function (y=x²).
+            const ptColor = typeof item.color === "string" ? item.color : "primary";
+            const colorMatchedFn = allQuadraticFns.find(
+              (fn) => (fn as Record<string, unknown>).color === ptColor
+            ) as Record<string, unknown> | undefined;
+            const fnToCheck = colorMatchedFn ?? (allQuadraticFns[0] as Record<string, unknown>);
+            const expectedY = evalFnAt(fnToCheck, px);
+            const liesOnMatchedFunction = Number.isFinite(expectedY) && Math.abs(expectedY - py) < 0.08;
+            if (liesOnMatchedFunction) return point;
+            // Wrong point — replace with the vertex of the color-matched function.
+            return computedVertices.find((v) => v.color === ptColor) ?? point;
+          });
+        }
+      }
+    }
+  }
+
   const reciprocalOutputPoints = graphStyle === "reciprocal-interval"
     ? resolvedFeaturePoints
       .map((point) => {
@@ -1701,13 +1937,36 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ]
     : hasBasicReciprocalFunction || hasInverseSquareFunction ? [] : guideLines.length ? guideLines : graphStyle === "trig-wave" ? computedGuideLines.length ? computedGuideLines : defaultSineWaveGuideLines() : [];
 
+  // For basic-graph quadratic diagrams, prevent an oversized y-viewport that
+  // would crush the vertex region. When the AI gives a range taller than 20
+  // units and all functions are quadratic, clamp the top to maxFeatureY + 10
+  // so the vertices stay visually prominent.
+  const finalRange: [number, number] = (() => {
+    if (graphStyle || outputRange[1] - outputRange[0] <= 20) return outputRange as [number, number];
+    const allQuadratic =
+      resolvedFunctions.length > 0 &&
+      resolvedFunctions.every((fn) => (fn as Record<string, unknown>).kind === "quadratic");
+    if (!allQuadratic || resolvedFeaturePoints.length === 0) return outputRange as [number, number];
+    const featureYs = resolvedFeaturePoints
+      .map((p) => {
+        const coords = (p as Record<string, unknown>).point as [number, number] | undefined;
+        return Array.isArray(coords) && Number.isFinite(coords[1]) ? coords[1] : Number.NaN;
+      })
+      .filter((y): y is number => Number.isFinite(y));
+    if (!featureYs.length) return outputRange as [number, number];
+    const smartMax = Math.max(...featureYs) + 10;
+    return smartMax < outputRange[1]
+      ? [outputRange[0], smartMax] as [number, number]
+      : outputRange as [number, number];
+  })();
+
   return {
     type: "function-graph",
     functions: resolvedFunctions,
     featurePoints: resolvedFeaturePoints,
     shadedRegions: normalizedShadedRegions,
     domain: outputDomain,
-    range: outputRange,
+    range: finalRange,
     graphStyle,
     ...(diagramIntent ? { diagramIntent } : {}),
     xTicks: outputXTicks,
@@ -1718,26 +1977,206 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   };
 }
 
+// ─── Solid geometry helpers ───────────────────────────────────────────────────
+
+function extractLabelNumber(label: unknown): number | null {
+  if (typeof label !== "string") return null;
+  const m = label.match(/-?\d+(?:\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+function solidParamsFromInput(
+  shape: string,
+  inputParams: Record<string, unknown> | null,
+  dim: Record<string, unknown>,
+): Record<string, number> {
+  const n = (v: unknown) => asFiniteNumber(v, Number.NaN);
+  const pick = (...keys: (unknown | undefined)[]) => {
+    for (const v of keys) if (Number.isFinite(n(v))) return n(v);
+    return Number.NaN;
+  };
+
+  const p = inputParams ?? {};
+
+  switch (shape) {
+    case "cylinder":
+    case "cone":
+      return {
+        r: pick(p.r, p.radius, dim.radius),
+        h: pick(p.h, p.height, dim.height),
+      };
+    case "sphere":
+      return { r: pick(p.r, p.R, p.radius, dim.radius) };
+    case "cube":
+      return { a: pick(p.a, p.edge, p.side, dim.width, dim.height) };
+    case "cuboid":
+    case "rectangular-prism":
+      return {
+        l: pick(p.l, p.length, p.width, dim.width),
+        w: pick(p.w, p.width, p.depth, dim.depth),
+        h: pick(p.h, p.height, dim.height),
+      };
+    case "pyramid":
+      return {
+        a: pick(p.a, p.base, p.edge, p.side, dim.width),
+        h: pick(p.h, p.height, dim.height),
+      };
+    case "frustum":
+      return {
+        r: pick(p.r, p.topRadius, dim.topRadius),
+        R: pick(p.R, p.bottomRadius, dim.bottomRadius),
+        h: pick(p.h, p.height, dim.height),
+      };
+    case "prism":
+    case "triangular-prism":
+      return {
+        a: pick(p.a, p.base, p.side, dim.width),
+        h: pick(p.h, p.height, dim.height),
+      };
+    default:
+      return {};
+  }
+}
+
+function buildSolidLabels(shape: string, params: Record<string, number>): Record<string, string> {
+  const v = (val: number, fallback: string) => Number.isFinite(val) ? fmtCoord(val) : fallback;
+  switch (shape) {
+    case "cylinder":
+    case "cone":
+      return {
+        r: `r = ${v(params.r, "?")}`,
+        h: `h = ${v(params.h, "?")}`,
+      };
+    case "sphere":
+      return { r: `R = ${v(params.r, "?")}` };
+    case "cube":
+      return { a: `a = ${v(params.a, "?")}` };
+    case "cuboid":
+    case "rectangular-prism":
+      return {
+        l: v(params.l, "l"),
+        w: v(params.w, "w"),
+        h: v(params.h, "h"),
+      };
+    case "pyramid":
+      return {
+        a: `a = ${v(params.a, "?")}`,
+        h: `h = ${v(params.h, "?")}`,
+      };
+    case "frustum":
+      return {
+        r: `r = ${v(params.r, "?")}`,
+        R: `R = ${v(params.R, "?")}`,
+        h: `h = ${v(params.h, "?")}`,
+      };
+    case "prism":
+    case "triangular-prism":
+      return {
+        a: `a = ${v(params.a, "?")}`,
+        h: `h = ${v(params.h, "?")}`,
+      };
+    default:
+      return {};
+  }
+}
+
+function repairSolidLabels(
+  shape: string,
+  params: Record<string, number>,
+  provided: Record<string, unknown>,
+  warnings: string[],
+): Record<string, string> {
+  const auto = buildSolidLabels(shape, params);
+  const result: Record<string, string> = {};
+
+  for (const [key, autoValue] of Object.entries(auto)) {
+    const raw = provided[key];
+    const providedNum = extractLabelNumber(raw);
+    const paramVal = params[key as keyof typeof params];
+    if (raw === undefined || raw === null) {
+      result[key] = autoValue;
+    } else if (Number.isFinite(paramVal) && Number.isFinite(providedNum) && Math.abs(providedNum - paramVal) > 0.01) {
+      warnings.push(`solid-label-mismatch:${key}:label=${providedNum}:param=${paramVal}`);
+      result[key] = autoValue;
+    } else {
+      result[key] = String(raw).slice(0, 32);
+    }
+  }
+  // Pass through any extra keys the AI provided (e.g. diagonal, slant)
+  for (const [key, value] of Object.entries(provided)) {
+    if (!(key in result) && typeof value === "string") result[key] = value.slice(0, 32);
+  }
+  return result;
+}
+
+function solidRenderDimensions(shape: string, params: Record<string, number>, fallback: Record<string, unknown>): Record<string, unknown> {
+  const fb = (key: string, def: number) => asFiniteNumber(fallback[key], def);
+  switch (shape) {
+    case "cylinder":
+    case "cone":
+      return {
+        radius: Number.isFinite(params.r) ? params.r : fb("radius", 4),
+        height: Number.isFinite(params.h) ? params.h : fb("height", 10),
+      };
+    case "sphere":
+      return { radius: Number.isFinite(params.r) ? params.r : fb("radius", 5) };
+    case "cube": {
+      const a = Number.isFinite(params.a) ? params.a : fb("width", 100);
+      return { width: a, height: a, depth: a * 0.8 };
+    }
+    case "cuboid":
+    case "rectangular-prism":
+      return {
+        width: Number.isFinite(params.l) ? params.l : fb("width", 100),
+        depth: Number.isFinite(params.w) ? params.w : fb("depth", 80),
+        height: Number.isFinite(params.h) ? params.h : fb("height", 100),
+      };
+    case "pyramid": {
+      const a = Number.isFinite(params.a) ? params.a : fb("width", 100);
+      return { width: a, height: Number.isFinite(params.h) ? params.h : fb("height", 100), depth: a * 0.8 };
+    }
+    case "frustum":
+      return {
+        topRadius: Number.isFinite(params.r) ? params.r : fb("topRadius", 3),
+        bottomRadius: Number.isFinite(params.R) ? params.R : fb("bottomRadius", 6),
+        height: Number.isFinite(params.h) ? params.h : fb("height", 8),
+      };
+    case "prism":
+    case "triangular-prism": {
+      const a = Number.isFinite(params.a) ? params.a : fb("width", 100);
+      return { width: a, height: Number.isFinite(params.h) ? params.h : fb("height", 100), depth: a * 0.8 };
+    }
+    default:
+      return { width: fb("width", 100), height: fb("height", 100), depth: fb("depth", 80) };
+  }
+}
+
 function normalizeSolidGeometrySpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
   const shape = String(input.shape || "").trim();
   const allowed = ["cube", "cuboid", "pyramid", "prism", "cylinder", "cone", "frustum", "sphere"];
   if (!allowed.includes(shape)) warnings.push("unsupported-solid-shape");
-  const dimensions = input.dimensions && typeof input.dimensions === "object" ? input.dimensions as Record<string, unknown> : {};
-  const radius = asFiniteNumber(dimensions.radius, Number.NaN);
-  const topRadius = asFiniteNumber(dimensions.topRadius, Number.NaN);
-  const bottomRadius = asFiniteNumber(dimensions.bottomRadius, Number.NaN);
+  const normalizedShape = allowed.includes(shape) ? shape : "cube";
+
+  const inputParams = input.params && typeof input.params === "object" ? input.params as Record<string, unknown> : null;
+  const inputDimensions = input.dimensions && typeof input.dimensions === "object" ? input.dimensions as Record<string, unknown> : {};
+
+  const params = solidParamsFromInput(normalizedShape, inputParams, inputDimensions);
+  // Drop NaN entries
+  const cleanParams = Object.fromEntries(Object.entries(params).filter(([, v]) => Number.isFinite(v)));
+
+  const providedLabels = input.labels && typeof input.labels === "object" ? input.labels as Record<string, unknown> : null;
+  const labels = providedLabels
+    ? repairSolidLabels(normalizedShape, cleanParams, providedLabels, warnings)
+    : buildSolidLabels(normalizedShape, cleanParams);
+
+  const dimensions = solidRenderDimensions(normalizedShape, cleanParams, inputDimensions);
+
   return {
     type: "solid-geometry",
-    shape: allowed.includes(shape) ? shape : "cube",
-    dimensions: {
-      width: asFiniteNumber(dimensions.width, 100),
-      height: asFiniteNumber(dimensions.height, 100),
-      depth: asFiniteNumber(dimensions.depth, 80),
-      ...(Number.isFinite(radius) ? { radius } : {}),
-      ...(Number.isFinite(topRadius) ? { topRadius } : {}),
-      ...(Number.isFinite(bottomRadius) ? { bottomRadius } : {}),
-    },
-    labels: input.labels && typeof input.labels === "object" ? input.labels : {},
+    shape: normalizedShape,
+    ...(Object.keys(cleanParams).length > 0 ? { params: cleanParams } : {}),
+    dimensions,
+    labels,
     showSpaceDiagonal: Boolean(input.showSpaceDiagonal),
   };
 }
@@ -1861,16 +2300,149 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
               : diagramType === "pie-chart" ? normalizePieChartSpec(inputSpec, warnings)
                 : diagramType === "tree-diagram" ? normalizeTreeDiagramSpec(inputSpec, warnings)
                   : normalizeSolidGeometrySpec(inputSpec, warnings);
+  const problemIntent = normalizeProblemIntent(raw.problemIntent ?? inputSpec.problemIntent);
+  const diagramIntent = normalizeDiagramIntent(raw.diagramIntent ?? inputSpec.diagramIntent) || defaultDiagramIntent(problemIntent);
+  const mathFamily = normalizeMathFamily(raw.mathFamily ?? inputSpec.mathFamily) || inferMathFamily(diagramType, spec);
+  const renderTemplate = diagramType === "function-graph"
+    ? normalizeRenderTemplate(spec.graphStyle ?? inputSpec.graphStyle ?? inputSpec.template, raw.renderTemplate ?? inputSpec.renderTemplate)
+    : normalizeRenderTemplate(raw.renderTemplate ?? inputSpec.renderTemplate, spec.graphStyle ?? inputSpec.graphStyle ?? inputSpec.template);
+  const enrichedSpec = {
+    ...spec,
+    mathFamily,
+    ...(problemIntent ? { problemIntent } : {}),
+    ...(diagramIntent ? { diagramIntent } : {}),
+    ...(renderTemplate ? { renderTemplate } : {}),
+  };
 
   return {
     type: "diagram",
     diagramType,
-    spec,
+    mathFamily,
+    ...(problemIntent ? { problemIntent } : {}),
+    ...(diagramIntent ? { diagramIntent } : {}),
+    ...(renderTemplate ? { renderTemplate } : {}),
+    spec: enrichedSpec,
     renderer: "zupiq-svg",
     version: 1,
-    cacheKey: cacheKey(diagramType, spec),
+    cacheKey: cacheKey(diagramType, enrichedSpec),
     ...(warnings.length ? { warnings } : {}),
   };
+}
+
+function formatDiagramNumber(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value - Math.round(value)) < 0.000001) return `${Math.round(value)}`;
+  return `${Number(value.toFixed(3))}`;
+}
+
+function functionLatexForFamily(family: SupportedFunctionGraphFamily, params: Record<string, unknown>, fallback?: string): string {
+  if (fallback && fallback.trim()) return fallback.trim();
+  const a = asFiniteNumber(params.a, 1);
+  const h = asFiniteNumber(params.h ?? params.verticalAsymptote, 0);
+  const k = asFiniteNumber(params.k ?? params.horizontalAsymptote, 0);
+  const shiftedX = h === 0 ? "x" : `(x${h < 0 ? "+" : "-"}${Math.abs(h)})`;
+  const suffix = Math.abs(k) > 0.000001 ? `${k >= 0 ? "+" : ""}${formatDiagramNumber(k)}` : "";
+  if (family === "rational-reciprocal") return `y=\\frac{${formatDiagramNumber(a)}}{${shiftedX}}${suffix}`;
+  if (family === "inverse-square") return `y=\\frac{${formatDiagramNumber(a)}}{${shiftedX}^2}${suffix}`;
+  const b = asFiniteNumber(params.b, 1);
+  return `y=\\frac{${formatDiagramNumber(a)}}{${shiftedX}^2${b >= 0 ? "+" : ""}${formatDiagramNumber(b)}}${suffix}`;
+}
+
+function yAtFunctionFamily(family: SupportedFunctionGraphFamily, params: Record<string, unknown>, x: number): number {
+  const a = asFiniteNumber(params.a, 1);
+  const h = asFiniteNumber(params.h ?? params.verticalAsymptote, 0);
+  const k = asFiniteNumber(params.k ?? params.horizontalAsymptote, 0);
+  const dx = x - h;
+  if (family === "rational-reciprocal") {
+    if (Math.abs(dx) < 0.0001) return Number.NaN;
+    return a / dx + k;
+  }
+  if (family === "inverse-square") {
+    if (Math.abs(dx) < 0.0001) return Number.NaN;
+    return a / (dx * dx) + k;
+  }
+  const b = asFiniteNumber(params.b, 1);
+  const denominator = dx * dx + b;
+  if (Math.abs(denominator) < 0.0001) return Number.NaN;
+  return a / denominator + k;
+}
+
+export function buildFunctionGraphIntentDiagramBlock(input: FunctionGraphIntentBuildInput): DiagramRenderBlock | null {
+  const [from, to] = input.interval;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) return null;
+  const yFrom = yAtFunctionFamily(input.mathFamily, input.params, from);
+  const yTo = yAtFunctionFamily(input.mathFamily, input.params, to);
+  if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return null;
+
+  const existingSpec = input.existingSpec || {};
+  const problemIntent = normalizeProblemIntent(input.problemIntent);
+  const diagramIntent = normalizeDiagramIntent(input.diagramIntent)
+    || normalizeDiagramIntent(existingSpec.diagramIntent)
+    || defaultDiagramIntent(problemIntent)
+    || "interval-points";
+  const renderTemplate = normalizeRenderTemplate(input.renderTemplate, existingSpec.renderTemplate ?? existingSpec.graphStyle ?? "reciprocal-interval") || "reciprocal-interval";
+  const params = {
+    ...input.params,
+    ...(input.mathFamily === "rational-reciprocal" || input.mathFamily === "inverse-square"
+      ? {
+        verticalAsymptote: asFiniteNumber(input.params.h ?? input.params.verticalAsymptote, 0),
+        horizontalAsymptote: asFiniteNumber(input.params.k ?? input.params.horizontalAsymptote, 0),
+      }
+      : {}),
+  };
+  const functions: Array<Record<string, unknown>> = [{
+    kind: input.mathFamily,
+    latex: functionLatexForFamily(input.mathFamily, params, input.latex),
+    params,
+    points: [],
+    color: "primary",
+  }];
+
+  if (diagramIntent === "secant-interval") {
+    const m = (yTo - yFrom) / (to - from);
+    const b = yFrom - m * from;
+    functions.push({
+      kind: "linear",
+      latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`,
+      params: { m, b },
+      points: [],
+      color: "secondary",
+    });
+  }
+
+  const yMax = Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1));
+  const startsAtZero = input.mathFamily === "rational-even";
+  const spec = {
+    ...existingSpec,
+    type: "function-graph",
+    mathFamily: input.mathFamily,
+    ...(problemIntent ? { problemIntent } : {}),
+    diagramIntent,
+    renderTemplate,
+    graphStyle: renderTemplate,
+    domain: renderTemplate === "reciprocal-interval" && input.mathFamily === "rational-reciprocal"
+      ? [from, to]
+      : [startsAtZero ? Math.min(0, from) : from, Math.max(to, from + 1)],
+    range: [startsAtZero ? 0 : -1, yMax],
+    functions,
+    featurePoints: [
+      { point: [from, yFrom], label: `(${formatDiagramNumber(from)}, ${formatDiagramNumber(yFrom)})`, color: "primary", closed: diagramIntent === "secant-interval" || input.closedStart === true },
+      { point: [to, yTo], label: `(${formatDiagramNumber(to)}, ${formatDiagramNumber(yTo)})`, color: "primary", closed: diagramIntent === "secant-interval" || input.closedEnd === true },
+    ],
+    guideLines: [],
+    shadedRegions: diagramIntent === "shaded-interval"
+      ? [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }]
+      : [],
+  };
+
+  return normalizeDiagramBlock({
+    diagramType: "function-graph",
+    mathFamily: input.mathFamily,
+    ...(problemIntent ? { problemIntent } : {}),
+    diagramIntent,
+    renderTemplate,
+    spec,
+  });
 }
 
 const CRITICAL_WARNINGS = new Set([

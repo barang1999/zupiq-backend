@@ -10,6 +10,49 @@ export type DiagramType =
   | 'pie-chart'
   | 'tree-diagram';
 
+export type DiagramMathFamily =
+  | 'linear'
+  | 'quadratic'
+  | 'cubic'
+  | 'polynomial'
+  | 'absolute-value'
+  | 'rational-reciprocal'
+  | 'inverse-square'
+  | 'rational-even'
+  | 'exponential'
+  | 'logarithmic'
+  | 'square-root'
+  | 'trigonometric'
+  | 'piecewise'
+  | 'number-line'
+  | 'sign-table'
+  | 'venn'
+  | 'geometry'
+  | 'solid-geometry'
+  | 'pie-chart'
+  | 'tree-diagram'
+  | 'unknown';
+
+export type DiagramProblemIntent =
+  | 'average-rate'
+  | 'point-membership'
+  | 'range'
+  | 'integral'
+  | 'function-value'
+  | 'variation'
+  | 'other';
+
+export type DiagramIntent =
+  | 'interval-points'
+  | 'secant-interval'
+  | 'shaded-interval'
+  | 'point-check'
+  | 'function-value'
+  | 'variation'
+  | 'range'
+  | 'basic-graph'
+  | 'unknown';
+
 export type RenderBlock =
   | {
       type: 'text';
@@ -29,6 +72,10 @@ export type RenderBlock =
   | {
       type: 'diagram';
       diagramType: DiagramType;
+      mathFamily?: DiagramMathFamily;
+      problemIntent?: DiagramProblemIntent;
+      diagramIntent?: DiagramIntent;
+      renderTemplate?: string;
       spec: Record<string, unknown>;
       renderer: 'zupiq-svg';
       version: 1;

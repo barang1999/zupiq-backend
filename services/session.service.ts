@@ -3,7 +3,7 @@ import { StudySession, CreateSessionDTO, UpdateSessionDTO } from "../models/sess
 import { generateId, nowISO, slugify } from "../utils/helpers.js";
 import { AppError } from "../api/middlewares/error.middleware.js";
 import { canUserAccessSession, canUserEditSession } from "./collaboration.service.js";
-import { normalizeDiagramBlocks } from "../utils/diagram-blocks.js";
+import { buildFunctionGraphIntentDiagramBlock, normalizeDiagramBlocks, normalizeProblemIntent } from "../utils/diagram-blocks.js";
 import { logger } from "../utils/logger.js";
 
 type CanonicalSubject = {
@@ -74,19 +74,48 @@ function payloadText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function parseSimpleReciprocalInterval(source: string): { a: number; h: number; interval: [number, number] } | null {
+function parseSimpleReciprocalInterval(source: string): {
+  a: number;
+  h: number;
+  interval: [number, number];
+  closedStart: boolean;
+  closedEnd: boolean;
+} | null {
   const normalized = `${source ?? ""}`.replace(/[០-៩]/g, (digit) => "០១២៣៤៥៦៧៨៩".indexOf(digit).toString()).replace(/\s+/g, "");
-  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{x(?:([+-])(\d+(?:\.\d+)?))?\}/i);
-  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?(?:x(?:([+-])(\d+(?:\.\d+)?))?)\)?/i);
+  const parseDenominator = (denominator: string): { h: number; scale: number } | null => {
+    const clean = denominator.replace(/^\((.*)\)$/, "$1").replace(/\*/g, "");
+    const match = clean.match(/^([+-]?(?:\d+(?:\.\d+)?)?)x(?:(\+|-)(\d+(?:\.\d+)?))?$/i);
+    if (!match) return null;
+    const scale = match[1] === "" || match[1] === "+" ? 1 : match[1] === "-" ? -1 : Number(match[1]);
+    const offsetMagnitude = match[3] ? Number(match[3]) : 0;
+    if (!Number.isFinite(scale) || Math.abs(scale) < 0.0001 || !Number.isFinite(offsetMagnitude)) return null;
+    const offset = match[2] === "-" ? -offsetMagnitude : offsetMagnitude;
+    return { h: -offset / scale, scale };
+  };
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{([^{}]+)\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?([^;)]+?)\)?(?=;|[\[(]|$)/i);
   const match = latexMatch || slashMatch;
   if (!match) return null;
-  const a = Number(match[1]);
-  const shift = match[3] ? Number(match[3]) : 0;
-  const h = match[2] === "+" ? -shift : shift;
-  const interval = Array.from(normalized.matchAll(/[\[(]([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)[\])]/g))
-    .map((item): [number, number] => [Number(item[1]), Number(item[2])])
-    .find(([from, to]) => Number.isFinite(from) && Number.isFinite(to) && from < to && Math.abs(from - h) > 0.0001 && Math.abs(to - h) > 0.0001);
-  return Number.isFinite(a) && Number.isFinite(h) && interval ? { a, h, interval } : null;
+  const numerator = Number(match[1]);
+  const denominator = parseDenominator(match[2]);
+  if (!Number.isFinite(numerator) || !denominator) return null;
+  const a = numerator / denominator.scale;
+  const h = denominator.h;
+  const intervalMatch = Array.from(normalized.matchAll(/([\[(])([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)([\])])/g))
+    .find((item) => {
+      const from = Number(item[2]);
+      const to = Number(item[3]);
+      return Number.isFinite(from) && Number.isFinite(to) && from < to && Math.abs(from - h) > 0.0001 && Math.abs(to - h) > 0.0001;
+    });
+  return Number.isFinite(a) && Number.isFinite(h) && intervalMatch
+    ? {
+      a,
+      h,
+      interval: [Number(intervalMatch[2]), Number(intervalMatch[3])],
+      closedStart: intervalMatch[1] === "[",
+      closedEnd: intervalMatch[4] === "]",
+    }
+    : null;
 }
 
 function parseSimpleRationalEvenInterval(source: string): {
@@ -199,10 +228,10 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
   const source = `${payloadText(problem)}\n${payloadText(breakdown.problem)}\n${payloadText(breakdown.solutionText)}`;
   const inverseSquareParsed = parseSimpleInverseSquareInterval(source);
   if (inverseSquareParsed) {
-    const problemIntent = breakdown.problemIntent && breakdown.problemIntent !== "other"
-      ? breakdown.problemIntent
-      : problemIntentFromStructuredHint(source) || breakdown.problemIntent;
-    if ((!breakdown.problemIntent || breakdown.problemIntent === "other") && problemIntent) breakdown.problemIntent = problemIntent;
+    const problemIntent = problemIntentFromStructuredHint(source)
+      || (breakdown.problemIntent && breakdown.problemIntent !== "other" ? breakdown.problemIntent : undefined)
+      || breakdown.problemIntent;
+    if (problemIntent && breakdown.problemIntent !== problemIntent) breakdown.problemIntent = problemIntent;
     const structuredIntent = graphIntentFromProblemIntent(problemIntent);
     const diagramBlocks = Array.isArray(breakdown.diagramBlocks)
       ? breakdown.diagramBlocks
@@ -216,7 +245,7 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
       return record?.diagramType === "function-graph"
         && functions.some((fn) => fn.kind === "inverse-square" || String(fn.latex || "").includes("x^2"));
     });
-    if (inverseBlock) {
+    {
       const [from, to] = inverseSquareParsed.interval;
       const yAt = (x: number) => {
         const dx = x - inverseSquareParsed.h;
@@ -225,7 +254,7 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
       const yFrom = yAt(from);
       const yTo = yAt(to);
       if (Number.isFinite(yFrom) && Number.isFinite(yTo)) {
-        const existingSpec = (inverseBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined;
+        const existingSpec = inverseBlock ? (inverseBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined : undefined;
         const existingFunctions = Array.isArray(existingSpec?.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
         const existingShadedRegions = Array.isArray(existingSpec?.shadedRegions) ? existingSpec.shadedRegions : [];
         const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
@@ -248,11 +277,15 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
           : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
             ? "shaded-interval"
             : structuredIntent || "interval-points";
-        const hText = inverseSquareParsed.h === 0 ? "x" : `(x${inverseSquareParsed.h < 0 ? "+" : "-"}${Math.abs(inverseSquareParsed.h)})`;
-        const functions: Array<Record<string, unknown>> = [{
-          kind: "inverse-square",
-          latex: `y=\\frac{${inverseSquareParsed.a}}{${hText}^2}`,
-          points: [],
+        const inverseSquareFn = existingFunctions.find((fn) => fn.kind === "inverse-square") || {};
+        const repaired = buildFunctionGraphIntentDiagramBlock({
+          mathFamily: "inverse-square",
+          problemIntent: normalizeProblemIntent(problemIntent),
+          diagramIntent,
+          renderTemplate: "reciprocal-interval",
+          interval: inverseSquareParsed.interval,
+          closedStart: inverseSquareParsed.closedStart,
+          closedEnd: inverseSquareParsed.closedEnd,
           params: {
             a: inverseSquareParsed.a,
             h: inverseSquareParsed.h,
@@ -261,36 +294,13 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
             horizontalAsymptote: 0,
             p: 2,
           },
-          color: "primary",
-        }];
-        if (diagramIntent === "secant-interval") {
-          const m = (yTo - yFrom) / (to - from);
-          const b = yFrom - m * from;
-          functions.push({ kind: "linear", latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`, points: [], params: { m, b }, color: "secondary" });
-        }
-        const repaired = normalizeDiagramBlocks([{
-          diagramType: "function-graph",
-          spec: {
-            ...(existingSpec || {}),
-            graphStyle: "reciprocal-interval",
-            diagramIntent,
-            domain: [from, to],
-            range: [0, Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1))],
-            functions,
-            featurePoints: [
-              { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || inverseSquareParsed.closedStart },
-              { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || inverseSquareParsed.closedEnd },
-            ],
-            guideLines: [],
-            shadedRegions: diagramIntent === "shaded-interval"
-              ? hasStructuredShadedRegion ? existingShadedRegions : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }]
-              : [],
-          },
-        }]);
-        if (repaired.length) {
-          breakdown.diagramBlocks = repaired;
+          latex: inverseSquareFn.latex as string | undefined,
+          existingSpec: existingSpec || {},
+        });
+        if (repaired) {
+          breakdown.diagramBlocks = [repaired];
           if (Array.isArray(breakdown.solutionBlocks)) {
-            breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired[0] : block));
+            breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired : block));
           }
           logger.info("[session:repair-inverse-square-interval-diagram]", {
             a: inverseSquareParsed.a,
@@ -301,15 +311,15 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
           });
           return breakdown;
         }
-      }
+    }
     }
   }
   const rationalEvenParsed = parseSimpleRationalEvenInterval(source);
   if (rationalEvenParsed) {
-    const problemIntent = breakdown.problemIntent && breakdown.problemIntent !== "other"
-      ? breakdown.problemIntent
-      : problemIntentFromStructuredHint(source) || breakdown.problemIntent;
-    if ((!breakdown.problemIntent || breakdown.problemIntent === "other") && problemIntent) breakdown.problemIntent = problemIntent;
+    const problemIntent = problemIntentFromStructuredHint(source)
+      || (breakdown.problemIntent && breakdown.problemIntent !== "other" ? breakdown.problemIntent : undefined)
+      || breakdown.problemIntent;
+    if (problemIntent && breakdown.problemIntent !== problemIntent) breakdown.problemIntent = problemIntent;
     const structuredIntent = graphIntentFromProblemIntent(problemIntent);
     const diagramBlocks = Array.isArray(breakdown.diagramBlocks)
       ? breakdown.diagramBlocks
@@ -323,7 +333,7 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
       return record?.diagramType === "function-graph"
         && functions.some((fn) => fn.kind === "rational-even" || String(fn.latex || "").includes("x^2"));
     });
-    if (rationalEvenBlock) {
+    {
       const [from, to] = rationalEvenParsed.interval;
       const yAt = (x: number) => {
         const denominator = (x - rationalEvenParsed.h) * (x - rationalEvenParsed.h) + rationalEvenParsed.b;
@@ -332,7 +342,7 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
       const yFrom = yAt(from);
       const yTo = yAt(to);
       if (Number.isFinite(yFrom) && Number.isFinite(yTo)) {
-        const existingSpec = (rationalEvenBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined;
+        const existingSpec = rationalEvenBlock ? (rationalEvenBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined : undefined;
         const existingShadedRegions = Array.isArray(existingSpec?.shadedRegions) ? existingSpec.shadedRegions : [];
         const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
           const item = region as Record<string, unknown>;
@@ -342,37 +352,29 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
         const diagramIntent = explicitIntent === "shaded-interval" || hasStructuredShadedRegion
           ? "shaded-interval"
           : structuredIntent || "interval-points";
-        const hText = rationalEvenParsed.h === 0 ? "x" : `(x${rationalEvenParsed.h < 0 ? "+" : "-"}${Math.abs(rationalEvenParsed.h)})`;
-        const denominatorLatex = `${hText}^2${rationalEvenParsed.b >= 0 ? "+" : ""}${rationalEvenParsed.b}`;
-        const repaired = normalizeDiagramBlocks([{
-          diagramType: "function-graph",
-          spec: {
-            ...(existingSpec || {}),
-            graphStyle: "reciprocal-interval",
-            diagramIntent,
-            domain: [Math.min(0, from), Math.max(to, from + 1)],
-            range: [0, Math.max(2.5, Math.ceil(Math.max(yFrom, yTo) * 2) / 2 + 0.5)],
-            functions: [{
-              kind: "rational-even",
-              latex: `y=\\frac{${rationalEvenParsed.a}}{${denominatorLatex}}`,
-              points: [],
-              params: { a: rationalEvenParsed.a, h: rationalEvenParsed.h, b: rationalEvenParsed.b, k: 0 },
-              color: "primary",
-            }],
-            featurePoints: [
-              { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: rationalEvenParsed.closedStart },
-              { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: rationalEvenParsed.closedEnd },
-            ],
-            guideLines: [],
-            shadedRegions: diagramIntent === "shaded-interval"
-              ? hasStructuredShadedRegion ? existingShadedRegions : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }]
-              : [],
+        const existingFunctions = Array.isArray(existingSpec?.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
+        const rationalEvenFn = existingFunctions.find((fn) => fn.kind === "rational-even") || {};
+        const repaired = buildFunctionGraphIntentDiagramBlock({
+          mathFamily: "rational-even",
+          problemIntent: normalizeProblemIntent(problemIntent),
+          diagramIntent,
+          renderTemplate: "reciprocal-interval",
+          interval: rationalEvenParsed.interval,
+          closedStart: rationalEvenParsed.closedStart,
+          closedEnd: rationalEvenParsed.closedEnd,
+          params: {
+            a: rationalEvenParsed.a,
+            h: rationalEvenParsed.h,
+            b: rationalEvenParsed.b,
+            k: 0,
           },
-        }]);
-        if (repaired.length) {
-          breakdown.diagramBlocks = repaired;
+          latex: rationalEvenFn.latex as string | undefined,
+          existingSpec: existingSpec || {},
+        });
+        if (repaired) {
+          breakdown.diagramBlocks = [repaired];
           if (Array.isArray(breakdown.solutionBlocks)) {
-            breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired[0] : block));
+            breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired : block));
           }
           logger.info("[session:repair-rational-even-interval-diagram]", {
             a: rationalEvenParsed.a,
@@ -384,16 +386,16 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
           });
           return breakdown;
         }
-      }
+    }
     }
   }
 
   const parsed = parseSimpleReciprocalInterval(source);
   if (!parsed) return breakdown;
-  const problemIntent = breakdown.problemIntent && breakdown.problemIntent !== "other"
-    ? breakdown.problemIntent
-    : problemIntentFromStructuredHint(source) || breakdown.problemIntent;
-  if ((!breakdown.problemIntent || breakdown.problemIntent === "other") && problemIntent) breakdown.problemIntent = problemIntent;
+  const problemIntent = problemIntentFromStructuredHint(source)
+    || (breakdown.problemIntent && breakdown.problemIntent !== "other" ? breakdown.problemIntent : undefined)
+    || breakdown.problemIntent;
+  if (problemIntent && breakdown.problemIntent !== problemIntent) breakdown.problemIntent = problemIntent;
   const structuredIntent = graphIntentFromProblemIntent(problemIntent);
 
   const diagramBlocks = Array.isArray(breakdown.diagramBlocks)
@@ -409,22 +411,17 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
       && spec?.graphStyle === "reciprocal-interval"
       && functions.some((fn) => fn.kind === "rational-reciprocal");
   });
-  if (!reciprocalIntervalBlock) return breakdown;
-
   const [from, to] = parsed.interval;
   const yFrom = parsed.a / (from - parsed.h);
   const yTo = parsed.a / (to - parsed.h);
   if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return breakdown;
 
-  const reciprocalIntervalSpec = (reciprocalIntervalBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined;
+  const reciprocalIntervalSpec = reciprocalIntervalBlock ? (reciprocalIntervalBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined : undefined;
   const existingShadedRegions = Array.isArray(reciprocalIntervalSpec?.shadedRegions) ? reciprocalIntervalSpec.shadedRegions : [];
   const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
     const item = region as Record<string, unknown>;
     return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
   });
-  const shadedRegions = hasStructuredShadedRegion
-    ? existingShadedRegions
-    : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }];
   const existingFunctions = Array.isArray(reciprocalIntervalSpec?.functions) ? reciprocalIntervalSpec.functions as Array<Record<string, unknown>> : [];
   const existingHasSecant = existingFunctions.some((fn) => {
     if (fn.kind !== "linear") return false;
@@ -442,39 +439,30 @@ function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown):
     : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
       ? "shaded-interval"
       : structuredIntent || "interval-points";
-  const functions: Array<Record<string, unknown>> = [{
-    kind: "rational-reciprocal",
-    latex: `y=\\frac{${parsed.a}}{x${parsed.h < 0 ? "+" : parsed.h > 0 ? "-" : ""}${parsed.h ? Math.abs(parsed.h) : ""}}`,
-    points: [],
-    params: { a: parsed.a, h: parsed.h, k: 0, verticalAsymptote: parsed.h, horizontalAsymptote: 0 },
-    color: "primary",
-  }];
-  if (diagramIntent === "secant-interval") {
-    const m = (yTo - yFrom) / (to - from);
-    const b = yFrom - m * from;
-    functions.push({ kind: "linear", latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`, points: [], params: { m, b }, color: "secondary" });
-  }
-
-  const repaired = normalizeDiagramBlocks([{
-    diagramType: "function-graph",
-    spec: {
-      graphStyle: "reciprocal-interval",
-      diagramIntent,
-      domain: [from, to],
-      range: [-1, Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1))],
-      functions,
-      featurePoints: [
-        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: true },
-        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: true },
-      ],
-      shadedRegions: diagramIntent === "shaded-interval" ? shadedRegions : [],
+  const reciprocalFn = existingFunctions.find((fn) => fn.kind === "rational-reciprocal") || {};
+  const repaired = buildFunctionGraphIntentDiagramBlock({
+    mathFamily: "rational-reciprocal",
+    problemIntent: normalizeProblemIntent(problemIntent),
+    diagramIntent,
+    renderTemplate: "reciprocal-interval",
+    interval: parsed.interval,
+    closedStart: parsed.closedStart,
+    closedEnd: parsed.closedEnd,
+    params: {
+      a: parsed.a,
+      h: parsed.h,
+      k: 0,
+      verticalAsymptote: parsed.h,
+      horizontalAsymptote: 0,
     },
-  }]);
-  if (!repaired.length) return breakdown;
+    latex: reciprocalFn.latex as string | undefined,
+    existingSpec: reciprocalIntervalSpec || {},
+  });
+  if (!repaired) return breakdown;
 
-  breakdown.diagramBlocks = repaired;
+  breakdown.diagramBlocks = [repaired];
   if (Array.isArray(breakdown.solutionBlocks)) {
-    breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired[0] : block));
+    breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired : block));
   }
   logger.info("[session:repair-reciprocal-interval-diagram]", {
     a: parsed.a,

@@ -1,7 +1,7 @@
 import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
-import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
+import { buildFunctionGraphIntentDiagramBlock, normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
 import { getGeminiClient } from "./core/client.js";
 import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
@@ -312,6 +312,11 @@ function problemIntentFromStructuredHint(source: string): ProblemIntent | null {
   return null;
 }
 
+function hasStructuredShadedIntervalHint(source: string): boolean {
+  const compact = normalizeDigits(`${source || ""}`).toLowerCase().replace(/[\s_]+/g, "-");
+  return /(^|[^a-z])shaded-interval([^a-z]|$)/.test(compact);
+}
+
 interface JsonGenerationConfig<T> {
   prompt: string;
   options: AIRequestOptions;
@@ -460,8 +465,10 @@ function formatCompactNumber(value: number): string {
 function repairDiagramTaskFinalAnswer(
   finalAnswer: string,
   diagramBlocks: ReturnType<typeof normalizeDiagramBlocks>,
+  source = "",
 ): string {
-  if (!isFallbackContent(finalAnswer)) return finalAnswer;
+  const forceShadedAnswer = hasStructuredShadedIntervalHint(source);
+  if (!forceShadedAnswer && !isFallbackContent(finalAnswer)) return finalAnswer;
 
   const graphBlock = diagramBlocks.find((block) => {
     const spec = block.spec as Record<string, unknown> | undefined;
@@ -668,7 +675,7 @@ function normalizeSolutionFirstPayload(
   let repairedFinalAnswer = repairGeneratedMathText(payload.finalAnswer);
 
   const diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
-  repairedFinalAnswer = repairDiagramTaskFinalAnswer(repairedFinalAnswer, diagramBlocks);
+  repairedFinalAnswer = repairDiagramTaskFinalAnswer(repairedFinalAnswer, diagramBlocks, `${problem}\n${payload.problem || ""}`);
   const afterRepair = completeDanglingSolutionText(repairGeneratedMathText(afterSanitize), repairedFinalAnswer);
 
   // Debug: trace every stage of solutionText pipeline to catch corruption early
@@ -684,15 +691,17 @@ function normalizeSolutionFirstPayload(
     normalized: summarizeDiagramBlocksForLog(diagramBlocks),
   });
 
+  const structuredProblemIntent = problemIntentFromStructuredHint(problem);
   const result: ProblemSolutionFirst = {
     ...payload,
     version: 3,
     mode: "solution-first",
     problem: payload.problem?.trim() || problem,
     subject: payload.subject?.trim() || subject,
-    problemIntent: isProblemIntent(payload.problemIntent) && payload.problemIntent !== "other"
+    problemIntent: structuredProblemIntent
+      || (isProblemIntent(payload.problemIntent) && payload.problemIntent !== "other"
       ? payload.problemIntent
-      : problemIntentFromStructuredHint(`${problem}\n${payload.problem || ""}`) || "other",
+      : problemIntentFromStructuredHint(`${problem}\n${payload.problem || ""}`) || "other"),
     finalAnswer: repairedFinalAnswer,
     solutionText: afterRepair,
     solutionFormat: "markdown-latex",
@@ -723,7 +732,7 @@ Diagram spec examples:
 - function-graph reciprocal average-rate/secant: use problemIntent="average-rate" and {"graphStyle":"reciprocal-interval","diagramIntent":"secant-interval","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"},{"kind":"linear","params":{"m":-1.5,"b":4.5},"latex":"y=-1.5x+4.5","color":"secondary"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
 - function-graph reciprocal integral/area: use problemIntent="integral" and diagramIntent="shaded-interval"; include shadedRegions [{"from":a,"to":b,"baseline":0,"functionIndex":0,"color":"primary"}].
 - function-graph trigonometric textbook wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"},{"orientation":"horizontal","value":1,"from":0,"to":1.5708,"color":"focus"},{"orientation":"horizontal","value":-1,"from":0,"to":4.71239,"color":"focus"}]}
-- solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","base":"A","height":"h","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
+- solid-geometry: {"shape":"cylinder"|"cone"|"sphere"|"cube"|"cuboid"|"pyramid"|"prism"|"frustum","params":{"r":4,"h":10}} — use named math params per shape: cylinder/cone→{r,h}; sphere→{r}; cube→{a}; cuboid→{l,w,h}; pyramid→{a,h}; prism→{a,h}; frustum→{r,R,h}. Do NOT use a dimensions field.
 - tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
 
 const KHMER_DIGITS: Record<string, string> = {
@@ -761,25 +770,47 @@ function firstNumberAfterLabel(source: string, labelPattern: RegExp): number | n
   return Number.isFinite(value) ? value : null;
 }
 
-function parseSimpleReciprocalProblem(source: string): { a: number; h: number; interval: [number, number] } | null {
+function parseSimpleReciprocalProblem(source: string): {
+  a: number;
+  h: number;
+  interval: [number, number];
+  closedStart: boolean;
+  closedEnd: boolean;
+} | null {
   const normalized = normalizeDigits(source).replace(/\s+/g, "");
-  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{x(?:([+-])(\d+(?:\.\d+)?))?\}/i);
-  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?(?:x(?:([+-])(\d+(?:\.\d+)?))?)\)?/i);
+  const parseDenominator = (denominator: string): { h: number; scale: number } | null => {
+    const clean = denominator.replace(/^\((.*)\)$/, "$1").replace(/\*/g, "");
+    const match = clean.match(/^([+-]?(?:\d+(?:\.\d+)?)?)x(?:(\+|-)(\d+(?:\.\d+)?))?$/i);
+    if (!match) return null;
+    const scale = match[1] === "" || match[1] === "+" ? 1 : match[1] === "-" ? -1 : Number(match[1]);
+    const offsetMagnitude = match[3] ? Number(match[3]) : 0;
+    if (!Number.isFinite(scale) || Math.abs(scale) < 0.0001 || !Number.isFinite(offsetMagnitude)) return null;
+    const offset = match[2] === "-" ? -offsetMagnitude : offsetMagnitude;
+    return { h: -offset / scale, scale };
+  };
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{([^{}]+)\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?([^;)]+?)\)?(?=;|[\[(]|$)/i);
   const reciprocalMatch = latexMatch || slashMatch;
   if (!reciprocalMatch) return null;
-  const a = Number(reciprocalMatch[1]);
-  const sign = reciprocalMatch[2];
-  const shiftRaw = reciprocalMatch[3];
-  const shift = shiftRaw ? Number(shiftRaw) : 0;
-  const h = sign === "+" ? -shift : shift;
-  const intervalMatches = Array.from(normalized.matchAll(/[\[(]([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)[\])]/g));
+  const numerator = Number(reciprocalMatch[1]);
+  const denominator = parseDenominator(reciprocalMatch[2]);
+  if (!Number.isFinite(numerator) || !denominator) return null;
+  const a = numerator / denominator.scale;
+  const h = denominator.h;
+  const intervalMatches = Array.from(normalized.matchAll(/([\[(])([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)([\])])/g));
   const intervalMatch = intervalMatches.find((match) => {
-    const left = Number(match[1]);
-    const right = Number(match[2]);
+    const left = Number(match[2]);
+    const right = Number(match[3]);
     return Number.isFinite(left) && Number.isFinite(right) && left < right && Math.abs(left - h) > 0.0001 && Math.abs(right - h) > 0.0001;
   });
   if (!Number.isFinite(a) || !Number.isFinite(h) || !intervalMatch) return null;
-  return { a, h, interval: [Number(intervalMatch[1]), Number(intervalMatch[2])] };
+  return {
+    a,
+    h,
+    interval: [Number(intervalMatch[2]), Number(intervalMatch[3])],
+    closedStart: intervalMatch[1] === "[",
+    closedEnd: intervalMatch[4] === "]",
+  };
 }
 
 function parseSimpleRationalEvenProblem(source: string): {
@@ -1607,23 +1638,19 @@ function repairReciprocalIntervalDiagramBlocks(
     const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
     return functions.some((fn) => fn.kind === "rational-reciprocal");
   });
-  if (!reciprocalBlock) return blocks;
 
   const [from, to] = parsed.interval;
   const yFrom = parsed.a / (from - parsed.h);
   const yTo = parsed.a / (to - parsed.h);
   if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
 
-  const existingSpec = reciprocalBlock.spec as Record<string, unknown>;
+  const existingSpec = reciprocalBlock?.spec as Record<string, unknown> | undefined || {};
   const existingFunctions = Array.isArray(existingSpec.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
   const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
   const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
     const item = region as Record<string, unknown>;
     return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
   });
-  const shadedRegions = hasStructuredShadedRegion
-    ? existingShadedRegions
-    : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }];
   const existingHasSecant = existingFunctions.some((fn) => {
     if (fn.kind !== "linear") return false;
     const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
@@ -1641,10 +1668,15 @@ function repairReciprocalIntervalDiagramBlocks(
       ? "shaded-interval"
       : structuredIntent || "interval-points";
   const reciprocalFn = existingFunctions.find((fn) => fn.kind === "rational-reciprocal") || {};
-  const baseFunctions: Array<Record<string, unknown>> = [{
-    ...reciprocalFn,
-    kind: "rational-reciprocal",
-    latex: reciprocalFn.latex || `y=\\frac{${parsed.a}}{x${parsed.h < 0 ? "+" : parsed.h > 0 ? "-" : ""}${parsed.h ? Math.abs(parsed.h) : ""}}`,
+
+  const repaired = buildFunctionGraphIntentDiagramBlock({
+    mathFamily: "rational-reciprocal",
+    problemIntent,
+    diagramIntent,
+    renderTemplate: "reciprocal-interval",
+    interval: parsed.interval,
+    closedStart: parsed.closedStart,
+    closedEnd: parsed.closedEnd,
     params: {
       a: parsed.a,
       h: parsed.h,
@@ -1652,38 +1684,9 @@ function repairReciprocalIntervalDiagramBlocks(
       verticalAsymptote: parsed.h,
       horizontalAsymptote: 0,
     },
-    points: [],
-  }];
-
-  if (diagramIntent === "secant-interval") {
-    const m = (yTo - yFrom) / (to - from);
-    const b = yFrom - m * from;
-    baseFunctions.push({
-      kind: "linear",
-      latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`,
-      params: { m, b },
-      color: "secondary",
-    });
-  }
-
-  const yMax = Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1));
-  const repaired = normalizeDiagramBlocks([{
-    diagramType: "function-graph",
-    spec: {
-      ...existingSpec,
-      graphStyle: "reciprocal-interval",
-      diagramIntent,
-      domain: [from, to],
-      range: [-1, yMax],
-      functions: baseFunctions,
-      featurePoints: [
-        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: true },
-        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: true },
-      ],
-      guideLines: [],
-      shadedRegions: diagramIntent === "shaded-interval" ? shadedRegions : [],
-    },
-  }]);
+    latex: reciprocalFn.latex as string | undefined,
+    existingSpec,
+  });
 
   logger.info("[diagramBlocks:repair-reciprocal-interval]", {
     functionA: parsed.a,
@@ -1693,7 +1696,7 @@ function repairReciprocalIntervalDiagramBlocks(
     featurePoints: [[from, yFrom], [to, yTo]],
   });
 
-  return repaired.length ? repaired : blocks;
+  return repaired ? [repaired] : blocks;
 }
 
 function repairRationalEvenIntervalDiagramBlocks(
@@ -1713,7 +1716,6 @@ function repairRationalEvenIntervalDiagramBlocks(
     const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
     return functions.some((fn) => fn.kind === "rational-even");
   });
-  if (!rationalEvenBlock) return blocks;
 
   const [from, to] = parsed.interval;
   const yAt = (x: number) => {
@@ -1724,7 +1726,7 @@ function repairRationalEvenIntervalDiagramBlocks(
   const yTo = yAt(to);
   if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
 
-  const existingSpec = rationalEvenBlock.spec as Record<string, unknown>;
+  const existingSpec = rationalEvenBlock?.spec as Record<string, unknown> | undefined || {};
   const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
   const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
     const item = region as Record<string, unknown>;
@@ -1734,36 +1736,25 @@ function repairRationalEvenIntervalDiagramBlocks(
   const diagramIntent = explicitIntent === "shaded-interval" || hasStructuredShadedRegion
     ? "shaded-interval"
     : structuredIntent || "interval-points";
-  const shadedRegions = hasStructuredShadedRegion
-    ? existingShadedRegions
-    : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }];
-  const yMax = Math.max(2.5, Math.ceil(Math.max(yFrom, yTo) * 2) / 2 + 0.5);
-  const hText = parsed.h === 0 ? "x" : `(x${parsed.h < 0 ? "+" : "-"}${Math.abs(parsed.h)})`;
-  const denominatorLatex = `${hText}^2${parsed.b >= 0 ? "+" : ""}${parsed.b}`;
-
-  const repaired = normalizeDiagramBlocks([{
-    diagramType: "function-graph",
-    spec: {
-      ...existingSpec,
-      graphStyle: "reciprocal-interval",
-      diagramIntent,
-      domain: [Math.min(0, from), Math.max(to, from + 1)],
-      range: [0, yMax],
-      functions: [{
-        kind: "rational-even",
-        latex: `y=\\frac{${parsed.a}}{${denominatorLatex}}`,
-        params: { a: parsed.a, h: parsed.h, b: parsed.b, k: 0 },
-        points: [],
-        color: "primary",
-      }],
-      featurePoints: [
-        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: parsed.closedStart },
-        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: parsed.closedEnd },
-      ],
-      guideLines: [],
-      shadedRegions: diagramIntent === "shaded-interval" ? shadedRegions : [],
+  const existingFunctions = Array.isArray(existingSpec.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
+  const rationalEvenFn = existingFunctions.find((fn) => fn.kind === "rational-even") || {};
+  const repaired = buildFunctionGraphIntentDiagramBlock({
+    mathFamily: "rational-even",
+    problemIntent,
+    diagramIntent,
+    renderTemplate: "reciprocal-interval",
+    interval: parsed.interval,
+    closedStart: parsed.closedStart,
+    closedEnd: parsed.closedEnd,
+    params: {
+      a: parsed.a,
+      h: parsed.h,
+      b: parsed.b,
+      k: 0,
     },
-  }]);
+    latex: rationalEvenFn.latex as string | undefined,
+    existingSpec,
+  });
 
   logger.info("[diagramBlocks:repair-rational-even-interval]", {
     functionA: parsed.a,
@@ -1774,7 +1765,7 @@ function repairRationalEvenIntervalDiagramBlocks(
     featurePoints: [[from, yFrom], [to, yTo]],
   });
 
-  return repaired.length ? repaired : blocks;
+  return repaired ? [repaired] : blocks;
 }
 
 function repairInverseSquareIntervalDiagramBlocks(
@@ -1794,7 +1785,6 @@ function repairInverseSquareIntervalDiagramBlocks(
     const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
     return functions.some((fn) => fn.kind === "inverse-square");
   });
-  if (!inverseBlock) return blocks;
 
   const [from, to] = parsed.interval;
   const yAt = (x: number) => {
@@ -1805,7 +1795,7 @@ function repairInverseSquareIntervalDiagramBlocks(
   const yTo = yAt(to);
   if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
 
-  const existingSpec = inverseBlock.spec as Record<string, unknown>;
+  const existingSpec = inverseBlock?.spec as Record<string, unknown> | undefined || {};
   const existingFunctions = Array.isArray(existingSpec.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
   const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
   const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
@@ -1828,46 +1818,26 @@ function repairInverseSquareIntervalDiagramBlocks(
     : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
       ? "shaded-interval"
       : structuredIntent || "interval-points";
-  const hText = parsed.h === 0 ? "x" : `(x${parsed.h < 0 ? "+" : "-"}${Math.abs(parsed.h)})`;
-  const functions: Array<Record<string, unknown>> = [{
-    kind: "inverse-square",
-    latex: `y=\\frac{${parsed.a}}{${hText}^2}`,
-    params: { a: parsed.a, h: parsed.h, k: 0, verticalAsymptote: parsed.h, horizontalAsymptote: 0, p: 2 },
-    points: [],
-    color: "primary",
-  }];
-
-  if (diagramIntent === "secant-interval") {
-    const m = (yTo - yFrom) / (to - from);
-    const b = yFrom - m * from;
-    functions.push({
-      kind: "linear",
-      latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`,
-      params: { m, b },
-      points: [],
-      color: "secondary",
-    });
-  }
-
-  const repaired = normalizeDiagramBlocks([{
-    diagramType: "function-graph",
-    spec: {
-      ...existingSpec,
-      graphStyle: "reciprocal-interval",
-      diagramIntent,
-      domain: [from, to],
-      range: [0, Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1))],
-      functions,
-      featurePoints: [
-        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || parsed.closedStart },
-        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || parsed.closedEnd },
-      ],
-      guideLines: [],
-      shadedRegions: diagramIntent === "shaded-interval"
-        ? hasStructuredShadedRegion ? existingShadedRegions : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }]
-        : [],
+  const inverseSquareFn = existingFunctions.find((fn) => fn.kind === "inverse-square") || {};
+  const repaired = buildFunctionGraphIntentDiagramBlock({
+    mathFamily: "inverse-square",
+    problemIntent,
+    diagramIntent,
+    renderTemplate: "reciprocal-interval",
+    interval: parsed.interval,
+    closedStart: parsed.closedStart,
+    closedEnd: parsed.closedEnd,
+    params: {
+      a: parsed.a,
+      h: parsed.h,
+      k: 0,
+      verticalAsymptote: parsed.h,
+      horizontalAsymptote: 0,
+      p: 2,
     },
-  }]);
+    latex: inverseSquareFn.latex as string | undefined,
+    existingSpec,
+  });
 
   logger.info("[diagramBlocks:repair-inverse-square-interval]", {
     functionA: parsed.a,
@@ -1877,7 +1847,7 @@ function repairInverseSquareIntervalDiagramBlocks(
     featurePoints: [[from, yFrom], [to, yTo]],
   });
 
-  return repaired.length ? repaired : blocks;
+  return repaired ? [repaired] : blocks;
 }
 
 type SimpleRationalInequality = {
@@ -2590,13 +2560,29 @@ const diagramBlockSchema = {
   items: {
     type: Type.OBJECT,
     properties: {
-      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "venn-diagram", "solid-geometry"] },
+      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "venn-diagram", "solid-geometry", "pie-chart", "tree-diagram"] },
+      mathFamily: {
+        type: Type.STRING,
+        nullable: true,
+        enum: ["linear", "quadratic", "cubic", "polynomial", "absolute-value", "rational-reciprocal", "inverse-square", "rational-even", "exponential", "logarithmic", "square-root", "trigonometric", "piecewise", "number-line", "sign-table", "venn", "geometry", "solid-geometry", "pie-chart", "tree-diagram", "unknown"],
+      },
+      problemIntent: {
+        type: Type.STRING,
+        nullable: true,
+        enum: ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"],
+      },
+      diagramIntent: {
+        type: Type.STRING,
+        nullable: true,
+        enum: ["interval-points", "secant-interval", "shaded-interval", "point-check", "function-value", "variation", "range", "basic-graph", "unknown"],
+      },
+      renderTemplate: { type: Type.STRING, nullable: true },
       spec: { type: Type.OBJECT },
     },
   },
 };
 
-function inferSolidGeometryBlocks(
+export function inferSolidGeometryBlocks(
   problem: string,
   solutionText: string,
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
@@ -2610,15 +2596,15 @@ function inferSolidGeometryBlocks(
   // 1. Cuboid / rectangular prism space diagonal
   if (/(cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(source)) {
     const length = firstNumberAfter(source, [
-      /(?:length|ប្រវែង|l)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\blength\b|ប្រវែង|\bl\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bl\s*=\s*(\d+(?:\.\d+)?)/i,
     ]);
     const width = firstNumberAfter(source, [
-      /(?:width|ទទឹង|w)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bwidth\b|ទទឹង|\bw\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bw\s*=\s*(\d+(?:\.\d+)?)/i,
     ]);
     const height = firstNumberAfter(source, [
-      /(?:height|កម្ពស់|h)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bheight\b|កម្ពស់|\bh\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bh\s*=\s*(\d+(?:\.\d+)?)/i,
     ]);
     const lVal = Number.isFinite(length) ? length : 8;
@@ -2628,13 +2614,7 @@ function inferSolidGeometryBlocks(
       diagramType: "solid-geometry",
       spec: {
         shape: "cuboid",
-        dimensions: { width: lVal, depth: wVal, height: hVal },
-        labels: {
-          width: `${lVal}`,
-          depth: `${wVal}`,
-          height: `${hVal}`,
-          diagonal: "D",
-        },
+        params: { l: lVal, w: wVal, h: hVal },
         showSpaceDiagonal: true,
       },
     }]);
@@ -2642,11 +2622,11 @@ function inferSolidGeometryBlocks(
 
   // 2. Cone frustum
   if (/(frustum|truncated\s+cone)/i.test(source)) {
-    const topRadius = firstNumberAfterLabel(source, /(?:top\s+radius|small\s+radius|កាំខាងលើ)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+    const topRadius = firstNumberAfterLabel(source, /(?:\btop\s+radius\b|\bsmall\s+radius\b|កាំខាងលើ|\br\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
       ?? firstNumberAfterLabel(source, /\br\s*=\s*(\d+(?:\.\d+)?)/);
-    const bottomRadius = firstNumberAfterLabel(source, /(?:bottom\s+radius|large\s+radius|កាំខាងក្រោម)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+    const bottomRadius = firstNumberAfterLabel(source, /(?:\bbottom\s+radius\b|\blarge\s+radius\b|កាំខាងក្រោម|\bR\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
       ?? firstNumberAfterLabel(source, /\bR\s*=\s*(\d+(?:\.\d+)?)/);
-    const height = firstNumberAfterLabel(source, /(?:height|កម្ពស់)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
+    const height = firstNumberAfterLabel(source, /(?:\bheight\b|កម្ពស់|\bh\b)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i)
       ?? firstNumberAfterLabel(source, /\bh\s*=\s*(\d+(?:\.\d+)?)/i);
     const rVal = Number.isFinite(topRadius) ? topRadius : 3;
     const RVal = Number.isFinite(bottomRadius) ? bottomRadius : 6;
@@ -2655,12 +2635,7 @@ function inferSolidGeometryBlocks(
       diagramType: "solid-geometry",
       spec: {
         shape: "frustum",
-        dimensions: { topRadius: rVal, bottomRadius: RVal, height: hVal },
-        labels: {
-          topRadius: `r=${rVal}`,
-          bottomRadius: `R=${RVal}`,
-          height: `h=${hVal}`,
-        },
+        params: { r: rVal, R: RVal, h: hVal },
       },
     }]);
   }
@@ -2668,11 +2643,11 @@ function inferSolidGeometryBlocks(
   // 3. Cylinder or Cone
   if (/(cylinder|ស៊ីឡាំង|cone|កោន)/i.test(source)) {
     const radius = firstNumberAfter(source, [
-      /(?:radius|កាំ|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bradius\b|កាំ|\br\b)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\br\s*=\s*(\d+(?:\.\d+)?)/i
     ]);
     const height = firstNumberAfter(source, [
-      /(?:height|កម្ពស់|h)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bheight\b|កម្ពស់|\bh\b)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bh\s*=\s*(\d+(?:\.\d+)?)/i
     ]);
     const shape = /(cone|កោន)/i.test(source) ? "cone" : "cylinder";
@@ -2682,8 +2657,7 @@ function inferSolidGeometryBlocks(
       diagramType: "solid-geometry",
       spec: {
         shape,
-        dimensions: { radius: rVal, height: hVal },
-        labels: { r: `r=${rVal}`, h: `h=${hVal}` }
+        params: { r: rVal, h: hVal },
       }
     }]);
   }
@@ -2691,7 +2665,7 @@ function inferSolidGeometryBlocks(
   // 4. Sphere
   if (/(sphere|ស្វ៊ែរ)/i.test(source)) {
     const radius = firstNumberAfter(source, [
-      /(?:radius|កាំ|R|r)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bradius\b|កាំ|\bR\b|\br\b)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bR\s*=\s*(\d+(?:\.\d+)?)/i,
       /\br\s*=\s*(\d+(?:\.\d+)?)/i
     ]);
@@ -2700,8 +2674,7 @@ function inferSolidGeometryBlocks(
       diagramType: "solid-geometry",
       spec: {
         shape: "sphere",
-        dimensions: { radius: rVal },
-        labels: { R: `R=${rVal}` }
+        params: { r: rVal },
       }
     }]);
   }
@@ -2709,7 +2682,7 @@ function inferSolidGeometryBlocks(
   // 5. Cube or Pyramid
   if (/(cube|គូប|pyramid|ពីរ៉ាមីត)/i.test(source) || hasSolidBlock) {
     const edge = firstNumberAfter(source, [
-      /(?:edge|side|ជ្រុង|ទ្រនុង|a)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+      /(?:\bedge\b|\bside\b|ជ្រុង|ទ្រនុង|\ba\b)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\ba\s*=\s*(\d+(?:\.\d+)?)/i
     ]);
     const shape = /(pyramid|ពីរ៉ាមីត)/i.test(source) ? "pyramid" : "cube";
@@ -2718,8 +2691,7 @@ function inferSolidGeometryBlocks(
       diagramType: "solid-geometry",
       spec: {
         shape,
-        dimensions: { width: aVal, height: aVal, depth: aVal * 0.8 },
-        labels: { edge: `a=${aVal}` }
+        params: { a: aVal },
       }
     }]);
   }
@@ -2918,6 +2890,10 @@ If a diagram helps, return exactly ONE diagramBlock (choose the single most help
   "diagramBlocks": [
     {
       "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart" | "tree-diagram",
+      "mathFamily": "linear" | "quadratic" | "rational-reciprocal" | "inverse-square" | "rational-even" | "trigonometric" | "geometry" | "number-line" | "unknown",
+      "problemIntent": "average-rate" | "point-membership" | "range" | "integral" | "function-value" | "variation" | "other",
+      "diagramIntent": "interval-points" | "secant-interval" | "shaded-interval" | "point-check" | "function-value" | "variation" | "range" | "basic-graph",
+      "renderTemplate": "reciprocal-interval" | "trig-wave" | "cartesian-standard" | string,
       "spec": { ... }
     }
   ]
@@ -2932,6 +2908,12 @@ DIAGRAM SELECTION RULES (CRITICAL):
    - Drawing, sketching, or analyzing any linear, quadratic, cubic, exponential, logarithmic, rational, or trigonometric curve.
    Plotting the actual curve is infinitely more helpful to the student than showing a sign table.
 3. In "function-graph" specs, always specify the "latex" representation of the function (e.g., "y = x^3 - 6x^2 + 9x") and supply a sensible domain (e.g., [-1, 5]) and range (e.g., [-5, 5]) that clearly captures any extrema or inflection points.
+4. Treat diagram metadata as a structured routing contract:
+   - mathFamily describes the mathematical object/formula family, not the requested task.
+   - problemIntent describes the requested task.
+   - diagramIntent describes the visual primitive to draw.
+   - renderTemplate describes the textbook/layout preset when one is needed.
+   Example: average-rate for f(x)=4/x^2 should use mathFamily="inverse-square", problemIntent="average-rate", diagramIntent="secant-interval", then include a curve function, endpoint featurePoints, and a linear secant function.
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -3248,9 +3230,11 @@ Return JSON with:
   });
 
   const fallbackTitle = problemHint.slice(0, 70) || "New Solution";
-  const extractedProblemIntent = isProblemIntent((data as any)?.problemIntent) && (data as any).problemIntent !== "other"
-    ? (data as any).problemIntent
-    : problemIntentFromStructuredHint(`${problemHint}\n${rawSolution}`) || "other";
+  const structuredProblemIntent = problemIntentFromStructuredHint(problemHint);
+  const extractedProblemIntent = structuredProblemIntent
+    || (isProblemIntent((data as any)?.problemIntent) && (data as any).problemIntent !== "other"
+      ? (data as any).problemIntent
+      : problemIntentFromStructuredHint(`${problemHint}\n${rawSolution}`) || "other");
   return {
     title: `${data?.title ?? ""}`.trim() || fallbackTitle,
     subject: `${data?.subject ?? ""}`.trim() || options.subject || "Math",
@@ -3275,11 +3259,18 @@ export async function solveProblemSolutionFirst(
   const imageContext = imagePart
     ? `The problem was extracted from an attached image. Refer to both image and text.\n\n`
     : "";
+  const structuredProblemIntent = problemIntentFromStructuredHint(problem);
+  const structuredTaskDirective = hasStructuredShadedIntervalHint(problem)
+    ? "\nStructured task intent: shaded-interval. Treat this as authoritative: identify the curve portion for the given x-interval and do not solve it as a range problem or as an area/integral value.\n"
+    : structuredProblemIntent
+      ? `\nStructured task intent: ${structuredProblemIntent}. Treat this as authoritative when deciding what to solve.\n`
+    : "";
 
   // ── Phase 1: Free-form solve — no JSON schema, no truncation risk ─────────
   const phase1Prompt = `${imageContext}Solve this problem completely and write a professional solution.
 
 Problem: "${problem}"
+${structuredTaskDirective}
 
 Requirements:
 - All prose MUST be in ${targetLangName}.
@@ -3371,7 +3362,8 @@ Rules:
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 19. problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
-20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".`;
+20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
+21. Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use these as routing fields, then put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.`;
 
   const schema = {
     type: Type.OBJECT,
@@ -3580,7 +3572,8 @@ Rules for solutionText:
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 - problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
-- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".
+- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
+- Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use metadata for routing and put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 - Diagram spec examples:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
   sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}

@@ -336,6 +336,13 @@ function evalFnAt(fn: Record<string, unknown>, x: number): number {
     if (Math.abs(dx) < 0.0001) return Number.NaN;
     return asFiniteNumber(p.a, 1) / (dx * dx) + asFiniteNumber(p.k ?? p.horizontalAsymptote, 0);
   }
+  if (kind === "rational-even") {
+    const h = asFiniteNumber(p.h, 0);
+    const b = asFiniteNumber(p.b, 1);
+    const denominator = (x - h) * (x - h) + b;
+    if (Math.abs(denominator) < 0.0001) return Number.NaN;
+    return asFiniteNumber(p.a, 1) / denominator + asFiniteNumber(p.k, 0);
+  }
   if (kind === "exponential") return asFiniteNumber(p.a, 1) * Math.pow(asFiniteNumber(p.b, Math.E), x);
   if (kind === "sine" || kind === "trig-sine") return asFiniteNumber(p.a, 1) * Math.sin(asFiniteNumber(p.b, 1) * x + asFiniteNumber(p.c, 0)) + asFiniteNumber(p.d, 0);
   if (kind === "cosine" || kind === "trig-cosine") return asFiniteNumber(p.a, 1) * Math.cos(asFiniteNumber(p.b, 1) * x + asFiniteNumber(p.c, 0)) + asFiniteNumber(p.d, 0);
@@ -429,6 +436,39 @@ function simpleInverseSquareParamsFromLatex(value: unknown): { a: number; h: num
     const a = Number(slashMatch[1]);
     const h = parseDenominator(slashMatch[2]);
     return Number.isFinite(a) && h !== null ? { a, h, k: 0, p: 2 } : null;
+  }
+  return null;
+}
+
+function simpleRationalEvenParamsFromLatex(value: unknown): { a: number; h: number; b: number; k: number } | null {
+  const compact = String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[²]/g, "^2")
+    .replace(/\\?left|\\?right/g, "")
+    .replace(/^(?:[a-z]\([a-z]\)|[a-z])=/, "");
+  const parseDenominator = (denominator: string): { h: number; b: number } | null => {
+    const clean = denominator.replace(/^\((.*)\)$/, "$1");
+    const match = clean.match(/^\(?x(?:(\+|-)(\d+(?:\.\d+)?))?\)?(?:\^2|\^\{2\})(?:(\+|-)(\d+(?:\.\d+)?))$/);
+    if (!match) return null;
+    const shift = match[2] ? Number(match[2]) : 0;
+    const bMagnitude = Number(match[4]);
+    if (!Number.isFinite(shift) || !Number.isFinite(bMagnitude)) return null;
+    const h = match[1] === "+" ? -shift : shift;
+    const b = match[3] === "-" ? -bMagnitude : bMagnitude;
+    return Math.abs(b) > 0.0001 ? { h, b } : null;
+  };
+  const fracMatch = compact.match(/^\\frac\{([+-]?\d+(?:\.\d+)?)\}\{(.+)\}$/);
+  if (fracMatch) {
+    const a = Number(fracMatch[1]);
+    const denominator = parseDenominator(fracMatch[2]);
+    return Number.isFinite(a) && denominator ? { a, h: denominator.h, b: denominator.b, k: 0 } : null;
+  }
+  const slashMatch = compact.match(/^([+-]?\d+(?:\.\d+)?)\/(.+)$/);
+  if (slashMatch) {
+    const a = Number(slashMatch[1]);
+    const denominator = parseDenominator(slashMatch[2]);
+    return Number.isFinite(a) && denominator ? { a, h: denominator.h, b: denominator.b, k: 0 } : null;
   }
   return null;
 }
@@ -897,6 +937,11 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           horizontalAsymptote: inverseSquareFromLatex.k,
         };
       }
+      const rationalEvenFromLatex = simpleRationalEvenParamsFromLatex(latex);
+      if (rationalEvenFromLatex) {
+        kind = "rational-even";
+        params = rationalEvenFromLatex;
+      }
       const reciprocalFromLatex = simpleReciprocalParamsFromLatex(latex);
       if (reciprocalFromLatex) {
         kind = "rational-reciprocal";
@@ -982,7 +1027,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             if (fnKind === "line") fnKind = "linear";
 
             const fnParams = fnObj.params && typeof fnObj.params === "object" ? fnObj.params : undefined;
-            if (!["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "inverse-square", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
+            if (!["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "inverse-square", "rational-even", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine"].includes(fnKind)) return null;
             return {
               domain,
               function: {
@@ -994,7 +1039,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           .filter(Boolean);
       }
 
-      const KNOWN_KINDS = ["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "inverse-square", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"];
+      const KNOWN_KINDS = ["linear", "quadratic", "cubic", "absolute-value", "rational-reciprocal", "inverse-square", "rational-even", "exponential", "logarithmic", "square-root", "sine", "trig-sine", "cosine", "trig-cosine", "piecewise"];
       if (!points.length && !KNOWN_KINDS.includes(kind)) {
         // Explicit normal-distribution kind with params { mean, stdDev/std/sigma }
         let gauss: { mean: number; std: number } | null = null;
@@ -1317,18 +1362,33 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       && Number.isFinite(region.to)
       && Math.abs(region.from - region.to) > 0.0001
     ));
-    const intervalXs = shadedInterval
-      ? [shadedInterval.from, shadedInterval.to].sort((a, b) => a - b)
-      : rawDomain
-        .slice(0, 2)
-        .map((value) => asFiniteNumber(value, Number.NaN))
-        .filter(Number.isFinite)
-        .sort((a, b) => a - b);
     const reciprocalYAt = (x: number) => (
       reciprocalParsed && Math.abs(x - reciprocalParsed.h) > 0.0001
         ? reciprocalParsed.a / (x - reciprocalParsed.h) + reciprocalParsed.k
         : Number.NaN
     );
+    const featurePointXs = normalizedFeaturePoints
+      .flatMap((point) => {
+        const item = point as Record<string, unknown>;
+        const coordinates = item.point as [number, number] | undefined;
+        if (!Array.isArray(coordinates)) return [];
+        const [x, y] = coordinates;
+        const expectedY = reciprocalYAt(x);
+        return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(expectedY) && Math.abs(expectedY - y) < 0.08
+          ? [x]
+          : [];
+      })
+      .filter((x, index, list) => list.findIndex((candidate) => Math.abs(candidate - x) < 0.0001) === index)
+      .sort((a, b) => a - b);
+    const intervalXs = shadedInterval
+      ? [shadedInterval.from, shadedInterval.to].sort((a, b) => a - b)
+      : featurePointXs.length >= 2
+        ? [featurePointXs[0], featurePointXs[featurePointXs.length - 1]]
+        : rawDomain
+          .slice(0, 2)
+          .map((value) => asFiniteNumber(value, Number.NaN))
+          .filter(Number.isFinite)
+          .sort((a, b) => a - b);
     const validSecantFunctions = resolvedFunctions.filter((fn) => {
       const item = fn as Record<string, unknown>;
       if (item.kind !== "linear" || intervalXs.length !== 2 || !reciprocalParsed) return false;
@@ -1470,6 +1530,10 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       && Math.abs(asFiniteNumber(params.k ?? params.horizontalAsymptote, 0)) < 0.0001;
   });
   const requestedGraphStyle = String(input.graphStyle || input.template || "");
+  const requestedDiagramIntent = String(input.diagramIntent || "");
+  const diagramIntent = ["interval-points", "secant-interval", "shaded-interval"].includes(requestedDiagramIntent)
+    ? requestedDiagramIntent
+    : undefined;
   const graphStyle = requestedGraphStyle === "removable-rational"
       ? "removable-rational"
     : requestedGraphStyle === "reciprocal-interval" || hasOriginReciprocalFunction
@@ -1507,42 +1571,47 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const item = fn as Record<string, unknown>;
       return item.kind === "rational-reciprocal" && isBasicReciprocalLatex(item.latex);
     }) as Record<string, unknown> | undefined;
-    const reciprocalParams = reciprocalFn?.params && typeof reciprocalFn.params === "object" ? reciprocalFn.params as Record<string, unknown> : {};
-    const reciprocalA = asFiniteNumber(reciprocalParams.a, basicReciprocalNumerator(reciprocalFn?.latex));
-    const reciprocalH = asFiniteNumber(reciprocalParams.h ?? reciprocalParams.verticalAsymptote, 0);
-    const reciprocalK = asFiniteNumber(reciprocalParams.k ?? reciprocalParams.horizontalAsymptote, 0);
-    const reciprocalYAt = (x: number) => Math.abs(x - reciprocalH) < 0.0001 ? Number.NaN : reciprocalA / (x - reciprocalH) + reciprocalK;
-    const existingCurvePoints = resolvedFeaturePoints.filter((point) => {
-      const item = point as Record<string, unknown>;
-      const coordinates = item.point as [number, number] | undefined;
-      if (!Array.isArray(coordinates)) return false;
-      const [x, y] = coordinates;
-      if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x - reciprocalH) < 0.0001) return false;
-      const expectedY = reciprocalYAt(x);
-      return Number.isFinite(expectedY) && Math.abs(expectedY - y) < 0.08;
-    });
-    const shadedInterval = normalizedShadedRegions.find((region) => (
-      region.functionIndex === 0
-      && Number.isFinite(region.from)
-      && Number.isFinite(region.to)
-      && Math.abs(region.from - region.to) > 0.0001
-    ));
-    const endpointXs = shadedInterval
-      ? [shadedInterval.from, shadedInterval.to]
-      : rawDomain;
-    const domainEndpointPoints = endpointXs
-      .filter((x, index, list) => Number.isFinite(x) && list.indexOf(x) === index && Math.abs(x - reciprocalH) > 0.0001)
-      .map((x) => {
-        const y = reciprocalYAt(x);
-        return Number.isFinite(y)
-          ? { point: [x, y] as [number, number], label: `(${fmtCoord(x)}, ${fmtCoord(y)})`, color: "primary", closed: true }
-          : null;
-      })
-      .filter((point): point is { point: [number, number]; label: string; color: string; closed: boolean } => point !== null);
-    void existingCurvePoints;
-    resolvedFeaturePoints = domainEndpointPoints.length
-      ? domainEndpointPoints
-      : [{ point: [reciprocalH + 1, reciprocalYAt(reciprocalH + 1)], label: `(${fmtCoord(reciprocalH + 1)}, ${fmtCoord(reciprocalYAt(reciprocalH + 1))})`, color: "primary", closed: true }];
+    if (reciprocalFn) {
+      const reciprocalParams = reciprocalFn.params && typeof reciprocalFn.params === "object" ? reciprocalFn.params as Record<string, unknown> : {};
+      const reciprocalA = asFiniteNumber(reciprocalParams.a, basicReciprocalNumerator(reciprocalFn.latex));
+      const reciprocalH = asFiniteNumber(reciprocalParams.h ?? reciprocalParams.verticalAsymptote, 0);
+      const reciprocalK = asFiniteNumber(reciprocalParams.k ?? reciprocalParams.horizontalAsymptote, 0);
+      const reciprocalYAt = (x: number) => Math.abs(x - reciprocalH) < 0.0001 ? Number.NaN : reciprocalA / (x - reciprocalH) + reciprocalK;
+      const existingCurvePoints = resolvedFeaturePoints.filter((point) => {
+        const item = point as Record<string, unknown>;
+        const coordinates = item.point as [number, number] | undefined;
+        if (!Array.isArray(coordinates)) return false;
+        const [x, y] = coordinates;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x - reciprocalH) < 0.0001) return false;
+        const expectedY = reciprocalYAt(x);
+        return Number.isFinite(expectedY) && Math.abs(expectedY - y) < 0.08;
+      });
+      const shadedInterval = normalizedShadedRegions.find((region) => (
+        region.functionIndex === 0
+        && Number.isFinite(region.from)
+        && Number.isFinite(region.to)
+        && Math.abs(region.from - region.to) > 0.0001
+      ));
+      const endpointXs = shadedInterval
+        ? [shadedInterval.from, shadedInterval.to]
+        : existingCurvePoints.length >= 2
+          ? []
+          : rawDomain;
+      const domainEndpointPoints = endpointXs
+        .filter((x, index, list) => Number.isFinite(x) && list.indexOf(x) === index && Math.abs(x - reciprocalH) > 0.0001)
+        .map((x) => {
+          const y = reciprocalYAt(x);
+          return Number.isFinite(y)
+            ? { point: [x, y] as [number, number], label: `(${fmtCoord(x)}, ${fmtCoord(y)})`, color: "primary", closed: true }
+            : null;
+        })
+        .filter((point): point is { point: [number, number]; label: string; color: string; closed: boolean } => point !== null);
+      resolvedFeaturePoints = existingCurvePoints.length >= 2
+        ? existingCurvePoints
+        : domainEndpointPoints.length
+        ? domainEndpointPoints
+        : [{ point: [reciprocalH + 1, reciprocalYAt(reciprocalH + 1)], label: `(${fmtCoord(reciprocalH + 1)}, ${fmtCoord(reciprocalYAt(reciprocalH + 1))})`, color: "primary", closed: true }];
+    }
   }
   if (hasBasicReciprocalFunction && graphStyle !== "reciprocal-interval") {
     const reciprocalFn = resolvedFunctions.find((fn) => {
@@ -1640,6 +1709,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     domain: outputDomain,
     range: outputRange,
     graphStyle,
+    ...(diagramIntent ? { diagramIntent } : {}),
     xTicks: outputXTicks,
     yTicks: outputYTicks,
     guideLines: outputGuideLines,

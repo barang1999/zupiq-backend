@@ -57,6 +57,7 @@ export interface SolutionFirstSessionPayload {
   title: string;
   subject: string;
   topic?: string;
+  problemIntent?: string;
   problem: string;
   finalAnswer: string;
   finalAnswerBlocks?: RenderBlock[];

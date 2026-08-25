@@ -256,6 +256,7 @@ export interface ProblemSolutionFirst {
   title: string;
   subject: string;
   topic?: string;
+  problemIntent?: ProblemIntent;
   problem: string;
   finalAnswer: string;
   solutionText: string;
@@ -273,6 +274,42 @@ export interface ProblemSolutionFirst {
   };
   /** Accumulated token usage across all AI phases — for billing/analytics only, not stored in breakdown_json. */
   _usage?: ChatUsage;
+}
+
+type ProblemIntent =
+  | "average-rate"
+  | "point-membership"
+  | "range"
+  | "integral"
+  | "function-value"
+  | "variation"
+  | "other";
+
+function isProblemIntent(value: unknown): value is ProblemIntent {
+  return [
+    "average-rate",
+    "point-membership",
+    "range",
+    "integral",
+    "function-value",
+    "variation",
+    "other",
+  ].includes(String(value || ""));
+}
+
+function problemIntentFromStructuredHint(source: string): ProblemIntent | null {
+  const text = `${source || ""}`;
+  const marker = text.match(/\*{0,2}Problem Intent:?\*{0,2}\s*([a-z-]+)/i);
+  if (marker && isProblemIntent(marker[1])) return marker[1];
+
+  const compact = normalizeDigits(text).toLowerCase().replace(/[\s_]+/g, "-");
+  if (/(^|[^a-z])(?:secant-interval|secant-slope|average-rate)([^a-z]|$)/.test(compact)) return "average-rate";
+  if (/(^|[^a-z])(?:shaded-interval|integral|area-under-curve)([^a-z]|$)/.test(compact)) return "integral";
+  if (/(^|[^a-z])point-membership([^a-z]|$)/.test(compact)) return "point-membership";
+  if (/(^|[^a-z])function-value([^a-z]|$)/.test(compact)) return "function-value";
+  if (/(^|[^a-z])variation([^a-z]|$)/.test(compact)) return "variation";
+  if (/(^|[^a-z])range([^a-z]|$)/.test(compact)) return "range";
+  return null;
 }
 
 interface JsonGenerationConfig<T> {
@@ -381,6 +418,7 @@ function isUsableProblemSolutionFirst(value: unknown): value is ProblemSolutionF
   return Boolean(
     `${candidate.title ?? ""}`.trim()
     && `${candidate.subject ?? ""}`.trim()
+    && isProblemIntent(candidate.problemIntent)
     && `${candidate.finalAnswer ?? ""}`.trim()
     && `${candidate.solutionText ?? ""}`.trim()
   );
@@ -394,12 +432,69 @@ const FALLBACK_CONTENT_PATTERNS = [
   /unable to (solve|determine|read)/i,
   /cannot be determined/i,
   /image could not be/i,
+  /\b(?:i am|i'm)\s+(?:an?\s+)?ai\b/i,
+  /\blanguage model\b/i,
+  /\bas an?\s+ai\b/i,
+  /ខ្ញុំជា\s*AI/i,
+  /ជា\s*AI\s*ភាសា/i,
+  /មិនអាច\s*(?:គូស|ដាក់ស្រមោល|បង្កើត|generate|draw)/i,
 ];
 
 function isFallbackContent(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t || t.length < 2) return true;
   return FALLBACK_CONTENT_PATTERNS.some((p) => p.test(t));
+}
+
+function asFiniteNumber(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value - Math.round(value)) < 0.000001) return `${Math.round(value)}`;
+  return `${Number(value.toFixed(6))}`;
+}
+
+function repairDiagramTaskFinalAnswer(
+  finalAnswer: string,
+  diagramBlocks: ReturnType<typeof normalizeDiagramBlocks>,
+): string {
+  if (!isFallbackContent(finalAnswer)) return finalAnswer;
+
+  const graphBlock = diagramBlocks.find((block) => {
+    const spec = block.spec as Record<string, unknown> | undefined;
+    return block.diagramType === "function-graph"
+      && spec?.graphStyle === "reciprocal-interval"
+      && Array.isArray(spec.shadedRegions)
+      && spec.shadedRegions.length > 0;
+  });
+  const spec = graphBlock?.spec as Record<string, unknown> | undefined;
+  if (!spec) return finalAnswer;
+
+  const functions = Array.isArray(spec.functions) ? spec.functions : [];
+  const primaryFn = functions[0] && typeof functions[0] === "object" ? functions[0] as Record<string, unknown> : {};
+  const latex = `${primaryFn.latex ?? ""}`.trim();
+  const shadedRegions = Array.isArray(spec.shadedRegions) ? spec.shadedRegions : [];
+  const shaded = shadedRegions[0] && typeof shadedRegions[0] === "object" ? shadedRegions[0] as Record<string, unknown> : {};
+  const from = asFiniteNumber(shaded.from, Number.NaN);
+  const to = asFiniteNumber(shaded.to, Number.NaN);
+  if (!latex || !Number.isFinite(from) || !Number.isFinite(to)) return finalAnswer;
+
+  const featurePoints = Array.isArray(spec.featurePoints) ? spec.featurePoints : [];
+  const endpointLabels = featurePoints
+    .map((point) => {
+      const item = point && typeof point === "object" ? point as Record<string, unknown> : {};
+      return `${item.label ?? ""}`.trim();
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+  const endpointText = endpointLabels.length === 2
+    ? ` ពី ${endpointLabels[0]} ទៅ ${endpointLabels[1]}`
+    : "";
+
+  return `ផ្នែកត្រូវដាក់ស្រមោលគឺខ្សែកោង $${latex}$ សម្រាប់ $${formatCompactNumber(from)} < x < ${formatCompactNumber(to)}$${endpointText}។`;
 }
 
 function buildFallbackSolutionFirst(
@@ -450,9 +545,8 @@ function sanitizeSolutionText(raw: string): string {
   // Strip conversational greetings/fillers at the start (e.g. "ជំរាបសួរ! ខ្ញុំរីករាយនឹងជួយ...")
   text = text.replace(/^\s*(?:ជំរាបសួរ|ជម្រាបសួរ|ខ្ញុំរីករាយនឹងជួយ|រីករាយនឹងជួយ)[^\n]*\n*/gi, "").trim();
 
-  // Strip trailing "Problem:" / "Final Answer:" tail that Phase 1 sometimes appends
-  // e.g. "\n\n**Problem:** ...\n**Final Answer:** ..."
-  text = text.replace(/\n+\s*\*{0,2}(?:Problem|Final Answer):?\*{0,2}[\s\S]*$/i, "").trim();
+  // Strip trailing "Problem:" / "Problem Intent:" / "Final Answer:" tail that Phase 1 sometimes appends.
+  text = text.replace(/\n+\s*\*{0,2}(?:Problem|Problem Intent|Final Answer):?\*{0,2}[\s\S]*$/i, "").trim();
 
   // Strip conversational sign-offs at the end (e.g. "សង្ឃឹមថាចម្លើយនេះ...")
   text = text.replace(/\n+\s*(?:ប្រសិនបើអ្នកមានសំណួរ|បើមានសំណួរ|បើមានចម្ងល់|សង្ឃឹមថា|រីករាយនឹងជួយ|សង្ឃឹមថាចម្លើយនេះ)[^\n]*$/gi, "").trim();
@@ -571,7 +665,10 @@ function normalizeSolutionFirstPayload(
 ): ProblemSolutionFirst {
   const raw = payload.solutionText ?? "";
   const afterSanitize = sanitizeSolutionText(raw);
-  const repairedFinalAnswer = repairGeneratedMathText(payload.finalAnswer);
+  let repairedFinalAnswer = repairGeneratedMathText(payload.finalAnswer);
+
+  const diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
+  repairedFinalAnswer = repairDiagramTaskFinalAnswer(repairedFinalAnswer, diagramBlocks);
   const afterRepair = completeDanglingSolutionText(repairGeneratedMathText(afterSanitize), repairedFinalAnswer);
 
   // Debug: trace every stage of solutionText pipeline to catch corruption early
@@ -582,7 +679,6 @@ function normalizeSolutionFirstPayload(
     afterRepair: afterRepair.slice(0, 600),
   });
 
-  const diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
   logger.info("[diagramBlocks:pipeline]", {
     raw: summarizeDiagramBlocksForLog(payload.diagramBlocks),
     normalized: summarizeDiagramBlocksForLog(diagramBlocks),
@@ -594,6 +690,9 @@ function normalizeSolutionFirstPayload(
     mode: "solution-first",
     problem: payload.problem?.trim() || problem,
     subject: payload.subject?.trim() || subject,
+    problemIntent: isProblemIntent(payload.problemIntent) && payload.problemIntent !== "other"
+      ? payload.problemIntent
+      : problemIntentFromStructuredHint(`${problem}\n${payload.problem || ""}`) || "other",
     finalAnswer: repairedFinalAnswer,
     solutionText: afterRepair,
     solutionFormat: "markdown-latex",
@@ -620,8 +719,9 @@ Diagram spec examples:
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
-- function-graph reciprocal interval endpoints/range: {"graphStyle":"reciprocal-interval","diagramIntent":"interval-points","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
-- function-graph reciprocal average-rate/secant: {"graphStyle":"reciprocal-interval","diagramIntent":"secant-interval","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"},{"kind":"linear","params":{"m":-1.5,"b":4.5},"latex":"y=-1.5x+4.5","color":"secondary"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
+- function-graph reciprocal interval endpoints/range/point-membership: use problemIntent="range" or "point-membership" and {"graphStyle":"reciprocal-interval","diagramIntent":"interval-points","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
+- function-graph reciprocal average-rate/secant: use problemIntent="average-rate" and {"graphStyle":"reciprocal-interval","diagramIntent":"secant-interval","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"},{"kind":"linear","params":{"m":-1.5,"b":4.5},"latex":"y=-1.5x+4.5","color":"secondary"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
+- function-graph reciprocal integral/area: use problemIntent="integral" and diagramIntent="shaded-interval"; include shadedRegions [{"from":a,"to":b,"baseline":0,"functionIndex":0,"color":"primary"}].
 - function-graph trigonometric textbook wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"},{"orientation":"horizontal","value":1,"from":0,"to":1.5708,"color":"focus"},{"orientation":"horizontal","value":-1,"from":0,"to":4.71239,"color":"focus"}]}
 - solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","base":"A","height":"h","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 - tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
@@ -680,6 +780,88 @@ function parseSimpleReciprocalProblem(source: string): { a: number; h: number; i
   });
   if (!Number.isFinite(a) || !Number.isFinite(h) || !intervalMatch) return null;
   return { a, h, interval: [Number(intervalMatch[1]), Number(intervalMatch[2])] };
+}
+
+function parseSimpleRationalEvenProblem(source: string): {
+  a: number;
+  h: number;
+  b: number;
+  interval: [number, number];
+  closedStart: boolean;
+  closedEnd: boolean;
+} | null {
+  const normalized = normalizeDigits(source)
+    .replace(/\s+/g, "")
+    .replace(/\\?left|\\?right/g, "");
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{\(?x(?:([+-])(\d+(?:\.\d+)?))?\)?(?:\^2|\^\{2\})(?:(\+|-)(\d+(?:\.\d+)?))\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?\(?x(?:([+-])(\d+(?:\.\d+)?))?\)?(?:\^2|\^\{2\})(?:(\+|-)(\d+(?:\.\d+)?))\)?/i);
+  const match = latexMatch || slashMatch;
+  if (!match) return null;
+  const a = Number(match[1]);
+  const shift = match[3] ? Number(match[3]) : 0;
+  const h = match[2] === "+" ? -shift : shift;
+  const bMagnitude = Number(match[5]);
+  const b = match[4] === "-" ? -bMagnitude : bMagnitude;
+  const intervalMatches = Array.from(normalized.matchAll(/([\[(])([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)([\])])/g));
+  const intervalMatch = intervalMatches.find((item) => {
+    const left = Number(item[2]);
+    const right = Number(item[3]);
+    return Number.isFinite(left) && Number.isFinite(right) && left < right;
+  });
+  if (!Number.isFinite(a) || !Number.isFinite(h) || !Number.isFinite(b) || Math.abs(b) < 0.0001 || !intervalMatch) return null;
+  return {
+    a,
+    h,
+    b,
+    interval: [Number(intervalMatch[2]), Number(intervalMatch[3])],
+    closedStart: intervalMatch[1] === "[",
+    closedEnd: intervalMatch[4] === "]",
+  };
+}
+
+function parseSimpleInverseSquareProblem(source: string): {
+  a: number;
+  h: number;
+  interval: [number, number];
+  closedStart: boolean;
+  closedEnd: boolean;
+} | null {
+  const normalized = normalizeDigits(source)
+    .replace(/\s+/g, "")
+    .replace(/\\?left|\\?right/g, "");
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{\(?x(?:([+-])(\d+(?:\.\d+)?))?\)?(?:\^2|\^\{2\})\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?\(?x(?:([+-])(\d+(?:\.\d+)?))?\)?(?:\^2|\^\{2\})\)?/i);
+  const match = latexMatch || slashMatch;
+  if (!match) return null;
+  const a = Number(match[1]);
+  const shift = match[3] ? Number(match[3]) : 0;
+  const h = match[2] === "+" ? -shift : shift;
+  const intervalMatch = Array.from(normalized.matchAll(/([\[(])([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)([\])])/g))
+    .find((item) => {
+      const from = Number(item[2]);
+      const to = Number(item[3]);
+      return Number.isFinite(from)
+        && Number.isFinite(to)
+        && from < to
+        && Math.abs(from - h) > 0.0001
+        && Math.abs(to - h) > 0.0001;
+    });
+  if (!Number.isFinite(a) || !Number.isFinite(h) || !intervalMatch) return null;
+  return {
+    a,
+    h,
+    interval: [Number(intervalMatch[2]), Number(intervalMatch[3])],
+    closedStart: intervalMatch[1] === "[",
+    closedEnd: intervalMatch[4] === "]",
+  };
+}
+
+function graphIntentFromProblemIntent(intent: unknown): "secant-interval" | "shaded-interval" | "interval-points" | null {
+  const normalized = String(intent || "").trim();
+  if (normalized === "average-rate") return "secant-interval";
+  if (normalized === "integral") return "shaded-interval";
+  if (["range", "point-membership", "function-value", "variation", "other"].includes(normalized)) return "interval-points";
+  return null;
 }
 
 function inferVennDiagramBlocks(
@@ -1412,10 +1594,12 @@ function repairReciprocalIntervalDiagramBlocks(
   problem: string,
   solutionText: string,
   blocks: ReturnType<typeof normalizeDiagramBlocks>,
+  problemIntent?: ProblemIntent,
 ): ReturnType<typeof normalizeDiagramBlocks> {
   const source = `${problem}\n${solutionText}`;
   const parsed = parseSimpleReciprocalProblem(source);
   if (!parsed) return blocks;
+  const structuredIntent = graphIntentFromProblemIntent(problemIntent);
 
   const reciprocalBlock = blocks.find((block) => {
     if (block.diagramType !== "function-graph") return false;
@@ -1437,6 +1621,9 @@ function repairReciprocalIntervalDiagramBlocks(
     const item = region as Record<string, unknown>;
     return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
   });
+  const shadedRegions = hasStructuredShadedRegion
+    ? existingShadedRegions
+    : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }];
   const existingHasSecant = existingFunctions.some((fn) => {
     if (fn.kind !== "linear") return false;
     const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
@@ -1452,7 +1639,7 @@ function repairReciprocalIntervalDiagramBlocks(
     ? "secant-interval"
     : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
       ? "shaded-interval"
-      : "interval-points";
+      : structuredIntent || "interval-points";
   const reciprocalFn = existingFunctions.find((fn) => fn.kind === "rational-reciprocal") || {};
   const baseFunctions: Array<Record<string, unknown>> = [{
     ...reciprocalFn,
@@ -1494,11 +1681,195 @@ function repairReciprocalIntervalDiagramBlocks(
         { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: true },
       ],
       guideLines: [],
-      shadedRegions: diagramIntent === "shaded-interval" ? existingShadedRegions : [],
+      shadedRegions: diagramIntent === "shaded-interval" ? shadedRegions : [],
     },
   }]);
 
   logger.info("[diagramBlocks:repair-reciprocal-interval]", {
+    functionA: parsed.a,
+    h: parsed.h,
+    interval: parsed.interval,
+    diagramIntent,
+    featurePoints: [[from, yFrom], [to, yTo]],
+  });
+
+  return repaired.length ? repaired : blocks;
+}
+
+function repairRationalEvenIntervalDiagramBlocks(
+  problem: string,
+  solutionText: string,
+  blocks: ReturnType<typeof normalizeDiagramBlocks>,
+  problemIntent?: ProblemIntent,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = `${problem}\n${solutionText}`;
+  const parsed = parseSimpleRationalEvenProblem(source);
+  if (!parsed) return blocks;
+  const structuredIntent = graphIntentFromProblemIntent(problemIntent);
+
+  const rationalEvenBlock = blocks.find((block) => {
+    if (block.diagramType !== "function-graph") return false;
+    const spec = block.spec as Record<string, unknown>;
+    const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    return functions.some((fn) => fn.kind === "rational-even");
+  });
+  if (!rationalEvenBlock) return blocks;
+
+  const [from, to] = parsed.interval;
+  const yAt = (x: number) => {
+    const denominator = (x - parsed.h) * (x - parsed.h) + parsed.b;
+    return Math.abs(denominator) > 0.0001 ? parsed.a / denominator : Number.NaN;
+  };
+  const yFrom = yAt(from);
+  const yTo = yAt(to);
+  if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
+
+  const existingSpec = rationalEvenBlock.spec as Record<string, unknown>;
+  const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
+  const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
+    const item = region as Record<string, unknown>;
+    return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
+  });
+  const explicitIntent = typeof existingSpec.diagramIntent === "string" ? existingSpec.diagramIntent : "";
+  const diagramIntent = explicitIntent === "shaded-interval" || hasStructuredShadedRegion
+    ? "shaded-interval"
+    : structuredIntent || "interval-points";
+  const shadedRegions = hasStructuredShadedRegion
+    ? existingShadedRegions
+    : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }];
+  const yMax = Math.max(2.5, Math.ceil(Math.max(yFrom, yTo) * 2) / 2 + 0.5);
+  const hText = parsed.h === 0 ? "x" : `(x${parsed.h < 0 ? "+" : "-"}${Math.abs(parsed.h)})`;
+  const denominatorLatex = `${hText}^2${parsed.b >= 0 ? "+" : ""}${parsed.b}`;
+
+  const repaired = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    spec: {
+      ...existingSpec,
+      graphStyle: "reciprocal-interval",
+      diagramIntent,
+      domain: [Math.min(0, from), Math.max(to, from + 1)],
+      range: [0, yMax],
+      functions: [{
+        kind: "rational-even",
+        latex: `y=\\frac{${parsed.a}}{${denominatorLatex}}`,
+        params: { a: parsed.a, h: parsed.h, b: parsed.b, k: 0 },
+        points: [],
+        color: "primary",
+      }],
+      featurePoints: [
+        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: parsed.closedStart },
+        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: parsed.closedEnd },
+      ],
+      guideLines: [],
+      shadedRegions: diagramIntent === "shaded-interval" ? shadedRegions : [],
+    },
+  }]);
+
+  logger.info("[diagramBlocks:repair-rational-even-interval]", {
+    functionA: parsed.a,
+    h: parsed.h,
+    b: parsed.b,
+    interval: parsed.interval,
+    diagramIntent,
+    featurePoints: [[from, yFrom], [to, yTo]],
+  });
+
+  return repaired.length ? repaired : blocks;
+}
+
+function repairInverseSquareIntervalDiagramBlocks(
+  problem: string,
+  solutionText: string,
+  blocks: ReturnType<typeof normalizeDiagramBlocks>,
+  problemIntent?: ProblemIntent,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = `${problem}\n${solutionText}`;
+  const parsed = parseSimpleInverseSquareProblem(source);
+  if (!parsed) return blocks;
+  const structuredIntent = graphIntentFromProblemIntent(problemIntent);
+
+  const inverseBlock = blocks.find((block) => {
+    if (block.diagramType !== "function-graph") return false;
+    const spec = block.spec as Record<string, unknown>;
+    const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    return functions.some((fn) => fn.kind === "inverse-square");
+  });
+  if (!inverseBlock) return blocks;
+
+  const [from, to] = parsed.interval;
+  const yAt = (x: number) => {
+    const dx = x - parsed.h;
+    return Math.abs(dx) > 0.0001 ? parsed.a / (dx * dx) : Number.NaN;
+  };
+  const yFrom = yAt(from);
+  const yTo = yAt(to);
+  if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
+
+  const existingSpec = inverseBlock.spec as Record<string, unknown>;
+  const existingFunctions = Array.isArray(existingSpec.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
+  const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
+  const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
+    const item = region as Record<string, unknown>;
+    return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
+  });
+  const existingHasSecant = existingFunctions.some((fn) => {
+    if (fn.kind !== "linear") return false;
+    const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+    const m = Number(params.m);
+    const b = Number(params.b);
+    return Number.isFinite(m)
+      && Number.isFinite(b)
+      && Math.abs((m * from + b) - yFrom) < 0.08
+      && Math.abs((m * to + b) - yTo) < 0.08;
+  });
+  const explicitIntent = typeof existingSpec.diagramIntent === "string" ? existingSpec.diagramIntent : "";
+  const diagramIntent = explicitIntent === "secant-interval" || existingHasSecant
+    ? "secant-interval"
+    : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
+      ? "shaded-interval"
+      : structuredIntent || "interval-points";
+  const hText = parsed.h === 0 ? "x" : `(x${parsed.h < 0 ? "+" : "-"}${Math.abs(parsed.h)})`;
+  const functions: Array<Record<string, unknown>> = [{
+    kind: "inverse-square",
+    latex: `y=\\frac{${parsed.a}}{${hText}^2}`,
+    params: { a: parsed.a, h: parsed.h, k: 0, verticalAsymptote: parsed.h, horizontalAsymptote: 0, p: 2 },
+    points: [],
+    color: "primary",
+  }];
+
+  if (diagramIntent === "secant-interval") {
+    const m = (yTo - yFrom) / (to - from);
+    const b = yFrom - m * from;
+    functions.push({
+      kind: "linear",
+      latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`,
+      params: { m, b },
+      points: [],
+      color: "secondary",
+    });
+  }
+
+  const repaired = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    spec: {
+      ...existingSpec,
+      graphStyle: "reciprocal-interval",
+      diagramIntent,
+      domain: [from, to],
+      range: [0, Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1))],
+      functions,
+      featurePoints: [
+        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || parsed.closedStart },
+        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: diagramIntent === "secant-interval" || parsed.closedEnd },
+      ],
+      guideLines: [],
+      shadedRegions: diagramIntent === "shaded-interval"
+        ? hasStructuredShadedRegion ? existingShadedRegions : [{ from, to, baseline: 0, functionIndex: 0, color: "primary" }]
+        : [],
+    },
+  }]);
+
+  logger.info("[diagramBlocks:repair-inverse-square-interval]", {
     functionA: parsed.a,
     h: parsed.h,
     interval: parsed.interval,
@@ -2454,6 +2825,7 @@ async function extractDiagramBlocksForSolution(
   solutionText: string,
   options: AIRequestOptions,
   finalAnswer?: string,
+  problemIntent?: ProblemIntent,
 ): Promise<RenderBlock[]> {
   const subject = `${options.subject || ""}`.toLowerCase();
   const source = `${problem}\n${solutionText}`.toLowerCase();
@@ -2564,6 +2936,8 @@ DIAGRAM SELECTION RULES (CRITICAL):
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
 AI must output structured JSON only. Never output SVG, HTML, CSS, or drawing commands.
+
+Problem intent: ${problemIntent || "other"}
 
 Problem:
 ${problem}
@@ -2685,8 +3059,14 @@ ${DIAGRAM_SPEC_GUIDE}`,
   const rationalInequalityFallback = inferRationalInequalitySignTableBlocks(problem, solutionText);
   if (rationalInequalityFallback.length) return rationalInequalityFallback;
 
-  const reciprocalIntervalRepair = repairReciprocalIntervalDiagramBlocks(problem, solutionText, normalized);
+  const reciprocalIntervalRepair = repairReciprocalIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
   if (reciprocalIntervalRepair !== normalized) return reciprocalIntervalRepair;
+
+  const rationalEvenIntervalRepair = repairRationalEvenIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
+  if (rationalEvenIntervalRepair !== normalized) return rationalEvenIntervalRepair;
+
+  const inverseSquareIntervalRepair = repairInverseSquareIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
+  if (inverseSquareIntervalRepair !== normalized) return inverseSquareIntervalRepair;
 
   const useful = normalized.filter(
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
@@ -2783,6 +3163,7 @@ interface SolutionMetadata {
   title: string;
   subject: string;
   topic: string;
+  problemIntent: ProblemIntent;
   problem: string;
   finalAnswer: string;
   problemText?: string;
@@ -2809,10 +3190,14 @@ async function extractSolutionMetadata(
         "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
       ]
     },
+    problemIntent: {
+      type: Type.STRING,
+      enum: ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"],
+    },
     problem: { type: Type.STRING },
     finalAnswer: { type: Type.STRING },
   };
-  const requiredFields = ["title", "subject", "topic", "problem", "finalAnswer"];
+  const requiredFields = ["title", "subject", "topic", "problemIntent", "problem", "finalAnswer"];
 
   if (includeProblemText) {
     (schemaProperties as any).problemText = { type: Type.STRING };
@@ -2837,6 +3222,14 @@ Return JSON with:
   * For Math: "algebra" (equations, polynomials, sequences, series), "geometry" (shapes, coordinates, trig), "calculus" (limits, derivatives, integrals), "probability-stats", "arithmetic" (basic numbers, roots, fractions).
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
+- problemIntent: classify the requested task, not the formula. Use exactly one of:
+  * "average-rate" when solving average rate of change / secant slope over an interval.
+  * "point-membership" when checking whether a coordinate point lies on a graph.
+  * "range" when finding the range/image of a function on an interval.
+  * "integral" when evaluating an integral or area under a curve.
+  * "function-value" when evaluating f(a) or substituting one input.
+  * "variation" when studying increasing/decreasing behavior, extrema, or monotonicity.
+  * "other" only when none of the above fit.
 - problem: the problem statement with proper LaTeX math notation
 - finalAnswer: only the final result (e.g. "x = 3", "$v = 12\\ \\text{m/s}$")${problemTextInstruction}`;
 
@@ -2855,10 +3248,14 @@ Return JSON with:
   });
 
   const fallbackTitle = problemHint.slice(0, 70) || "New Solution";
+  const extractedProblemIntent = isProblemIntent((data as any)?.problemIntent) && (data as any).problemIntent !== "other"
+    ? (data as any).problemIntent
+    : problemIntentFromStructuredHint(`${problemHint}\n${rawSolution}`) || "other";
   return {
     title: `${data?.title ?? ""}`.trim() || fallbackTitle,
     subject: `${data?.subject ?? ""}`.trim() || options.subject || "Math",
     topic: `${data?.topic ?? ""}`.trim() || "algebra",
+    problemIntent: extractedProblemIntent,
     problem: `${data?.problem ?? ""}`.trim() || problemHint,
     finalAnswer: `${data?.finalAnswer ?? ""}`.trim() || "",
     ...(includeProblemText
@@ -2895,7 +3292,9 @@ Requirements:
 - Do NOT repeat or restate the problem. Begin directly with the solution.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - No internal reasoning or self-corrections. Output only the final polished derivation.
-- End with: **Final Answer:** [result]`;
+- End with:
+**Problem Intent:** [average-rate | point-membership | range | integral | function-value | variation | other]
+**Final Answer:** [result]`;
 
   let rawSolution = "";
   let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
@@ -2912,7 +3311,7 @@ Requirements:
   if (rawSolution && !isFallbackContent(rawSolution)) {
     const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
-      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer).catch((err) => {
+      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer, metadata.problemIntent).catch((err) => {
         logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -2925,6 +3324,7 @@ Requirements:
           title: metadata.title,
           subject: metadata.subject,
           topic: metadata.topic,
+          problemIntent: metadata.problemIntent,
           problem: metadata.problem || problem,
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
@@ -2970,7 +3370,8 @@ Rules:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
-19. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".`;
+19. problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
+20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".`;
 
   const schema = {
     type: Type.OBJECT,
@@ -2986,6 +3387,10 @@ Rules:
           "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
           "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
         ]
+      },
+      problemIntent: {
+        type: Type.STRING,
+        enum: ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"],
       },
       problem: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
@@ -3008,6 +3413,7 @@ Rules:
       "title",
       "subject",
       "topic",
+      "problemIntent",
       "problem",
       "finalAnswer",
       "solutionText",
@@ -3031,7 +3437,7 @@ Rules:
     const normalizedDiagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks);
     const diagramBlocks = normalizedDiagramBlocks.length
       ? normalizedDiagramBlocks
-      : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }).catch(() => []);
+      : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch(() => []);
     return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
   }
 
@@ -3088,6 +3494,7 @@ Solution format:
 
 End your response with:
 **Problem:** [the extracted problem statement with LaTeX]
+**Problem Intent:** [average-rate | point-membership | range | integral | function-value | variation | other]
 **Final Answer:** [the final result]`;
 
   let rawSolution = "";
@@ -3117,7 +3524,7 @@ End your response with:
         resolvedFinalAnswer = finalAnswerMatch?.[1]?.trim() || "";
       }
 
-      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer).catch((err) => {
+      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer, metadata.problemIntent).catch((err) => {
         logger.warn("[solveFromImageDirect] diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -3130,6 +3537,7 @@ End your response with:
           title: metadata.title,
           subject: metadata.subject,
           topic: metadata.topic,
+          problemIntent: metadata.problemIntent,
           problem: metadata.problem || finalProblemText,
           finalAnswer: resolvedFinalAnswer,
           solutionText: rawSolution,
@@ -3171,6 +3579,7 @@ Rules for solutionText:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
+- problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
 - Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry".
 - Diagram spec examples:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
@@ -3198,6 +3607,10 @@ Return a single JSON object only.`;
           "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
         ]
       },
+      problemIntent: {
+        type: Type.STRING,
+        enum: ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"],
+      },
       problem: { type: Type.STRING },
       problemText: { type: Type.STRING },
       finalAnswer: { type: Type.STRING },
@@ -3220,6 +3633,7 @@ Return a single JSON object only.`;
       "title",
       "subject",
       "topic",
+      "problemIntent",
       "problem",
       "problemText",
       "finalAnswer",
@@ -3250,7 +3664,7 @@ Return a single JSON object only.`;
     const normalizedDiagramBlocks = normalizeDiagramBlocks(data.diagramBlocks);
     const diagramBlocks = normalizedDiagramBlocks.length
       ? normalizedDiagramBlocks
-      : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }).catch((err) => {
+      : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
         logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),
         });
@@ -3272,6 +3686,7 @@ Return a single JSON object only.`;
     const recoveredSubject = (data as any)?.subject ?? "Math";
     const recoveredTitle = (data as any)?.title?.trim() || recoveredProblem.slice(0, 70);
     const recoveredTopic = (data as any)?.topic ?? "algebra";
+    const recoveredProblemIntent = isProblemIntent((data as any)?.problemIntent) ? (data as any).problemIntent : "other";
     logger.warn("[solveFromImageDirect] Phase 2 unusable, recovering from Phase 1 raw", {
       recoveredProblem: recoveredProblem.slice(0, 80),
       recoveredAnswer: recoveredAnswer.slice(0, 80),
@@ -3283,6 +3698,7 @@ Return a single JSON object only.`;
         title: recoveredTitle,
         subject: recoveredSubject,
         topic: recoveredTopic,
+        problemIntent: recoveredProblemIntent,
         problem: recoveredProblem,
         finalAnswer: recoveredAnswer,
         solutionText: rawSolution,
@@ -3302,7 +3718,7 @@ Return a single JSON object only.`;
   const fallbackProblem = extractedProblemText || "Problem could not be read from image";
   const fallbackSubject = (data as any)?.subject ?? "General";
   const solution = normalizeSolutionFirstPayload(
-    { ...buildFallbackSolutionFirst(fallbackProblem, fallbackSubject, result.raw), _usage: fallbackUsage },
+    { ...buildFallbackSolutionFirst(fallbackProblem, fallbackSubject, result.raw), problemIntent: "other", _usage: fallbackUsage },
     fallbackProblem,
     fallbackSubject
   );

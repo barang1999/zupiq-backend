@@ -15,10 +15,40 @@ def _normalize_for_embedding(text: str) -> str:
     "Solve 2x² + 5x + 3 = 0" and "Solve 4x² + 7x + 2 = 0" both become
     "Solve Nx² + Nx + N = 0" and get nearly identical vectors.
     """
+    text = text.lower()
+
+    # Preserve math operators/constants that change problem meaning before
+    # removing generic LaTeX commands.
+    semantic_commands = {
+        r"\\sin": " sin ",
+        r"\\cos": " cos ",
+        r"\\tan": " tan ",
+        r"\\cot": " cot ",
+        r"\\sec": " sec ",
+        r"\\csc": " csc ",
+        r"\\log": " log ",
+        r"\\ln": " ln ",
+        r"\\sqrt": " sqrt ",
+        r"\\pi": " pi ",
+        r"\\theta": " theta ",
+        r"\\alpha": " alpha ",
+        r"\\beta": " beta ",
+        r"\\gamma": " gamma ",
+        r"\\leq": " <= ",
+        r"\\geq": " >= ",
+        r"\\neq": " != ",
+        r"\\infty": " infinity ",
+    }
+    for pattern, replacement in semantic_commands.items():
+        text = re.sub(pattern, replacement, text)
+
+    # Keep fraction structure instead of dropping \frac entirely.
+    text = re.sub(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r" fraction \1 over \2 ", text)
+
     # Strip LaTeX formatting
     text = re.sub(r"\$\$|\\\[|\\\]", " ", text)
     text = re.sub(r"\$|\\\(|\\\)", " ", text)
-    text = re.sub(r"\\[a-zA-Z]+", " ", text)   # strip commands like \frac \int
+    text = re.sub(r"\\[a-zA-Z]+", " ", text)   # strip remaining formatting commands
     text = re.sub(r"[{}]", " ", text)
 
     # Replace numeric literals (integers and decimals) with placeholder N.
@@ -26,6 +56,11 @@ def _normalize_for_embedding(text: str) -> str:
 
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def normalize_for_debug(text: str) -> str:
+    """Expose the embedding normalization for resolver diagnostics."""
+    return _normalize_for_embedding(text)
 
 
 def embed(text: str) -> list[float]:

@@ -325,6 +325,8 @@ function evalFnAt(fn: Record<string, unknown>, x: number): number {
     return dx >= 0 ? asFiniteNumber(p.a, 1) * Math.sqrt(dx) + asFiniteNumber(p.k, 0) : Number.NaN;
   }
   if (kind === "exponential") return asFiniteNumber(p.a, 1) * Math.pow(asFiniteNumber(p.b, Math.E), x);
+  if (kind === "sine" || kind === "trig-sine") return asFiniteNumber(p.a, 1) * Math.sin(asFiniteNumber(p.b, 1) * x + asFiniteNumber(p.c, 0)) + asFiniteNumber(p.d, 0);
+  if (kind === "cosine" || kind === "trig-cosine") return asFiniteNumber(p.a, 1) * Math.cos(asFiniteNumber(p.b, 1) * x + asFiniteNumber(p.c, 0)) + asFiniteNumber(p.d, 0);
   if (kind === "points") {
     const pts = Array.isArray(fn.points) ? fn.points as [number, number][] : [];
     for (let i = 0; i < pts.length - 1; i++) {
@@ -336,6 +338,254 @@ function evalFnAt(fn: Record<string, unknown>, x: number): number {
     return Number.NaN;
   }
   return Number.NaN;
+}
+
+function hasTrigLabel(value: unknown): boolean {
+  return /(?:\\pi|\bpi\b|π|\\sin|\bsin\b|\\cos|\bcos\b)/i.test(String(value ?? ""));
+}
+
+function parsePiValue(input: string): number | null {
+  const raw = String(input || "").toLowerCase().replace(/\s+/g, "");
+  const fracMatch = raw.match(/\\?frac\{\\?pi\}\{(\d+(?:\.\d+)?)\}/);
+  if (fracMatch) {
+    const denominator = Number(fracMatch[1]);
+    return denominator ? Math.PI / denominator : null;
+  }
+  const fracMultipleMatch = raw.match(/\\?frac\{(\d+(?:\.\d+)?)\\?pi\}\{(\d+(?:\.\d+)?)\}/);
+  if (fracMultipleMatch) {
+    const numerator = Number(fracMultipleMatch[1]);
+    const denominator = Number(fracMultipleMatch[2]);
+    return denominator ? (numerator * Math.PI) / denominator : null;
+  }
+  const compact = String(input || "")
+    .toLowerCase()
+    .replace(/[{}]/g, "")
+    .replace(/\\/g, "");
+  const compactFrac = compact.match(/frac(\d+(?:\.\d+)?)?(?:pi|π)(\d+(?:\.\d+)?)$/);
+  if (compactFrac) {
+    const numerator = compactFrac[1] ? Number(compactFrac[1]) : 1;
+    const denominator = Number(compactFrac[2]);
+    return denominator ? (numerator * Math.PI) / denominator : null;
+  }
+  if (!compact.includes("pi") && !compact.includes("π")) return null;
+  const normalized = compact.replace(/π/g, "pi");
+  const fraction = normalized.match(/^(\d+(?:\.\d+)?)?pi\/(\d+(?:\.\d+)?)$/);
+  if (fraction) {
+    const numerator = fraction[1] ? Number(fraction[1]) : 1;
+    const denominator = Number(fraction[2]);
+    return denominator ? (numerator * Math.PI) / denominator : null;
+  }
+  const multiple = normalized.match(/^(\d+(?:\.\d+)?)?pi$/);
+  if (multiple) return (multiple[1] ? Number(multiple[1]) : 1) * Math.PI;
+  return null;
+}
+
+function parseTrigPhase(compact: string, fnName: "sin" | "cos"): number {
+  const fnPattern = fnName === "sin" ? String.raw`(?:\\sin|sin)` : String.raw`(?:\\cos|cos)`;
+  const argMatch = new RegExp(`${fnPattern}\\(([^)]*)\\)`).exec(compact);
+  if (!argMatch) return 0;
+  const arg = argMatch[1];
+  const phaseMatch = arg.match(/x(\+|-)(.+)$/);
+  if (!phaseMatch) return 0;
+  const value = parsePiValue(phaseMatch[2]) ?? Number(phaseMatch[2]);
+  if (!Number.isFinite(value)) return 0;
+  return phaseMatch[1] === "-" ? -value : value;
+}
+
+function parseTrigAmplitude(compact: string, fnName: "sin" | "cos"): number {
+  const fnPattern = fnName === "sin" ? String.raw`(?:\\sin|sin)` : String.raw`(?:\\cos|cos)`;
+  const match = new RegExp(fnPattern).exec(compact);
+  if (match) {
+    const previous = compact.slice(0, match.index).replace(/[a-z]\([^)]*\)=|[a-z]=/g, "");
+    if (previous.endsWith("-")) return -1;
+  }
+  return 1;
+}
+
+function trigFunctionFromLatex(latex: string): { kind: "sine" | "cosine"; params: { a: number; b: number; c: number; d: number }; compound: boolean } | null {
+  const compact = String(latex || "")
+    .toLowerCase()
+    .replace(/\\?left|\\?right/g, "")
+    .replace(/\s+/g, "");
+  const hasSin = /(?:\\sin|sin)/.test(compact);
+  const hasCos = /(?:\\cos|cos)/.test(compact);
+  if (!hasSin && !hasCos) return null;
+
+  const sinBeforeCos = /(?:\\sin|sin)[^+\-]*(\+|-)(?:\\cos|cos)/.exec(compact);
+  if (sinBeforeCos) {
+    return {
+      kind: "sine",
+      params: {
+        a: Math.SQRT2,
+        b: 1,
+        c: sinBeforeCos[1] === "-" ? -Math.PI / 4 : Math.PI / 4,
+        d: 0,
+      },
+      compound: true,
+    };
+  }
+
+  const cosBeforeSin = /(?:\\cos|cos)[^+\-]*(\+|-)(?:\\sin|sin)/.exec(compact);
+  if (cosBeforeSin) {
+    return {
+      kind: "cosine",
+      params: {
+        a: Math.SQRT2,
+        b: 1,
+        c: cosBeforeSin[1] === "-" ? Math.PI / 4 : -Math.PI / 4,
+        d: 0,
+      },
+      compound: true,
+    };
+  }
+
+  return hasSin
+    ? { kind: "sine", params: { a: parseTrigAmplitude(compact, "sin"), b: 1, c: parseTrigPhase(compact, "sin"), d: 0 }, compound: false }
+    : { kind: "cosine", params: { a: parseTrigAmplitude(compact, "cos"), b: 1, c: parseTrigPhase(compact, "cos"), d: 0 }, compound: false };
+}
+
+function defaultTrigWaveXTicks(): Array<{ value: number; label: string; major?: boolean }> {
+  return [
+    { value: 0, label: "0" },
+    { value: Math.PI / 2, label: "\\pi/2", major: true },
+    { value: Math.PI, label: "\\pi" },
+    { value: (3 * Math.PI) / 2, label: "3\\pi/2", major: true },
+    { value: 2 * Math.PI, label: "2\\pi" },
+  ];
+}
+
+function defaultTrigWaveYTicks(): Array<{ value: number; label: string; major?: boolean }> {
+  return [
+    { value: -1, label: "-1" },
+    { value: 0, label: "0", major: true },
+    { value: 1, label: "1" },
+  ];
+}
+
+function defaultSineWaveGuideLines(): Array<Record<string, unknown>> {
+  return [
+    { orientation: "vertical", value: Math.PI / 2, from: 0, to: 1, label: "\\pi/2", color: "focus" },
+    { orientation: "vertical", value: (3 * Math.PI) / 2, from: 0, to: -1, label: "3\\pi/2", color: "focus" },
+    { orientation: "horizontal", value: 1, from: 0, to: Math.PI / 2, color: "focus" },
+    { orientation: "horizontal", value: -1, from: 0, to: (3 * Math.PI) / 2, color: "focus" },
+  ];
+}
+
+function defaultTrigWaveFeaturePoints(functions: Array<Record<string, unknown>>): Array<{ point: [number, number]; label: string; color: string; closed: boolean }> {
+  const fn = functions.find((item) => ["sine", "trig-sine", "cosine", "trig-cosine"].includes(String(item.kind || "")));
+  if (!fn) return [];
+  const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+  const a = asFiniteNumber(params.a, 1);
+  const b = asFiniteNumber(params.b, 1);
+  const c = asFiniteNumber(params.c, 0);
+  const d = asFiniteNumber(params.d, 0);
+  if (Math.abs(a - 1) > 0.0001 || Math.abs(b - 1) > 0.0001 || Math.abs(c) > 0.0001 || Math.abs(d) > 0.0001) return [];
+  const kind = String(fn.kind || "");
+  if (kind === "sine" || kind === "trig-sine") {
+    return [
+      { point: [Math.PI / 2, 1], label: "(\\pi/2, 1)", color: "primary", closed: true },
+      { point: [(3 * Math.PI) / 2, -1], label: "(3\\pi/2, -1)", color: "primary", closed: true },
+    ];
+  }
+  return [
+    { point: [0, 1], label: "(0, 1)", color: "primary", closed: true },
+    { point: [Math.PI, -1], label: "(\\pi, -1)", color: "primary", closed: true },
+    { point: [2 * Math.PI, 1], label: "(2\\pi, 1)", color: "primary", closed: true },
+  ];
+}
+
+function formatTrigX(value: number): string {
+  const units = value / Math.PI;
+  if (Math.abs(value) < 0.0001) return "0";
+  const candidates: Array<[number, string]> = [
+    [1 / 4, "\\pi/4"],
+    [1 / 2, "\\pi/2"],
+    [1, "\\pi"],
+    [5 / 4, "5\\pi/4"],
+    [3 / 2, "3\\pi/2"],
+    [2, "2\\pi"],
+  ];
+  const match = candidates.find(([candidate]) => Math.abs(units - candidate) < 0.0001);
+  return match ? match[1] : fmtCoord(value);
+}
+
+function formatTrigY(value: number): string {
+  if (Math.abs(value) < 0.0001) return "0";
+  if (Math.abs(value - 1) < 0.0001) return "1";
+  if (Math.abs(value + 1) < 0.0001) return "-1";
+  if (Math.abs(value - Math.SQRT2) < 0.0001) return "\\sqrt{2}";
+  if (Math.abs(value + Math.SQRT2) < 0.0001) return "-\\sqrt{2}";
+  if (Math.abs(value - 2) < 0.0001) return "2";
+  if (Math.abs(value + 2) < 0.0001) return "-2";
+  return fmtCoord(value);
+}
+
+function computedTrigFeaturePoints(fn: Record<string, unknown>, domain: [number, number], range: [number, number]): Array<{ point: [number, number]; label: string; color: string; closed: boolean }> {
+  const kind = String(fn.kind || "");
+  if (!["sine", "trig-sine", "cosine", "trig-cosine"].includes(kind)) return [];
+  const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+  const b = asFiniteNumber(params.b, 1);
+  const c = asFiniteNumber(params.c, 0);
+  if (Math.abs(b) < 0.0001) return [];
+
+  const domainMin = domain[0] <= 0 && domain[1] >= 2 * Math.PI ? 0 : domain[0];
+  const domainMax = domain[0] <= 0 && domain[1] >= 2 * Math.PI ? 2 * Math.PI : domain[1];
+  const candidates = new Map<string, number>();
+  const addCandidate = (value: number) => {
+    if (Number.isFinite(value)) candidates.set(String(Number(value.toFixed(6))), value);
+  };
+  addCandidate(domainMin);
+  addCandidate(domainMax);
+  const baseAngles = (kind === "sine" || kind === "trig-sine")
+    ? [Math.PI / 2, (3 * Math.PI) / 2]
+    : [0, Math.PI, 2 * Math.PI];
+  for (let k = -4; k <= 8; k++) {
+    for (const angle of baseAngles) {
+      const x = (angle + 2 * Math.PI * k - c) / b;
+      if (x >= domainMin - 0.0001 && x <= domainMax + 0.0001) {
+        addCandidate(Math.abs(x) < 0.0001 ? 0 : x);
+      }
+    }
+  }
+
+  return Array.from(candidates.values())
+    .sort((a, b) => a - b)
+    .map((x) => {
+      const y = evalFnAt(fn, x);
+      if (!Number.isFinite(y) || y < range[0] - 0.1 || y > range[1] + 0.1) return null;
+      return {
+        point: [x, y] as [number, number],
+        label: `(${formatTrigX(x)}, ${formatTrigY(y)})`,
+        color: "primary",
+        closed: true,
+      };
+    })
+    .filter((point): point is { point: [number, number]; label: string; color: string; closed: boolean } => point !== null)
+    .slice(0, 6);
+}
+
+function computedTrigGuideLines(points: Array<{ point: [number, number]; label: string }>): Array<Record<string, unknown>> {
+  return points
+    .filter((point) => Math.abs(point.point[1]) > 0.9 && Math.abs(point.point[0]) > 0.0001 && Math.abs(point.point[0] - 2 * Math.PI) > 0.0001)
+    .slice(0, 4)
+    .flatMap((point) => [
+      {
+        orientation: "vertical",
+        value: point.point[0],
+        from: 0,
+        to: point.point[1],
+        label: formatTrigX(point.point[0]),
+        color: "focus",
+      },
+      {
+        orientation: "horizontal",
+        value: point.point[1],
+        from: 0,
+        to: point.point[0],
+        color: "focus",
+      },
+    ])
+    .slice(0, 8);
 }
 
 function fmtCoord(v: number): string {
@@ -531,6 +781,22 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
       let params = item.params && typeof item.params === "object" ? item.params : undefined;
       const latex = String(item.latex || item.label || "").slice(0, 80);
+      const trigFromLatex = trigFunctionFromLatex(latex);
+
+      if (trigFromLatex) {
+        const matchingKind = (trigFromLatex.kind === "sine" && ["sine", "trig-sine"].includes(kind))
+          || (trigFromLatex.kind === "cosine" && ["cosine", "trig-cosine"].includes(kind));
+        const previousParams = params && typeof params === "object" ? params as Record<string, unknown> : {};
+        const parsedDiffers = Math.abs(asFiniteNumber(previousParams.a, trigFromLatex.params.a) - trigFromLatex.params.a) > 0.0001
+          || Math.abs(asFiniteNumber(previousParams.b, trigFromLatex.params.b) - trigFromLatex.params.b) > 0.0001
+          || Math.abs(asFiniteNumber(previousParams.c, trigFromLatex.params.c) - trigFromLatex.params.c) > 0.0001
+          || Math.abs(asFiniteNumber(previousParams.d, trigFromLatex.params.d) - trigFromLatex.params.d) > 0.0001;
+        if (trigFromLatex.compound || !matchingKind || parsedDiffers) {
+          warnings.push(`function-kind-corrected:${kind || "missing"}:${trigFromLatex.compound ? "compound-trig" : trigFromLatex.kind}`);
+          kind = trigFromLatex.kind;
+          params = trigFromLatex.params;
+        }
+      }
       
       if (!params && latex) {
         const poly = parsePolynomial(latex);
@@ -693,6 +959,24 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     .filter(Boolean)
     .slice(0, 8);
 
+  let resolvedNormalizedFunctions = normalizedFunctions;
+  const hasTrigFeaturePoints = normalizedFeaturePoints.some((point) => {
+    const item = point as Record<string, unknown>;
+    const coordinates = item.point as [number, number] | undefined;
+    const y = Array.isArray(coordinates) ? coordinates[1] : Number.NaN;
+    return hasTrigLabel(item.label) || Math.abs(y) === 1;
+  });
+  if (!resolvedNormalizedFunctions.length && hasTrigFeaturePoints) {
+    resolvedNormalizedFunctions = [{
+      kind: "sine",
+      latex: "f(x)=\\sin x",
+      points: [],
+      params: { a: 1, b: 1, c: 0, d: 0 },
+      domain: undefined,
+      color: "primary",
+    }] as typeof normalizedFunctions;
+  }
+
   // Compute rawDomain early so shaded-region normalization can use it as
   // a fallback when the AI omits "to" or "from" (e.g. "to": null meaning "right tail").
   const rawDomain = Array.isArray(input.domain)
@@ -763,7 +1047,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       color: string;
     } => region !== null)
     .slice(0, 4);
-  if (!normalizedFunctions.length && !normalizedFeaturePoints.length) warnings.push("empty-function-graph");
+  if (!resolvedNormalizedFunctions.length && !normalizedFeaturePoints.length) warnings.push("empty-function-graph");
 
   const rawRange = Array.isArray(input.range)
     ? input.range.slice(0, 2).map((v) => asFiniteNumber(v, 0)) as [number, number]
@@ -773,7 +1057,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   // The renderer only draws a/(x-h)+k — if the latex includes an "x" term the AI dropped
   // into params as k, we regenerate accurate sample points for the full expression and
   // suppress the horizontal asymptote label (which is meaningless for oblique asymptotes).
-  const normalizedFunctionsEnhanced = normalizedFunctions.map((fn) => {
+  const normalizedFunctionsEnhanced = resolvedNormalizedFunctions.map((fn) => {
     const f = fn as Record<string, unknown>;
     if (f.kind !== "rational-reciprocal") return fn;
     const lat = String(f.latex || "");
@@ -804,6 +1088,25 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       params: { ...p, k: undefined, horizontalAsymptote: undefined },
     };
   }) as typeof normalizedFunctions;
+  const uniqueNormalizedFunctionsEnhanced = normalizedFunctionsEnhanced.filter((fn, index, list) => {
+    const item = fn as Record<string, unknown>;
+    const kind = String(item.kind || "");
+    if (!["sine", "trig-sine", "cosine", "trig-cosine"].includes(kind)) return true;
+    const earlierEquivalent = list.slice(0, index).some((previous) => {
+      const previousItem = previous as Record<string, unknown>;
+      const previousKind = String(previousItem.kind || "");
+      if (!["sine", "trig-sine", "cosine", "trig-cosine"].includes(previousKind)) return false;
+      const samples = [rawDomain[0], 0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, rawDomain[1]]
+        .filter((x, sampleIndex, values) => Number.isFinite(x) && values.indexOf(x) === sampleIndex);
+      return samples.length > 0 && samples.every((x) => {
+        const y1 = evalFnAt(item, x);
+        const y2 = evalFnAt(previousItem, x);
+        return Number.isFinite(y1) && Number.isFinite(y2) && Math.abs(y1 - y2) < 0.015;
+      });
+    });
+    if (earlierEquivalent) warnings.push("duplicate-equivalent-trig-function-dropped");
+    return !earlierEquivalent;
+  }) as typeof normalizedFunctions;
 
   // When all shaded regions are strictly in the first quadrant (from≥0, baseline≥0),
   // snap the lower bounds to 0 so the viewport focuses on the relevant area, and
@@ -813,14 +1116,24 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     normalizedShadedRegions.length > 0 &&
     normalizedShadedRegions.every((r) => r.from >= 0 && r.baseline >= 0);
 
-  const domain = allShadedFirstQuadrant
-    ? [Math.max(0, rawDomain[0]), rawDomain[1]]
+  const hasTrigFunctionSeed = resolvedNormalizedFunctions.some((fn) => {
+    const item = fn as Record<string, unknown>;
+    return ["sine", "trig-sine", "cosine", "trig-cosine"].includes(String(item.kind || ""))
+      || hasTrigLabel(item.latex);
+  });
+  const shouldExpandTrigDomain = hasTrigFunctionSeed || hasTrigFeaturePoints;
+  const resolvedRawDomain: [number, number] = shouldExpandTrigDomain && rawDomain[0] >= 0 && rawDomain[1] <= 2 * Math.PI + 0.2
+    ? [-Math.PI / 4, (9 * Math.PI) / 4]
     : rawDomain;
+
+  const domain = allShadedFirstQuadrant
+    ? [Math.max(0, resolvedRawDomain[0]), resolvedRawDomain[1]]
+    : resolvedRawDomain;
   const range = allShadedFirstQuadrant
     ? [Math.max(0, rawRange[0]), rawRange[1]]
     : rawRange;
 
-  let resolvedFunctions = normalizedFunctionsEnhanced;
+  let resolvedFunctions = uniqueNormalizedFunctionsEnhanced;
   if (allShadedFirstQuadrant) {
     // Build per-function shading extents, then clamp each function's domain to them.
     const shadingExtents = new Map<number, [number, number]>();
@@ -831,7 +1144,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         ? [Math.min(existing[0], r.from), Math.max(existing[1], r.to)]
         : [r.from, r.to]);
     }
-    resolvedFunctions = normalizedFunctionsEnhanced.map((fn, i) => {
+    resolvedFunctions = uniqueNormalizedFunctionsEnhanced.map((fn, i) => {
       const ext = shadingExtents.get(i);
       if (!ext) return fn;
 
@@ -887,6 +1200,84 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     resolvedFeaturePoints = Array.from(vertexSet.values());
   }
 
+  const normalizeTick = (tick: unknown) => {
+    if (typeof tick === "number" || typeof tick === "string") {
+      const value = asFiniteNumber(tick, Number.NaN);
+      return Number.isFinite(value) ? { value } : null;
+    }
+    if (!tick || typeof tick !== "object") return null;
+    const item = tick as Record<string, unknown>;
+    const value = asFiniteNumber(item.value, Number.NaN);
+    if (!Number.isFinite(value)) return null;
+    return {
+      value,
+      label: typeof item.label === "string" ? item.label.slice(0, 32) : undefined,
+      major: item.major === true,
+    };
+  };
+
+  const normalizeGuideLine = (guide: unknown) => {
+    if (!guide || typeof guide !== "object") return null;
+    const item = guide as Record<string, unknown>;
+    const orientation = String(item.orientation || item.axis || "").toLowerCase();
+    const value = asFiniteNumber(item.value, Number.NaN);
+    if (!Number.isFinite(value) || !["vertical", "horizontal", "x", "y"].includes(orientation)) return null;
+    const from = asFiniteNumber(item.from, Number.NaN);
+    const to = asFiniteNumber(item.to, Number.NaN);
+    const normalizedOrientation = orientation === "x" ? "vertical" : orientation === "y" ? "horizontal" : orientation;
+    return {
+      orientation: normalizedOrientation,
+      value,
+      from: Number.isFinite(from) ? from : undefined,
+      to: Number.isFinite(to) ? to : undefined,
+      label: typeof item.label === "string" ? item.label.slice(0, 48) : undefined,
+      color: typeof item.color === "string" ? item.color.slice(0, 24) : "primary",
+    };
+  };
+
+  const xTicks = Array.isArray(input.xTicks)
+    ? input.xTicks.map(normalizeTick).filter(Boolean).slice(0, 12)
+    : undefined;
+  const yTicks = Array.isArray(input.yTicks)
+    ? input.yTicks.map(normalizeTick).filter(Boolean).slice(0, 12)
+    : undefined;
+  const guideLineInputs = [
+    ...(Array.isArray(input.guideLines) ? input.guideLines : []),
+    ...(Array.isArray(input.referenceLines) ? input.referenceLines : []),
+  ];
+  const guideLines = guideLineInputs.map(normalizeGuideLine).filter(Boolean).slice(0, 10);
+  const hasTrigFunction = resolvedFunctions.some((fn) => {
+    const item = fn as Record<string, unknown>;
+    return ["sine", "trig-sine", "cosine", "trig-cosine"].includes(String(item.kind || ""))
+      || hasTrigLabel(item.latex);
+  });
+  const graphStyle = ["trig-wave", "textbook-wave"].includes(String(input.graphStyle || input.template || "")) || hasTrigFunction || hasTrigFeaturePoints
+    ? "trig-wave"
+    : undefined;
+  const primaryTrigFunction = graphStyle === "trig-wave"
+    ? resolvedFunctions.find((fn) => {
+      const item = fn as Record<string, unknown>;
+      return ["sine", "trig-sine", "cosine", "trig-cosine"].includes(String(item.kind || ""));
+    }) as Record<string, unknown> | undefined
+    : undefined;
+  const computedTrigPoints = primaryTrigFunction ? computedTrigFeaturePoints(primaryTrigFunction, domain as [number, number], range as [number, number]) : [];
+  const computedGuideLines = computedTrigGuideLines(computedTrigPoints);
+  if (graphStyle === "trig-wave") {
+    const hasMismatchedTrigFeaturePoint = resolvedFeaturePoints.some((point) => {
+      const item = point as Record<string, unknown>;
+      const coordinates = item.point as [number, number] | undefined;
+      if (!primaryTrigFunction || !Array.isArray(coordinates)) return false;
+      const expectedY = evalFnAt(primaryTrigFunction, coordinates[0]);
+      return Number.isFinite(expectedY) && Math.abs(expectedY - coordinates[1]) > 0.08;
+    });
+    if (computedTrigPoints.length && (resolvedFeaturePoints.length === 0 || hasMismatchedTrigFeaturePoint)) {
+      if (hasMismatchedTrigFeaturePoint) warnings.push("trig-feature-points-recomputed");
+      resolvedFeaturePoints = computedTrigPoints;
+    } else if (resolvedFeaturePoints.length === 0) {
+      resolvedFeaturePoints = defaultTrigWaveFeaturePoints(resolvedFunctions);
+    }
+  }
+
   return {
     type: "function-graph",
     functions: resolvedFunctions,
@@ -894,6 +1285,10 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     shadedRegions: normalizedShadedRegions,
     domain,
     range,
+    graphStyle,
+    xTicks: xTicks?.length ? xTicks : graphStyle === "trig-wave" ? defaultTrigWaveXTicks() : undefined,
+    yTicks: yTicks?.length ? yTicks : graphStyle === "trig-wave" ? defaultTrigWaveYTicks() : undefined,
+    guideLines: guideLines.length ? guideLines : graphStyle === "trig-wave" ? computedGuideLines.length ? computedGuideLines : defaultSineWaveGuideLines() : [],
     xAxisLabel: typeof input.xAxisLabel === "string" ? input.xAxisLabel.slice(0, 32) : undefined,
     yAxisLabel: typeof input.yAxisLabel === "string" ? input.yAxisLabel.slice(0, 32) : undefined,
   };

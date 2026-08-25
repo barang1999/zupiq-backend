@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import logging
 import os
 import re
 from typing import Any, Optional
@@ -10,6 +11,8 @@ from psycopg2.extras import RealDictCursor
 # Similarity thresholds
 INSTANT_THRESHOLD = 0.92   # return cached solution directly
 HINT_THRESHOLD    = 0.80   # inject as few-shot context into AI prompt
+
+logger = logging.getLogger(__name__)
 
 
 def _get_conn():
@@ -41,20 +44,44 @@ def find_similar(
         params: list[Any] = [vec]
 
         if subject:
-            conditions.append("subject = %s")
+            conditions.append("LOWER(subject) = LOWER(%s)")
             params.append(subject)
 
         if language:
-            conditions.append("language = %s")
+            conditions.append("LOWER(language) = LOWER(%s)")
             params.append(language)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE %s::text IS NULL OR LOWER(subject) = LOWER(%s::text)) AS subject_count,
+                    COUNT(*) FILTER (WHERE %s::text IS NULL OR LOWER(language) = LOWER(%s::text)) AS language_count,
+                    COUNT(*) FILTER (
+                        WHERE (%s::text IS NULL OR LOWER(subject) = LOWER(%s::text))
+                          AND (%s::text IS NULL OR LOWER(language) = LOWER(%s::text))
+                    ) AS filtered_count
+                FROM problem_embeddings
+                """,
+                (subject, subject, language, language, subject, subject, language, language),
+            )
+            counts = dict(cur.fetchone() or {})
+            logger.info(
+                "[resolver.db] lookup filters: subject=%s language=%s counts=%s",
+                subject,
+                language,
+                counts,
+            )
+
+            cur.execute(
                 f"""
                 SELECT
                     session_id,
+                    subject,
+                    language,
                     problem_text,
                     final_answer,
                     solution_text,
@@ -67,7 +94,52 @@ def find_similar(
                 """,
                 (*params, vec, limit),
             )
-            return [dict(row) for row in cur.fetchall()]
+            rows = [dict(row) for row in cur.fetchall()]
+            logger.info(
+                "[resolver.db] filtered candidates: count=%s top=%s",
+                len(rows),
+                [
+                    {
+                        "session_id": row.get("session_id"),
+                        "subject": row.get("subject"),
+                        "language": row.get("language"),
+                        "similarity": float(row.get("similarity") or 0),
+                        "problem_text": str(row.get("problem_text") or "")[:120],
+                    }
+                    for row in rows[:3]
+                ],
+            )
+
+            if not rows and (subject or language):
+                cur.execute(
+                    """
+                    SELECT
+                        session_id,
+                        subject,
+                        language,
+                        problem_text,
+                        1 - (embedding <=> %s::vector) AS similarity
+                    FROM problem_embeddings
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT 3
+                    """,
+                    (vec, vec),
+                )
+                logger.info(
+                    "[resolver.db] unfiltered nearest candidates: %s",
+                    [
+                        {
+                            "session_id": row.get("session_id"),
+                            "subject": row.get("subject"),
+                            "language": row.get("language"),
+                            "similarity": float(row.get("similarity") or 0),
+                            "problem_text": str(row.get("problem_text") or "")[:120],
+                        }
+                        for row in cur.fetchall()
+                    ],
+                )
+
+            return rows
     finally:
         conn.close()
 
@@ -109,7 +181,7 @@ def upsert_embedding(
                 """,
                 (
                     session_id, user_id, subject, topic, problem_text,
-                    vec, language, final_answer, solution_text, bj,
+                    vec, (language or "en").lower(), final_answer, solution_text, bj,
                 ),
             )
         conn.commit()

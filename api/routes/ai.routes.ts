@@ -1172,7 +1172,7 @@ router.post(
           const cachedPayload = attachRenderBlocksToPayload(cached.breakdown_json as any);
           const cachedSession = await createSession(userId, {
             title: ((cachedPayload as any).title || "New Session").trim(),
-            subject: ((cachedPayload as any).subject || subject || "General").trim(),
+            subject: (subject || (cachedPayload as any).subject || "General").trim(),
             topic: (cachedPayload as any).topic || null,
             problem: text,
             node_count: 0,
@@ -1263,7 +1263,8 @@ router.post(
         // ── Post-OCR semantic cache check ────────────────────────────────────
         // Vision already solved, but if cache has a high-confidence match use
         // the cached (positively-rated) breakdown instead of the fresh AI one.
-        const cachedFromImage = await resolveFromCache(problemText, solution.subject ?? subject, req.user!.language, RESOLVE_TIMEOUT_POST_OCR_MS);
+        const resolverSubject = subject ?? solution.subject;
+        const cachedFromImage = await resolveFromCache(problemText, resolverSubject, req.user!.language, RESOLVE_TIMEOUT_POST_OCR_MS);
         logger.info(`[instant-session] ⚡ RESOLVER (post-ocr): mode=${cachedFromImage.mode} confidence=${cachedFromImage.confidence.toFixed(3)} language=${req.user!.language ?? "en"}`, { traceId });
 
         if (cachedFromImage.mode === "instant" && cachedFromImage.breakdown_json) {
@@ -1271,7 +1272,7 @@ router.post(
           const cachedPayload = attachRenderBlocksToPayload(cachedFromImage.breakdown_json as any);
           const cachedSession = await createSession(userId, {
             title: ((cachedPayload as any).title || "New Session").trim(),
-            subject: ((cachedPayload as any).subject || subject || "General").trim(),
+            subject: (subject || (cachedPayload as any).subject || "General").trim(),
             topic: (cachedPayload as any).topic || null,
             problem: problemText,
             node_count: 0,
@@ -1356,7 +1357,7 @@ router.post(
       const { _usage: solutionUsage, ...solutionForStorage } = solution;
       const session = await createSession(userId, {
         title: (solution.title || "New Session").trim(),
-        subject: (solution.subject || subject || "General").trim(),
+        subject: (subject || solution.subject || "General").trim(),
         topic: solution.topic || null,
         problem: problemText,
         node_count: 0,

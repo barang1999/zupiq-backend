@@ -104,6 +104,37 @@ Resolve:  { problem_text, language: "km" }  →  match     →  instant in Khmer
 
 Each language builds its own independent cache.
 
+Lookups compare `subject` and `language` case-insensitively. Indexed language
+values are stored lower-case.
+
+---
+
+## Instant Hit Guard
+
+Embeddings replace numbers with `N`, so structurally similar problems can match
+even when their values differ. Before returning an `"instant"` cache hit, the
+resolver compares the numeric tokens from the incoming problem with the cached
+problem. If the numbers differ, the result is downgraded to `"hint"` so the AI
+solves fresh using the cached solution only as guidance.
+
+It also compares semantic math tokens such as `sin`, `cos`, `tan`, `sqrt`,
+`fraction`, and `pi`. A `cos x` problem must not instant-hit a cached `sin x`
+solution even if the embedding similarity is high and the interval numbers
+match.
+
+For example, if OCR reads `\frac{x^2-1}{x-1}` incorrectly as `x`, the cached
+row may not become an instant hit because the numeric tokens no longer match.
+
+When embedding normalization changes, existing rows must be reindexed because
+their stored vectors do not update automatically:
+
+```bash
+cd zupiq-backend/python
+source venv/bin/activate
+python scripts/reindex_problem_embeddings.py --dry-run
+python scripts/reindex_problem_embeddings.py
+```
+
 ---
 
 ## Database Schema
@@ -130,7 +161,25 @@ Table: `problem_embeddings` (pgvector required)
 **Indexes:**
 - `idx_problem_embeddings_subject` — equality filter on subject
 - `idx_problem_embeddings_language` — equality filter on language
+- `idx_problem_embeddings_subject_lower` — case-insensitive subject filter
+- `idx_problem_embeddings_language_lower` — case-insensitive language filter
 - `idx_problem_embeddings_embedding` — IVFFlat approximate NN (lists=100, cosine)
+
+---
+
+## Debug Logs
+
+The resolver logs compact diagnostics for cache misses:
+
+- `[resolver] resolve request` — incoming subject, language, problem preview,
+  and normalized embedding text
+- `[resolver.db] lookup filters` — total rows plus subject/language filtered
+  counts
+- `[resolver.db] filtered candidates` — nearest candidate after filters
+- `[resolver.db] unfiltered nearest candidates` — nearest rows ignoring filters
+  when the filtered query returns no candidate
+- `[resolver] instant guard numbers` — whether numeric tokens matched before
+  allowing an instant response
 
 ---
 

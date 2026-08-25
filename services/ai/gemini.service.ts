@@ -534,6 +534,36 @@ function completeDanglingSolutionText(solutionText: string, finalAnswer: string)
   return solutionText;
 }
 
+function summarizeDiagramBlocksForLog(blocks: unknown) {
+  if (!Array.isArray(blocks)) return { count: 0, blocks: [] };
+  return {
+    count: blocks.length,
+    blocks: blocks.slice(0, 4).map((block) => {
+      const item = block && typeof block === "object" ? block as Record<string, unknown> : {};
+      const spec = item.spec && typeof item.spec === "object" ? item.spec as Record<string, unknown> : {};
+      return {
+        type: item.diagramType,
+        warnings: Array.isArray(item.warnings) ? item.warnings.slice(0, 8) : undefined,
+        graphStyle: spec.graphStyle,
+        domain: spec.domain,
+        range: spec.range,
+        featurePointCount: Array.isArray(spec.featurePoints) ? spec.featurePoints.length : undefined,
+        functions: Array.isArray(spec.functions)
+          ? spec.functions.slice(0, 4).map((fn) => {
+            const fnItem = fn && typeof fn === "object" ? fn as Record<string, unknown> : {};
+            return {
+              kind: fnItem.kind,
+              latex: fnItem.latex,
+              label: fnItem.label,
+              params: fnItem.params,
+            };
+          })
+          : undefined,
+      };
+    }),
+  };
+}
+
 function normalizeSolutionFirstPayload(
   payload: ProblemSolutionFirst,
   problem: string,
@@ -552,6 +582,12 @@ function normalizeSolutionFirstPayload(
     afterRepair: afterRepair.slice(0, 600),
   });
 
+  const diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
+  logger.info("[diagramBlocks:pipeline]", {
+    raw: summarizeDiagramBlocksForLog(payload.diagramBlocks),
+    normalized: summarizeDiagramBlocksForLog(diagramBlocks),
+  });
+
   const result: ProblemSolutionFirst = {
     ...payload,
     version: 3,
@@ -563,7 +599,7 @@ function normalizeSolutionFirstPayload(
     solutionFormat: "markdown-latex",
     solutionBlocks: buildRenderBlocks(afterRepair),
     finalAnswerBlocks: buildRenderBlocks(repairedFinalAnswer, { defaultDisplay: false }),
-    diagramBlocks: normalizeDiagramBlocks(payload.diagramBlocks),
+    diagramBlocks,
     explanationStatus: "not_generated",
     explanation: null,
     _usage: payload._usage,  // carried forward for the route to read, stripped before DB storage
@@ -584,6 +620,7 @@ Diagram spec examples:
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
+- function-graph trigonometric textbook wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"},{"orientation":"horizontal","value":1,"from":0,"to":1.5708,"color":"focus"},{"orientation":"horizontal","value":-1,"from":0,"to":4.71239,"color":"focus"}]}
 - solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","base":"A","height":"h","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 - tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
 
@@ -2778,8 +2815,9 @@ Rules:
   });
 
   if (isUsableProblemSolutionFirst(primary.data)) {
-    const diagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks).length
-      ? primary.data.diagramBlocks
+    const normalizedDiagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks);
+    const diagramBlocks = normalizedDiagramBlocks.length
+      ? normalizedDiagramBlocks
       : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }).catch(() => []);
     return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
   }
@@ -2925,9 +2963,10 @@ Rules for solutionText:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
   sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
   venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
-  geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
-  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
-  solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
+	  geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
+	  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+	  function-graph trigonometric wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"}]}
+	  solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 
 Return a single JSON object only.`;
 
@@ -2995,8 +3034,9 @@ Return a single JSON object only.`;
   const fallbackUsage = result.usage;
 
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
-    const diagramBlocks = normalizeDiagramBlocks(data.diagramBlocks).length
-      ? data.diagramBlocks
+    const normalizedDiagramBlocks = normalizeDiagramBlocks(data.diagramBlocks);
+    const diagramBlocks = normalizedDiagramBlocks.length
+      ? normalizedDiagramBlocks
       : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }).catch((err) => {
         logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
           err: err instanceof Error ? err.message : String(err),

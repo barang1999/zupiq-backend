@@ -27,20 +27,46 @@ export async function resolveFromCache(
 ): Promise<ResolveResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  const resolvedLanguage = language ?? "en";
   try {
+    logger.info("[resolver] resolve request", {
+      subject: subject ?? null,
+      language: resolvedLanguage,
+      timeoutMs,
+      problemPreview: problemText.slice(0, 160),
+    });
     const res = await fetch(`${RESOLVER_URL}/resolve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         problem_text: problemText,
         subject: subject ?? undefined,
-        language: language ?? "en",
+        language: resolvedLanguage,
       }),
       signal: controller.signal,
     });
-    if (!res.ok) return noMatch();
-    return (await res.json()) as ResolveResult;
-  } catch {
+    if (!res.ok) {
+      logger.warn("[resolver] resolve non-OK response", {
+        status: res.status,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return noMatch();
+    }
+    const payload = (await res.json()) as ResolveResult;
+    logger.info("[resolver] resolve response", {
+      mode: payload.mode,
+      matched: payload.matched,
+      confidence: payload.confidence,
+      sessionId: payload.session_id ?? null,
+      elapsedMs: Date.now() - startedAt,
+    });
+    return payload;
+  } catch (err) {
+    logger.warn("[resolver] resolve failed", {
+      error: err instanceof Error ? err.message : String(err),
+      elapsedMs: Date.now() - startedAt,
+    });
     return noMatch();
   } finally {
     clearTimeout(timer);
@@ -59,13 +85,39 @@ export function indexSession(payload: {
   solution_text?: string | null;
   breakdown_json?: unknown;
 }): void {
+  logger.info("[resolver] index request", {
+    sessionId: payload.session_id,
+    subject: payload.subject ?? null,
+    topic: payload.topic ?? null,
+    language: payload.language ?? "en",
+    problemPreview: payload.problem_text.slice(0, 160),
+  });
   fetch(`${RESOLVER_URL}/index`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  }).catch((err) => {
-    logger.warn("[resolver] index fire-and-forget failed", { error: String(err?.message ?? err) });
-  });
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        logger.warn("[resolver] index non-OK response", {
+          sessionId: payload.session_id,
+          status: res.status,
+          body: body.slice(0, 300),
+        });
+        return;
+      }
+      logger.info("[resolver] index accepted", {
+        sessionId: payload.session_id,
+        status: res.status,
+      });
+    })
+    .catch((err) => {
+      logger.warn("[resolver] index fire-and-forget failed", {
+        sessionId: payload.session_id,
+        error: String(err?.message ?? err),
+      });
+    });
 }
 
 function noMatch(): ResolveResult {

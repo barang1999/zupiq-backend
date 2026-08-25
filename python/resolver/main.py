@@ -9,13 +9,27 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException
 
 from .db import HINT_THRESHOLD, INSTANT_THRESHOLD, find_similar, upsert_embedding
-from .embedder import embed
+from .embedder import embed, normalize_for_debug
 from .models import IndexRequest, ResolveRequest, ResolveResponse
 
 
 def _extract_numbers(text: str) -> list[str]:
     """Extract all numeric tokens from text (integers and decimals)."""
     return re.findall(r"\b\d+(?:\.\d+)?\b", text)
+
+
+SEMANTIC_TOKEN_RE = re.compile(r"\b(?:sin|cos|tan|cot|sec|csc|log|ln|sqrt|fraction|pi|infinity)\b|<=|>=|!=")
+
+
+def _semantic_tokens(text: str) -> set[str]:
+    """Extract math tokens that must match before serving an instant cache hit."""
+    return set(SEMANTIC_TOKEN_RE.findall(normalize_for_debug(text)))
+
+
+def _semantic_signature_match(incoming: str, cached: str) -> tuple[bool, list[str], list[str]]:
+    incoming_tokens = sorted(_semantic_tokens(incoming))
+    cached_tokens = sorted(_semantic_tokens(cached))
+    return incoming_tokens == cached_tokens, incoming_tokens, cached_tokens
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,23 +55,65 @@ def resolve(req: ResolveRequest) -> ResolveResponse:
 
     Returns mode='none' when similarity < 0.80 — no useful match.
     """
+    normalized_problem = normalize_for_debug(req.problem_text)
+    logger.info(
+        "[resolver] resolve request: subject=%s language=%s problem=%s normalized=%s",
+        req.subject,
+        req.language,
+        req.problem_text[:160],
+        normalized_problem[:160],
+    )
+
     try:
         vec = embed(req.problem_text)
-        results = find_similar(vec, subject=req.subject, language=req.language, limit=1)
+        results = find_similar(vec, subject=req.subject, language=req.language, limit=5)
     except Exception as exc:
         logger.warning("[resolver] resolve failed (non-critical): %s", exc)
         return ResolveResponse(matched=False, confidence=0.0, mode="none")
 
     if not results:
+        logger.info(
+            "[resolver] resolve no candidates after filters: subject=%s language=%s normalized=%s",
+            req.subject,
+            req.language,
+            normalized_problem[:160],
+        )
         return ResolveResponse(matched=False, confidence=0.0, mode="none")
 
-    top = results[0]
+    compatible_results = []
+    for row in results:
+        signature_match, incoming_tokens, cached_tokens = _semantic_signature_match(req.problem_text, str(row.get("problem_text") or ""))
+        logger.info(
+            "[resolver] semantic guard: match=%s incoming_tokens=%s cached_tokens=%s candidate_session=%s candidate_problem=%s",
+            signature_match,
+            incoming_tokens,
+            cached_tokens,
+            row.get("session_id"),
+            str(row.get("problem_text") or "")[:120],
+        )
+        if signature_match:
+            compatible_results.append(row)
+
+    if not compatible_results:
+        best_similarity = float(results[0]["similarity"])
+        logger.info(
+            "[resolver] resolve no semantically compatible candidates: best_similarity=%.4f subject=%s language=%s",
+            best_similarity,
+            req.subject,
+            req.language,
+        )
+        return ResolveResponse(matched=False, confidence=best_similarity, mode="none")
+
+    top = compatible_results[0]
     similarity = float(top["similarity"])
 
     logger.info(
-        "[resolver] resolve: subject=%s similarity=%.4f",
+        "[resolver] resolve top: subject=%s language=%s similarity=%.4f session_id=%s cached_problem=%s",
         req.subject,
+        req.language,
         similarity,
+        top.get("session_id"),
+        str(top.get("problem_text") or "")[:160],
     )
 
     if similarity >= INSTANT_THRESHOLD:
@@ -70,8 +126,12 @@ def resolve(req: ResolveRequest) -> ResolveResponse:
         numbers_match = (incoming_nums == cached_nums)
 
         logger.info(
-            "[resolver] numbers check: match=%s incoming=%s cached=%s",
-            numbers_match, incoming_nums, cached_nums,
+            "[resolver] instant guard numbers: match=%s incoming=%s cached=%s incoming_problem=%s cached_problem=%s",
+            numbers_match,
+            incoming_nums,
+            cached_nums,
+            req.problem_text[:120],
+            str(top.get("problem_text") or "")[:120],
         )
 
         if numbers_match:
@@ -113,6 +173,15 @@ def resolve(req: ResolveRequest) -> ResolveResponse:
 @app.post("/index")
 def index(req: IndexRequest):
     """Index a positively-rated session into the embedding store."""
+    normalized_problem = normalize_for_debug(req.problem_text)
+    logger.info(
+        "[resolver] index request: session=%s subject=%s language=%s problem=%s normalized=%s",
+        req.session_id,
+        req.subject,
+        req.language,
+        req.problem_text[:160],
+        normalized_problem[:160],
+    )
     try:
         vec = embed(req.problem_text)
         upsert_embedding(

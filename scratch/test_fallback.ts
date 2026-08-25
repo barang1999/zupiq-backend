@@ -1,14 +1,12 @@
-import { inferSolidGeometryBlocks } from "../services/ai/gemini.service.ts";
+import { inferSolidGeometryBlocks, inferVectorRightTriangleBlocks } from "../services/ai/gemini.service.ts";
 
 function runTest() {
   console.log("Running fallback inference tests...");
 
-  // 1. Cylinder test (the user's scenario)
+  // 1. Cylinder test
   const cylinderProblem = "A cylinder has radius 4 cm and height 10 cm. Draw and label the cylinder, then calculate its volume.";
   const cylinderBlocks = inferSolidGeometryBlocks(cylinderProblem, "");
   console.log("\nCylinder Test:");
-  console.log(JSON.stringify(cylinderBlocks, null, 2));
-
   if (
     cylinderBlocks.length === 1 &&
     cylinderBlocks[0].spec.shape === "cylinder" &&
@@ -17,42 +15,41 @@ function runTest() {
   ) {
     console.log("✅ Cylinder test PASSED!");
   } else {
-    console.error("❌ Cylinder test FAILED!");
+    console.error("❌ Cylinder test FAILED!", JSON.stringify(cylinderBlocks, null, 2));
   }
 
-  // 2. Cuboid space diagonal test
-  const cuboidProblem = "គណនាប្រវែងអង្កត់ទ្រូងលំហនៃប្រអប់គូបូអ៊ីតដែលមាន length = 8, width = 6, height = 3 cm";
-  const cuboidBlocks = inferSolidGeometryBlocks(cuboidProblem, "");
-  console.log("\nCuboid Test:");
-  console.log(JSON.stringify(cuboidBlocks, null, 2));
-
+  // 2. Vector Magnitude and Angle (Type B) Test
+  const vectorProblem = "A vector has magnitude 10 and forms an angle of 30° with the positive x-axis. Draw the vector and its horizontal and vertical components.";
+  const vectorSolution = "សមាសធាតុដេក $V_x = 5\\sqrt{3}$ (ប្រហែល 8.66) និងសមាសធាតុឈរគឺ $5$ ។";
+  const vectorBlocks = inferVectorRightTriangleBlocks(vectorProblem, vectorSolution);
+  console.log("\nVector Magnitude/Angle Test:");
+  
   if (
-    cuboidBlocks.length === 1 &&
-    cuboidBlocks[0].spec.shape === "cuboid" &&
-    cuboidBlocks[0].spec.params.l === 8 &&
-    cuboidBlocks[0].spec.params.w === 6 &&
-    cuboidBlocks[0].spec.params.h === 3
+    vectorBlocks.length === 1 &&
+    vectorBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "V_x = 5\\sqrt{3}") &&
+    vectorBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "V_y = 5") &&
+    vectorBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "\\vec{V} = 10") &&
+    vectorBlocks[0].spec.shapes.some(s => s.shape === "angle" && s.label === "30°")
   ) {
-    console.log("✅ Cuboid test PASSED!");
+    console.log("✅ Vector Magnitude/Angle test PASSED!");
   } else {
-    console.error("❌ Cuboid test FAILED!");
+    console.error("❌ Vector Magnitude/Angle test FAILED!", JSON.stringify(vectorBlocks, null, 2));
   }
 
-  // 3. Cone test
-  const coneProblem = "កោនមានកាំ r = 3 cm និងកម្ពស់ h = 12 cm";
-  const coneBlocks = inferSolidGeometryBlocks(coneProblem, "");
-  console.log("\nCone Test:");
-  console.log(JSON.stringify(coneBlocks, null, 2));
+  // 3. Forces Right Triangle (Type A) Test
+  const forceProblem = "A force of 3 N acts East and a force of 4 N acts North. Draw the resultant force.";
+  const forceBlocks = inferVectorRightTriangleBlocks(forceProblem, "");
+  console.log("\nForce Right Triangle Test:");
 
   if (
-    coneBlocks.length === 1 &&
-    coneBlocks[0].spec.shape === "cone" &&
-    coneBlocks[0].spec.params.r === 3 &&
-    coneBlocks[0].spec.params.h === 12
+    forceBlocks.length === 1 &&
+    forceBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "3 N (East)") &&
+    forceBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "4 N (North)") &&
+    forceBlocks[0].spec.shapes.some(s => s.shape === "arrow" && s.label === "5 N (Resultant)")
   ) {
-    console.log("✅ Cone test PASSED!");
+    console.log("✅ Force Right Triangle test PASSED!");
   } else {
-    console.error("❌ Cone test FAILED!");
+    console.error("❌ Force Right Triangle test FAILED!", JSON.stringify(forceBlocks, null, 2));
   }
 }
 

@@ -2398,7 +2398,7 @@ function inferLadderRightTriangleBlocks(
   }]);
 }
 
-function inferVectorRightTriangleBlocks(
+export function inferVectorRightTriangleBlocks(
   problem: string,
   solutionText: string,
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
@@ -2408,7 +2408,83 @@ function inferVectorRightTriangleBlocks(
     || /(force|forces|east|north|resultant|vector|magnitude|កម្លាំង|ខាងកើត|ខាងជើង|កម្លាំងសរុប|ពីតាហ្គ័រ|ត្រីកោណកែង)/i.test(source);
   if (!wantsGeometry) return [];
 
-  // Try to find forces/magnitudes in Newtons (N)
+  // Type B: Standard magnitude and angle vector problem
+  const magnitude = firstNumberAfter(source, [
+    /(?:\bmagnitude\b|\blength\b|ម៉ូឌុល|រង្វាស់)\s*(?:=|ស្មើ|:|នៃ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+  ]);
+  const angle = firstNumberAfter(source, [
+    /(\d+(?:\.\d+)?)\s*(?:°|\\?circ|degree|ដឺក្រេ)/i,
+    /(?:\btheta\b|angle|មុំ)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+  ]);
+
+  if (Number.isFinite(magnitude) && Number.isFinite(angle) && magnitude > 0 && angle > 0 && angle < 360) {
+    const rad = (angle * Math.PI) / 180;
+    const vx = Number((magnitude * Math.cos(rad)).toFixed(4));
+    const vy = Number((magnitude * Math.sin(rad)).toFixed(4));
+
+    // Try to extract exact labels Vx and Vy from solutionText (e.g. 5\sqrt{3} and 5)
+    const vxMatches = Array.from(solutionText.matchAll(/\bV_?x\s*(?:=|\\approx)\s*([^$\n]+)/gi)).map(m => m[1]);
+    const vyMatches = Array.from(solutionText.matchAll(/\bV_?y\s*(?:=|\\approx)\s*([^$\n]+)/gi)).map(m => m[1]);
+
+    const isValuable = (c: string) => {
+      const normalized = c.trim();
+      if (/\\vec|\\cos|\\sin|\\theta|\\times|\\cdot|\*|\|/i.test(normalized)) return false;
+      const containsLetters = /[a-zA-Z]/.test(normalized.replace(/\\sqrt|\\frac|\\approx/g, ""));
+      if (containsLetters) return false;
+      return true;
+    };
+
+    const getBestLabel = (candidates: string[], fallback: string) => {
+      const clean = candidates.map(c => c.trim()).filter(isValuable);
+      if (!clean.length) return fallback;
+      const mathy = clean.find(c => c.includes('\\sqrt') || c.includes('\\frac'));
+      if (mathy) return mathy;
+      return clean[0];
+    };
+
+    const vxLabelRaw = getBestLabel(vxMatches, String(Number(vx.toFixed(2))));
+    const vyLabelRaw = getBestLabel(vyMatches, String(Number(vy.toFixed(2))));
+
+    const vxLabel = `V_x = ${vxLabelRaw}`;
+    const vyLabel = `V_y = ${vyLabelRaw}`;
+    const vLabel = `\\vec{V} = ${magnitude}`;
+
+    const O: [number, number] = [0, 0];
+    const Px: [number, number] = [vx, 0];
+    const Pxy: [number, number] = [vx, vy];
+    const PAngleFrom: [number, number] = [Math.abs(vx) * 0.4 || 1, 0];
+
+    const paddingX = Math.abs(vx) * 0.25 || 2;
+    const paddingY = Math.abs(vy) * 0.25 || 2;
+
+    const xMin = vx >= 0 ? -paddingX : vx - paddingX;
+    const xMax = vx >= 0 ? vx + paddingX : paddingX;
+    const yMin = vy >= 0 ? -paddingY : vy - paddingY;
+    const yMax = vy >= 0 ? vy + paddingY : paddingY;
+
+    return normalizeDiagramBlocks([{
+      diagramType: "geometry",
+      shapes: [
+        { shape: "polygon", vertices: [O, Px, Pxy], labels: ["", "", ""] },
+        { shape: "arrow", start: O, end: Px, label: vxLabel, color: "muted" },
+        { shape: "arrow", start: Px, end: Pxy, label: vyLabel, color: "muted" },
+        { shape: "arrow", start: O, end: Pxy, label: vLabel, color: "primary" },
+        { shape: "angle", vertex: O, from: PAngleFrom, to: Pxy, label: `${angle}°`, radius: 30, color: "red" },
+      ],
+      options: {
+        xMin,
+        xMax,
+        yMin,
+        yMax,
+        grid: false,
+        showOrigin: true,
+        xAxisLabel: "x",
+        yAxisLabel: "y"
+      }
+    }]);
+  }
+
+  // Type A: Try to find forces/magnitudes in Newtons (N)
   const matches = Array.from(source.matchAll(/(\d+(?:\.\d+)?)\s*(?:N|\\text\{N\}|\bNewtons?\b)/gi));
   let f1 = 0;
   let f2 = 0;
@@ -2450,7 +2526,7 @@ function inferVectorRightTriangleBlocks(
 
   // Check if we still don't have forces, look for generic right triangle sides
   if (f1 <= 0 || f2 <= 0) {
-    const numbers = Array.from(source.matchAll(/(?:side|c|a|b|\bប្រវែង\b)[^\d]*?(\d+(?:\.\d+)?)/gi))
+    const numbers = Array.from(source.matchAll(/(?:\bside\b|\bc\b|\ba\b|\bb\b|ប្រវែង)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/gi))
       .map(m => Number(m[1]));
     const unique = [...new Set(numbers)];
     if (unique.length >= 2) {

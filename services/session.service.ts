@@ -3,6 +3,8 @@ import { StudySession, CreateSessionDTO, UpdateSessionDTO } from "../models/sess
 import { generateId, nowISO, slugify } from "../utils/helpers.js";
 import { AppError } from "../api/middlewares/error.middleware.js";
 import { canUserAccessSession, canUserEditSession } from "./collaboration.service.js";
+import { normalizeDiagramBlocks } from "../utils/diagram-blocks.js";
+import { logger } from "../utils/logger.js";
 
 type CanonicalSubject = {
   slug: string;
@@ -59,6 +61,128 @@ function toCanonicalJsonValue(value: unknown, fallback: unknown): unknown {
   const parsed = parseJsonDeep(value);
   if (parsed && typeof parsed === "object") return parsed;
   return fallback;
+}
+
+function payloadText(value: unknown): string {
+  const parsed = parseJsonDeep(value);
+  if (typeof parsed === "string") return parsed;
+  if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.text === "string") return record.text;
+    if (typeof record.problem === "string") return record.problem;
+  }
+  return typeof value === "string" ? value : "";
+}
+
+function parseSimpleReciprocalInterval(source: string): { a: number; h: number; interval: [number, number] } | null {
+  const normalized = `${source ?? ""}`.replace(/[០-៩]/g, (digit) => "០១២៣៤៥៦៧៨៩".indexOf(digit).toString()).replace(/\s+/g, "");
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{x(?:([+-])(\d+(?:\.\d+)?))?\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?(?:x(?:([+-])(\d+(?:\.\d+)?))?)\)?/i);
+  const match = latexMatch || slashMatch;
+  if (!match) return null;
+  const a = Number(match[1]);
+  const shift = match[3] ? Number(match[3]) : 0;
+  const h = match[2] === "+" ? -shift : shift;
+  const interval = Array.from(normalized.matchAll(/[\[(]([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)[\])]/g))
+    .map((item): [number, number] => [Number(item[1]), Number(item[2])])
+    .find(([from, to]) => Number.isFinite(from) && Number.isFinite(to) && from < to && Math.abs(from - h) > 0.0001 && Math.abs(to - h) > 0.0001);
+  return Number.isFinite(a) && Number.isFinite(h) && interval ? { a, h, interval } : null;
+}
+
+function repairSessionDiagramPayload(problem: unknown, breakdownValue: unknown): unknown {
+  const payload = toCanonicalJsonValue(breakdownValue, {});
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+
+  const breakdown = { ...(payload as Record<string, unknown>) };
+  const source = `${payloadText(problem)}\n${payloadText(breakdown.problem)}\n${payloadText(breakdown.solutionText)}`;
+  const parsed = parseSimpleReciprocalInterval(source);
+  if (!parsed) return breakdown;
+
+  const diagramBlocks = Array.isArray(breakdown.diagramBlocks)
+    ? breakdown.diagramBlocks
+    : Array.isArray(breakdown.solutionBlocks)
+      ? breakdown.solutionBlocks.filter((block) => (block as Record<string, unknown>)?.type === "diagram")
+      : [];
+  const reciprocalIntervalBlock = diagramBlocks.find((block) => {
+    const record = block as Record<string, unknown>;
+    const spec = record?.spec as Record<string, unknown> | undefined;
+    const functions = Array.isArray(spec?.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    return record?.diagramType === "function-graph"
+      && spec?.graphStyle === "reciprocal-interval"
+      && functions.some((fn) => fn.kind === "rational-reciprocal");
+  });
+  if (!reciprocalIntervalBlock) return breakdown;
+
+  const [from, to] = parsed.interval;
+  const yFrom = parsed.a / (from - parsed.h);
+  const yTo = parsed.a / (to - parsed.h);
+  if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return breakdown;
+
+  const reciprocalIntervalSpec = (reciprocalIntervalBlock as Record<string, unknown>).spec as Record<string, unknown> | undefined;
+  const existingShadedRegions = Array.isArray(reciprocalIntervalSpec?.shadedRegions) ? reciprocalIntervalSpec.shadedRegions : [];
+  const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
+    const item = region as Record<string, unknown>;
+    return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
+  });
+  const existingFunctions = Array.isArray(reciprocalIntervalSpec?.functions) ? reciprocalIntervalSpec.functions as Array<Record<string, unknown>> : [];
+  const existingHasSecant = existingFunctions.some((fn) => {
+    if (fn.kind !== "linear") return false;
+    const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+    const m = Number(params.m);
+    const b = Number(params.b);
+    return Number.isFinite(m)
+      && Number.isFinite(b)
+      && Math.abs((m * from + b) - yFrom) < 0.08
+      && Math.abs((m * to + b) - yTo) < 0.08;
+  });
+  const explicitIntent = typeof reciprocalIntervalSpec?.diagramIntent === "string" ? reciprocalIntervalSpec.diagramIntent : "";
+  const diagramIntent = explicitIntent === "secant-interval" || existingHasSecant
+    ? "secant-interval"
+    : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
+      ? "shaded-interval"
+      : "interval-points";
+  const functions: Array<Record<string, unknown>> = [{
+    kind: "rational-reciprocal",
+    latex: `y=\\frac{${parsed.a}}{x${parsed.h < 0 ? "+" : parsed.h > 0 ? "-" : ""}${parsed.h ? Math.abs(parsed.h) : ""}}`,
+    points: [],
+    params: { a: parsed.a, h: parsed.h, k: 0, verticalAsymptote: parsed.h, horizontalAsymptote: 0 },
+    color: "primary",
+  }];
+  if (diagramIntent === "secant-interval") {
+    const m = (yTo - yFrom) / (to - from);
+    const b = yFrom - m * from;
+    functions.push({ kind: "linear", latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`, points: [], params: { m, b }, color: "secondary" });
+  }
+
+  const repaired = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    spec: {
+      graphStyle: "reciprocal-interval",
+      diagramIntent,
+      domain: [from, to],
+      range: [-1, Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1))],
+      functions,
+      featurePoints: [
+        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: true },
+        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: true },
+      ],
+      shadedRegions: diagramIntent === "shaded-interval" ? existingShadedRegions : [],
+    },
+  }]);
+  if (!repaired.length) return breakdown;
+
+  breakdown.diagramBlocks = repaired;
+  if (Array.isArray(breakdown.solutionBlocks)) {
+    breakdown.solutionBlocks = breakdown.solutionBlocks.map((block) => ((block as Record<string, unknown>)?.type === "diagram" ? repaired[0] : block));
+  }
+  logger.info("[session:repair-reciprocal-interval-diagram]", {
+    a: parsed.a,
+    h: parsed.h,
+    interval: parsed.interval,
+    diagramIntent,
+    featurePoints: [[from, yFrom], [to, yTo]],
+  });
+  return breakdown;
 }
 
 function toCanonicalNullableJsonString(value: unknown): string | null {
@@ -462,6 +586,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
   const breakdownVal = dto.breakdown_json as any;
   const topicSlug = dto.topic || breakdownVal?.topic || null;
   const topicId = dto.topic_id || await resolveTopicId(subjectId, topicSlug);
+  const repairedBreakdown = repairSessionDiagramPayload(dto.problem, dto.breakdown_json);
 
   const session: StudySession = {
     id: generateId(),
@@ -474,7 +599,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     problem: dto.problem,
     node_count: dto.node_count,
     duration_seconds: dto.duration_seconds ?? null,
-    breakdown_json: toCanonicalJsonString(dto.breakdown_json, {}),
+    breakdown_json: toCanonicalJsonString(repairedBreakdown, {}),
     visual_table_json: toCanonicalNullableJsonString(dto.visual_table_json),
     image_url: dto.image_url ?? null,
     created_at: nowISO(),
@@ -491,7 +616,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
       },
       { text: "", segments: [] }
     ),
-    breakdown_json: toCanonicalJsonValue(dto.breakdown_json, {}),
+    breakdown_json: toCanonicalJsonValue(repairedBreakdown, {}),
     visual_table_json: toCanonicalNullableJsonValue(dto.visual_table_json),
   };
 
@@ -587,7 +712,7 @@ export async function updateSession(id: string, userId: string, updates: UpdateS
   const { subject: _omitS, ...updatesWithoutSubject } = updates as Record<string, unknown>;
   const normalizedUpdates: Record<string, unknown> = { ...updatesWithoutSubject };
   if (Object.prototype.hasOwnProperty.call(updates, "breakdown_json")) {
-    normalizedUpdates.breakdown_json = toCanonicalJsonValue(updates.breakdown_json, {});
+    normalizedUpdates.breakdown_json = toCanonicalJsonValue(repairSessionDiagramPayload(updates.problem ?? "", updates.breakdown_json), {});
   }
   if (Object.prototype.hasOwnProperty.call(updates, "visual_table_json")) {
     normalizedUpdates.visual_table_json = toCanonicalNullableJsonValue(updates.visual_table_json);

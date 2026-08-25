@@ -620,6 +620,8 @@ Diagram spec examples:
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
+- function-graph reciprocal interval endpoints/range: {"graphStyle":"reciprocal-interval","diagramIntent":"interval-points","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
+- function-graph reciprocal average-rate/secant: {"graphStyle":"reciprocal-interval","diagramIntent":"secant-interval","functions":[{"kind":"rational-reciprocal","params":{"a":3,"h":0,"k":0,"verticalAsymptote":0,"horizontalAsymptote":0},"latex":"y=\\frac{3}{x}"},{"kind":"linear","params":{"m":-1.5,"b":4.5},"latex":"y=-1.5x+4.5","color":"secondary"}],"featurePoints":[{"point":[1,3],"label":"(1, 3)"},{"point":[2,1.5],"label":"(2, 1.5)"}],"domain":[1,2],"range":[-1,4]}
 - function-graph trigonometric textbook wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"},{"orientation":"horizontal","value":1,"from":0,"to":1.5708,"color":"focus"},{"orientation":"horizontal","value":-1,"from":0,"to":4.71239,"color":"focus"}]}
 - solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere" | "prism","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","base":"A","height":"h","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 - tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
@@ -657,6 +659,27 @@ function firstNumberAfterLabel(source: string, labelPattern: RegExp): number | n
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : null;
+}
+
+function parseSimpleReciprocalProblem(source: string): { a: number; h: number; interval: [number, number] } | null {
+  const normalized = normalizeDigits(source).replace(/\s+/g, "");
+  const latexMatch = normalized.match(/(?:f\(x\)|y)=\\frac\{([+-]?\d+(?:\.\d+)?)\}\{x(?:([+-])(\d+(?:\.\d+)?))?\}/i);
+  const slashMatch = latexMatch ? null : normalized.match(/(?:f\(x\)|y)=([+-]?\d+(?:\.\d+)?)\/\(?(?:x(?:([+-])(\d+(?:\.\d+)?))?)\)?/i);
+  const reciprocalMatch = latexMatch || slashMatch;
+  if (!reciprocalMatch) return null;
+  const a = Number(reciprocalMatch[1]);
+  const sign = reciprocalMatch[2];
+  const shiftRaw = reciprocalMatch[3];
+  const shift = shiftRaw ? Number(shiftRaw) : 0;
+  const h = sign === "+" ? -shift : shift;
+  const intervalMatches = Array.from(normalized.matchAll(/[\[(]([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)[\])]/g));
+  const intervalMatch = intervalMatches.find((match) => {
+    const left = Number(match[1]);
+    const right = Number(match[2]);
+    return Number.isFinite(left) && Number.isFinite(right) && left < right && Math.abs(left - h) > 0.0001 && Math.abs(right - h) > 0.0001;
+  });
+  if (!Number.isFinite(a) || !Number.isFinite(h) || !intervalMatch) return null;
+  return { a, h, interval: [Number(intervalMatch[1]), Number(intervalMatch[2])] };
 }
 
 function inferVennDiagramBlocks(
@@ -716,11 +739,11 @@ function inferFunctionGraphBlocks(
   const source = normalizeDigits(`${problem}\n${solutionText}`);
 
   // Only fire for graph/parabola/sketch problems
-  if (!/(graph|parabola|sketch|plot|line|linear|intersection|ក្រាហ្វ|ប៉ារ៉ាបូល|គូស|quadratic|បន្ទាត់|ប្រសព្វ)/i.test(source)) return [];
+  if (!/(graph|parabola|sketch|plot|line|linear|intersection|ក្រាហ្វ|ប៉ារ៉ាបូល|គូស|quadratic|rational|removable|undefined|មិនកំណត់|អនុគមន៍|\\frac|\/\s*\(?\s*x|បន្ទាត់|ប្រសព្វ)/i.test(source)) return [];
 
   // Confirm the AI identified this as a function-graph (empty block hint)
   const wantedFunctionGraph = emptyBlocks.some((b) => b.diagramType === "function-graph")
-    || /(graph|sketch|plot|line|linear|intersection|បន្ទាត់|ប្រសព្វ)/i.test(source);
+    || /(graph|sketch|plot|line|linear|intersection|rational|removable|undefined|មិនកំណត់|អនុគមន៍|\\frac|\/\s*\(?\s*x|បន្ទាត់|ប្រសព្វ)/i.test(source);
   if (!wantedFunctionGraph) return [];
 
   const parseLinearCoefficient = (raw: string | undefined): number => {
@@ -960,6 +983,92 @@ function inferFunctionGraphBlocks(
         yAxisLabel: "y",
       }]);
     }
+  }
+
+  const removableRationalMatch = source.match(
+    /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*(?:\\frac\{\s*x\^2\s*-\s*(\d+(?:\.\d+)?)\s*\}\{\s*x\s*-\s*(\d+(?:\.\d+)?)\s*\}|\(?\s*x\^2\s*-\s*(\d+(?:\.\d+)?)\s*\)?\s*\/\s*\(?\s*x\s*-\s*(\d+(?:\.\d+)?)\s*\)?)/i
+  );
+  if (removableRationalMatch) {
+    const constant = Number(removableRationalMatch[1] ?? removableRationalMatch[3]);
+    const holeX = Number(removableRationalMatch[2] ?? removableRationalMatch[4]);
+    const factor = Math.sqrt(constant);
+    if (Number.isFinite(constant) && Number.isFinite(holeX) && Math.abs(factor - holeX) < 0.0001) {
+      const intervalMatch = source.match(/[\[(]\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*[\])]/);
+      const intervalStart = intervalMatch ? Number(intervalMatch[1]) : 0;
+      const intervalEnd = intervalMatch ? Number(intervalMatch[2]) : holeX + 1;
+      const holeY = holeX + factor;
+      const domainMin = Math.floor(Math.min(-1, intervalStart - 1));
+      const domainMax = Math.ceil(Math.max(intervalEnd + 1, holeX + 2));
+      const yMin = Math.floor(Math.min(-1, domainMin + factor));
+      const yMax = Math.ceil(Math.max(holeY + 1, intervalEnd + factor, domainMax + factor, 3));
+      const originalLatex = `f(x)=\\frac{x^2-${constant}}{x-${holeX}}`;
+
+      return normalizeDiagramBlocks([{
+        diagramType: "function-graph",
+        graphStyle: "removable-rational",
+        functions: [{
+          kind: "linear",
+          params: { m: 1, b: factor },
+          latex: originalLatex,
+          simplifiedLatex: `y=x+${factor}`,
+          color: "primary",
+        }],
+        featurePoints: [{
+          point: [holeX, holeY],
+          label: `(${holeX}, ${holeY})`,
+          color: "primary",
+          closed: false,
+        }],
+        guideLines: Number.isFinite(intervalEnd) ? [{
+          orientation: "vertical",
+          value: intervalEnd,
+          from: 0,
+          to: intervalEnd + factor,
+          label: `x=${intervalEnd}`,
+          color: "focus",
+        }] : [],
+        domain: [domainMin, domainMax],
+        range: [yMin, yMax],
+        xTicks: Array.from({ length: domainMax - domainMin + 1 }).map((_, index) => ({ value: domainMin + index, label: String(domainMin + index) })),
+        yTicks: Array.from({ length: yMax - yMin + 1 }).map((_, index) => ({ value: yMin + index, label: String(yMin + index) })),
+        xAxisLabel: "x",
+        yAxisLabel: "y",
+      }]);
+    }
+  }
+
+  const reciprocalIntervalMatch = source.match(
+    /(?:y|[a-z]\s*\(\s*[a-z]\s*\))\s*=\s*(?:\\frac\{\s*1\s*\}\{\s*x\s*\}|1\s*\/\s*x)[\s\S]{0,120}?[\[(]\s*0\s*,\s*1\s*[\])]/i
+  );
+  if (reciprocalIntervalMatch) {
+    return normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      graphStyle: "reciprocal-interval",
+      functions: [{
+        kind: "rational-reciprocal",
+        params: {
+          a: 1,
+          h: 0,
+          k: 0,
+          verticalAsymptote: 0,
+          horizontalAsymptote: 0,
+        },
+        domain: [0.08, 4],
+        latex: "f(x)=\\frac{1}{x}",
+        color: "primary",
+      }],
+      featurePoints: [{ point: [1, 1], label: "(1, 1)", color: "primary", closed: true }],
+      guideLines: [
+        { orientation: "vertical", value: 1, from: 0, to: 4, label: "x=1", color: "focus" },
+        { orientation: "horizontal", value: 1, from: 0, to: 1, label: "y=1", color: "focus" },
+      ],
+      domain: [-1, 4],
+      range: [-1, 4],
+      xTicks: [-1, 0, 1, 2, 3, 4].map((value) => ({ value, label: String(value) })),
+      yTicks: [-1, 0, 1, 2, 3, 4].map((value) => ({ value, label: String(value) })),
+      xAxisLabel: "x",
+      yAxisLabel: "y",
+    }]);
   }
 
   const rationalMatch = source.match(
@@ -1297,6 +1406,107 @@ function inferNumberLineBlocks(
   }
 
   return [];
+}
+
+function repairReciprocalIntervalDiagramBlocks(
+  problem: string,
+  solutionText: string,
+  blocks: ReturnType<typeof normalizeDiagramBlocks>,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = `${problem}\n${solutionText}`;
+  const parsed = parseSimpleReciprocalProblem(source);
+  if (!parsed) return blocks;
+
+  const reciprocalBlock = blocks.find((block) => {
+    if (block.diagramType !== "function-graph") return false;
+    const spec = block.spec as Record<string, unknown>;
+    const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    return functions.some((fn) => fn.kind === "rational-reciprocal");
+  });
+  if (!reciprocalBlock) return blocks;
+
+  const [from, to] = parsed.interval;
+  const yFrom = parsed.a / (from - parsed.h);
+  const yTo = parsed.a / (to - parsed.h);
+  if (!Number.isFinite(yFrom) || !Number.isFinite(yTo)) return blocks;
+
+  const existingSpec = reciprocalBlock.spec as Record<string, unknown>;
+  const existingFunctions = Array.isArray(existingSpec.functions) ? existingSpec.functions as Array<Record<string, unknown>> : [];
+  const existingShadedRegions = Array.isArray(existingSpec.shadedRegions) ? existingSpec.shadedRegions : [];
+  const hasStructuredShadedRegion = existingShadedRegions.some((region) => {
+    const item = region as Record<string, unknown>;
+    return Number.isFinite(Number(item.from)) && Number.isFinite(Number(item.to)) && Math.abs(Number(item.from) - Number(item.to)) > 0.0001;
+  });
+  const existingHasSecant = existingFunctions.some((fn) => {
+    if (fn.kind !== "linear") return false;
+    const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+    const m = Number(params.m);
+    const b = Number(params.b);
+    return Number.isFinite(m)
+      && Number.isFinite(b)
+      && Math.abs((m * from + b) - yFrom) < 0.08
+      && Math.abs((m * to + b) - yTo) < 0.08;
+  });
+  const explicitIntent = typeof existingSpec.diagramIntent === "string" ? existingSpec.diagramIntent : "";
+  const diagramIntent = explicitIntent === "secant-interval" || existingHasSecant
+    ? "secant-interval"
+    : explicitIntent === "shaded-interval" || hasStructuredShadedRegion
+      ? "shaded-interval"
+      : "interval-points";
+  const reciprocalFn = existingFunctions.find((fn) => fn.kind === "rational-reciprocal") || {};
+  const baseFunctions: Array<Record<string, unknown>> = [{
+    ...reciprocalFn,
+    kind: "rational-reciprocal",
+    latex: reciprocalFn.latex || `y=\\frac{${parsed.a}}{x${parsed.h < 0 ? "+" : parsed.h > 0 ? "-" : ""}${parsed.h ? Math.abs(parsed.h) : ""}}`,
+    params: {
+      a: parsed.a,
+      h: parsed.h,
+      k: 0,
+      verticalAsymptote: parsed.h,
+      horizontalAsymptote: 0,
+    },
+    points: [],
+  }];
+
+  if (diagramIntent === "secant-interval") {
+    const m = (yTo - yFrom) / (to - from);
+    const b = yFrom - m * from;
+    baseFunctions.push({
+      kind: "linear",
+      latex: `y=${Number(m.toFixed(6))}x${b >= 0 ? "+" : ""}${Number(b.toFixed(6))}`,
+      params: { m, b },
+      color: "secondary",
+    });
+  }
+
+  const yMax = Math.max(4, Math.ceil(Math.max(yFrom, yTo) + 1));
+  const repaired = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    spec: {
+      ...existingSpec,
+      graphStyle: "reciprocal-interval",
+      diagramIntent,
+      domain: [from, to],
+      range: [-1, yMax],
+      functions: baseFunctions,
+      featurePoints: [
+        { point: [from, yFrom], label: `(${from}, ${Number(yFrom.toFixed(3))})`, color: "primary", closed: true },
+        { point: [to, yTo], label: `(${to}, ${Number(yTo.toFixed(3))})`, color: "primary", closed: true },
+      ],
+      guideLines: [],
+      shadedRegions: diagramIntent === "shaded-interval" ? existingShadedRegions : [],
+    },
+  }]);
+
+  logger.info("[diagramBlocks:repair-reciprocal-interval]", {
+    functionA: parsed.a,
+    h: parsed.h,
+    interval: parsed.interval,
+    diagramIntent,
+    featurePoints: [[from, yFrom], [to, yTo]],
+  });
+
+  return repaired.length ? repaired : blocks;
 }
 
 type SimpleRationalInequality = {
@@ -2474,6 +2684,9 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const rationalInequalityFallback = inferRationalInequalitySignTableBlocks(problem, solutionText);
   if (rationalInequalityFallback.length) return rationalInequalityFallback;
+
+  const reciprocalIntervalRepair = repairReciprocalIntervalDiagramBlocks(problem, solutionText, normalized);
+  if (reciprocalIntervalRepair !== normalized) return reciprocalIntervalRepair;
 
   const useful = normalized.filter(
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))

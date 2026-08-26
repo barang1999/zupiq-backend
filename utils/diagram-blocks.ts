@@ -1949,11 +1949,53 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ]
     : hasBasicReciprocalFunction || hasInverseSquareFunction ? [] : guideLines.length ? guideLines : graphStyle === "trig-wave" ? computedGuideLines.length ? computedGuideLines : defaultSineWaveGuideLines() : [];
 
+  // The AI sometimes hands back a plausible-looking but too-small range (e.g. a
+  // generic [-5, 5] default) that doesn't actually contain what gets plotted —
+  // most visibly with piecewise functions where one branch reaches well outside
+  // it, clipping the curve. Grow the range to fit the sampled y-values of each
+  // well-behaved (non-asymptotic) function over its own domain, plus feature
+  // points, before applying the oversized-range shrink below. Templates that own
+  // their viewport (e.g. reciprocal-interval) already set a deliberate window,
+  // so leave those alone.
+  const FIT_RANGE_KINDS = new Set(["linear", "quadratic", "cubic", "polynomial", "absolute-value", "square-root", "points"]);
+  const fittedRange: [number, number] = (() => {
+    if (graphStyle === "reciprocal-interval") return outputRange as [number, number];
+    let dataYMin = Infinity;
+    let dataYMax = -Infinity;
+    for (const fn of resolvedFunctions) {
+      const item = fn as Record<string, unknown>;
+      if (!FIT_RANGE_KINDS.has(String(item.kind || ""))) continue;
+      const fnDomain = Array.isArray(item.domain) ? item.domain as [number, number] : (outputDomain as [number, number]);
+      const [dMin, dMax] = fnDomain;
+      if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) continue;
+      const samples = 40;
+      for (let i = 0; i <= samples; i++) {
+        const x = dMin + ((dMax - dMin) * i) / samples;
+        const y = evalFnAt(item, x);
+        if (!Number.isFinite(y)) continue;
+        dataYMin = Math.min(dataYMin, y);
+        dataYMax = Math.max(dataYMax, y);
+      }
+    }
+    for (const fp of resolvedFeaturePoints) {
+      const coords = (fp as Record<string, unknown>).point as [number, number] | undefined;
+      if (Array.isArray(coords) && Number.isFinite(coords[1])) {
+        dataYMin = Math.min(dataYMin, coords[1]);
+        dataYMax = Math.max(dataYMax, coords[1]);
+      }
+    }
+    if (!Number.isFinite(dataYMin) || !Number.isFinite(dataYMax)) return outputRange as [number, number];
+    if (dataYMin >= outputRange[0] && dataYMax <= outputRange[1]) return outputRange as [number, number];
+    const pad = Math.max(0.5, (dataYMax - dataYMin) * 0.1);
+    return [Math.min(outputRange[0], dataYMin - pad), Math.max(outputRange[1], dataYMax + pad)] as [number, number];
+  })();
+
   // For basic-graph quadratic diagrams, prevent an oversized y-viewport that
-  // would crush the vertex region. When the AI gives a range taller than 20
-  // units and all functions are quadratic, clamp the top to maxFeatureY + 10
-  // so the vertices stay visually prominent.
+  // would crush the vertex region. When the (possibly just-fitted) range is
+  // taller than 20 units and all functions are quadratic, clamp the top to
+  // maxFeatureY + 10 so the vertices stay visually prominent.
   const finalRange: [number, number] = (() => {
+    const outputRange = fittedRange;
     if (graphStyle || outputRange[1] - outputRange[0] <= 20) return outputRange as [number, number];
     const allQuadratic =
       resolvedFunctions.length > 0 &&

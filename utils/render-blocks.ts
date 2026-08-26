@@ -268,7 +268,25 @@ function getLatexWarnings(latex: string): string[] {
   if (hasUnbalancedParenthesesOutsideIntervals(latex)) warnings.push("unbalanced-parentheses");
   if (/\$\s*\$/.test(latex) || /\$/.test(latex)) warnings.push("contains-delimiter");
   if (/\\(?:frac|sqrt)\b(?!\s*\{)/.test(latex)) warnings.push("possibly-malformed-command");
+  if (hasUnbalancedEnvironments(latex)) warnings.push("unbalanced-environment");
   return warnings;
+}
+
+// Catches truncated/malformed `\begin{env}...\end{env}` pairs (e.g. `aligned`, `cases`,
+// `matrix`) — most commonly a mid-generation truncation that leaves an environment open
+// with no closing tag. Brace-balance alone won't catch this: `\begin{aligned}` on its own
+// has perfectly balanced braces.
+function hasUnbalancedEnvironments(input: string): boolean {
+  const stack: string[] = [];
+  for (const match of input.matchAll(/\\(begin|end)\{([a-zA-Z*]+)\}/g)) {
+    const [, kind, name] = match;
+    if (kind === "begin") {
+      stack.push(name);
+    } else if (stack.pop() !== name) {
+      return true;
+    }
+  }
+  return stack.length !== 0;
 }
 
 function hasUnbalancedParenthesesOutsideIntervals(input: string): boolean {

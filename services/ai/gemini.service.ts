@@ -361,6 +361,17 @@ const SUPERSCRIPT_DIGITS: Record<string, string> = {
   "⁹": "9",
 };
 
+// Gemini occasionally enters a degenerate repetition loop while generating a single
+// node's mathContent/keyFormula — e.g. emitting hundreds of near-identical
+// "\tag{N} \text{...}" fragments with an incrementing N until it runs out of budget.
+// A legitimate single step's math content is always short (a handful of lines at
+// most), so an oversized field is itself sufficient evidence of this failure mode —
+// no need to match the exact wording, which varies run to run.
+const DEGENERATE_FIELD_LENGTH = 600;
+function hasDegenerateRepetition(text: unknown): boolean {
+  return `${text ?? ""}`.length > DEGENERATE_FIELD_LENGTH;
+}
+
 function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
   if (!value || typeof value !== "object") return false;
   const candidate = value as any;
@@ -405,6 +416,14 @@ function isUsableProblemBreakdown(value: unknown): value is ProblemBreakdown {
     );
   }
   if (branchNodes.length < 2) return false;
+
+  // Reject the whole breakdown outright if any node degenerated into a repetition
+  // loop — accepting the rest of a tree while one node is corrupted still ships a
+  // broken node to the user, so this forces the existing recovery-pass retry instead.
+  const hasDegenerateNode = candidate.nodes.some(
+    (node: any) => hasDegenerateRepetition(node?.mathContent) || hasDegenerateRepetition(node?.keyFormula)
+  );
+  if (hasDegenerateNode) return false;
 
   const hasConcreteBranch = branchNodes.some((node) => {
     const math = `${node?.mathContent ?? ""}`.trim();
@@ -5109,8 +5128,11 @@ function stripRepeatedTextSpacePadding(raw: string): string {
 function demoteNonLatinTextCommands(raw: string): string {
   // Only act if there's non-ASCII inside \text{}
   if (!/\\text\{[^}]*[^\x00-\x7F][^}]*\}/.test(raw)) return raw;
-  // Don't restructure aligned environments — too complex
-  if (/\\begin\{aligned\}/.test(raw)) return raw;
+  // Don't restructure ANY \begin{...}...\end{...} environment (aligned, cases, matrix,
+  // array, etc.) — splitting on \text{} boundaries inside one severs the environment's
+  // begin/end pairing (e.g. "\begin{cases} g(x) &\text{if }... \end{cases}" gets cut into
+  // three separately-delimited fragments, each missing its matching begin or end).
+  if (/\\begin\{[a-zA-Z*]+\}/.test(raw)) return raw;
 
   // Strip outer math delimiters so we can work on the inner expression
   let inner = raw.trim();

@@ -2543,9 +2543,20 @@ function inferCircleInscribedAngleBlocks(
     || /(inscribed angle|មុំចារឹក|ចារឹកក្នុងរង្វង់)/i.test(source);
   if (!wantsGeometry || !/(circle|រង្វង់)/i.test(source) || !/(inscribed angle|មុំចារឹក|ចារឹកក្នុងរង្វង់)/i.test(source)) return [];
 
+  // Read the actual point names instead of assuming "arc AB, vertex C". In \angle XYZ /
+  // ∠XYZ notation the middle letter is the inscribed angle's vertex and the outer two
+  // letters are the arc endpoints (e.g. "∠ABC" with "arc AC" → vertex B, arc points A, C).
+  // Fall back to the historical A/B/C-labeled arc/vertex only if no angle notation is found.
+  const angleNotationMatch = source.match(/(?:\\angle|∠)\s*([A-Z])([A-Z])([A-Z])/);
+  const arcLetter1 = angleNotationMatch?.[1] ?? "A";
+  const vertexLetter = angleNotationMatch?.[2] ?? "C";
+  const arcLetter2 = angleNotationMatch?.[3] ?? "B";
+  const pair = `${arcLetter1}${arcLetter2}`;
+  const pairReversed = `${arcLetter2}${arcLetter1}`;
+
   const arcMeasure = firstNumberAfter(source, [
-    /(?:arc|ធ្នូ)\s*AB[^\d]*(\d+)/i,
-    /AB[^\d]*(\d+)\s*(?:\^\\?circ|°|o)?/i,
+    new RegExp(`(?:arc|ធ្នូ)\\s*(?:${pair}|${pairReversed})[^\\d]*(\\d+)`, "i"),
+    new RegExp(`(?:${pair}|${pairReversed})[^\\d]*(\\d+)\\s*(?:\\^\\\\?circ|°|o)?`, "i"),
     /(\d+)\s*(?:\^\\?circ|°|o)\s*(?:arc|ធ្នូ)/i, // Require degree symbol to prevent greedily matching list numbers like "1. ប្រវែងធ្នូ"
   ]);
   if (!Number.isFinite(arcMeasure) || arcMeasure <= 0 || arcMeasure >= 360) return [];
@@ -2559,19 +2570,19 @@ function inferCircleInscribedAngleBlocks(
     const rad = (deg * Math.PI) / 180;
     return [O[0] + Math.cos(rad) * r, O[1] + Math.sin(rad) * r];
   };
-  const A = pointAt(startAngle);
-  const B = pointAt(endAngle);
-  const C: [number, number] = [160, 32];
+  const arcPoint1 = pointAt(startAngle);
+  const arcPoint2 = pointAt(endAngle);
+  const vertexPoint: [number, number] = [160, 32];
 
   return normalizeDiagramBlocks([{
     diagramType: "geometry",
     shapes: [
       { shape: "circle", center: O, radius: r, label: "O" },
-      { shape: "triangle", vertices: [A, B, C], labels: ["A", "B", "C"] },
-      { shape: "segment", vertices: [O, A], color: "muted" },
-      { shape: "segment", vertices: [O, B], color: "muted" },
+      { shape: "triangle", vertices: [arcPoint1, arcPoint2, vertexPoint], labels: [arcLetter1, arcLetter2, vertexLetter] },
+      { shape: "segment", vertices: [O, arcPoint1], color: "muted" },
+      { shape: "segment", vertices: [O, arcPoint2], color: "muted" },
       { shape: "arc", center: O, radius: r + 4, startAngle, endAngle, label: `${arcMeasure}°`, color: "red" },
-      { shape: "angle", vertex: C, from: A, to: B, label: `${inscribed}°`, radius: 28, color: "primary" },
+      { shape: "angle", vertex: vertexPoint, from: arcPoint1, to: arcPoint2, label: `${inscribed}°`, radius: 28, color: "primary" },
     ],
   }]);
 }
@@ -4056,6 +4067,15 @@ ${DIAGRAM_SPEC_GUIDE}`,
     if (trigCircleFallback.length) return trigCircleFallback;
   }
 
+  // Same rationale as the solid-geometry priority check above: the AI frequently returns a
+  // technically-non-empty but useless placeholder for this template (e.g. a lone circle with
+  // no triangle/arc/angle marks), which would otherwise pass the generic "useful" filter below
+  // and preempt our far more complete deterministic inscribed-angle diagram.
+  if (/(circle|រង្វង់)/i.test(problem + "\n" + solutionText) && /(inscribed angle|មុំចារឹក|ចារឹកក្នុងរង្វង់)/i.test(problem + "\n" + solutionText)) {
+    const circleFallback = inferCircleInscribedAngleBlocks(problem, solutionText, normalized);
+    if (circleFallback.length) return circleFallback;
+  }
+
   if (/(elevation|depression|building|tree|tower|cliff|height|shadow|មុំងើប|មុំបន្ទាប|កម្ពស់|អគារ|ដើមឈើ|បង្គោល|ប្រវែងស្រមោល)/i.test(problem + "\n" + solutionText)) {
     const rightTriangleTrigFallback = inferRightTriangleTrigBlocks(problem, solutionText, normalized);
     if (rightTriangleTrigFallback.length) return rightTriangleTrigFallback;
@@ -4140,9 +4160,6 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const trigCircleFallback = inferTrigUnitCircleBlocks(problem, solutionText, normalized);
   if (trigCircleFallback.length) return trigCircleFallback;
-
-  const circleFallback = inferCircleInscribedAngleBlocks(problem, solutionText, normalized);
-  if (circleFallback.length) return circleFallback;
 
   const ferrisWheelFallback = inferFerrisWheelBlocks(problem, solutionText, normalized);
   if (ferrisWheelFallback.length) return ferrisWheelFallback;

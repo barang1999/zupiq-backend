@@ -675,6 +675,47 @@ function normalizeSolutionFirstPayload(
   let repairedFinalAnswer = repairGeneratedMathText(payload.finalAnswer);
 
   const diagramBlocks = normalizeDiagramBlocks(payload.diagramBlocks);
+  if (Array.isArray(diagramBlocks)) {
+    const isPiecewiseProblem = /cases|piecewise|បំណែក/i.test(problem);
+    if (isPiecewiseProblem) {
+      const graphBlock = diagramBlocks.find((b: any) => b.diagramType === "function-graph");
+      if (graphBlock && graphBlock.spec && Array.isArray(graphBlock.spec.functions)) {
+        const fns = graphBlock.spec.functions;
+        const allLinearOrQuadratic = fns.length >= 2 && fns.every((f: any) => f.kind === "linear" || f.kind === "quadratic");
+        const hasNoDomains = fns.every((f: any) => !Array.isArray(f.domain));
+        if (allLinearOrQuadratic && hasNoDomains) {
+          const casesMatch = problem.match(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/);
+          if (casesMatch) {
+            const content = casesMatch[1];
+            const rows = content.split(/\\{2,}(?![a-zA-Z])|\\cr/).map((r) => r.trim()).filter(Boolean);
+            const parsedDomains: [number, number][] = [];
+            for (const row of rows) {
+              const parts = row.split("&");
+              if (parts.length < 2) continue;
+              const condition = parts[1].replace(/\\end$/, "").trim();
+              let domain: [number, number] = [-Infinity, Infinity];
+              const ltMatch = condition.match(/x\s*(?:<|\\*le|\\*leq|<=)\s*([+-]?\d+(?:\.\d+)?)/i);
+              const gtMatch = condition.match(/x\s*(?:>|\\*ge|\\*geq|>=)\s*([+-]?\d+(?:\.\d+)?)/i);
+              const rangeMatch = condition.match(/([+-]?\d+(?:\.\d+)?)\s*(?:<|\\*le|\\*leq|<=)\s*x\s*(?:<|\\*le|\\*leq|<=)\s*([+-]?\d+(?:\.\d+)?)/i);
+              if (rangeMatch) {
+                domain = [parseFloat(rangeMatch[1]), parseFloat(rangeMatch[2])];
+              } else if (ltMatch) {
+                domain = [-Infinity, parseFloat(ltMatch[1])];
+              } else if (gtMatch) {
+                domain = [parseFloat(gtMatch[1]), Infinity];
+              }
+              parsedDomains.push(domain);
+            }
+            if (parsedDomains.length === fns.length) {
+              for (let i = 0; i < fns.length; i++) {
+                fns[i].domain = parsedDomains[i];
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   repairedFinalAnswer = repairDiagramTaskFinalAnswer(repairedFinalAnswer, diagramBlocks, `${problem}\n${payload.problem || ""}`);
   const afterRepair = completeDanglingSolutionText(repairGeneratedMathText(afterSanitize), repairedFinalAnswer);
 
@@ -2231,6 +2272,97 @@ function inferSignTableBlocks(
   return normalizeDiagramBlocks([{ diagramType: "sign-table", spec: { rows } }]);
 }
 
+export function inferIsoscelesTriangleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const hasTriangle = /(triangle|ត្រីកោណ|សមបាត)/i.test(source);
+  if (!hasTriangle) return [];
+
+  const equalSidesMatch = source.match(/([a-z])([a-z])\s*=\s*\1([a-z])\s*=\s*(\d+(?:\.\d+)?)/i);
+  if (!equalSidesMatch) return [];
+
+  const vertexA = equalSidesMatch[1].toUpperCase();
+  const vertexB = equalSidesMatch[2].toUpperCase();
+  const vertexC = equalSidesMatch[3].toUpperCase();
+  const b = parseFloat(equalSidesMatch[4]);
+
+  const baseRegex = new RegExp(`(?:^|[\\s,;$])(${vertexB}${vertexC}|${vertexC}${vertexB})\\s*=\\s*(\\d+(?:\\.\\d+)?)`, "i");
+  const baseMatch = source.match(baseRegex);
+  if (!baseMatch) return [];
+
+  const a = parseFloat(baseMatch[2]);
+
+  if (
+    Number.isFinite(b) && Number.isFinite(a) && b > 0 && a > 0 && b > a / 2
+  ) {
+    const h = Math.sqrt(b * b - (a / 2) * (a / 2));
+    const leftX = 1;
+    const rightX = leftX + a;
+    const midX = leftX + a / 2;
+    const topY = h;
+
+    const shapes = [
+      {
+        shape: "polygon",
+        vertices: [[leftX, 0], [rightX, 0], [midX, topY]] as [number, number][],
+        color: "primary",
+        fill: "rgba(37,99,255,0.06)",
+      },
+      {
+        shape: "segment",
+        vertices: [[midX, topY], [midX, 0]] as [number, number][],
+        color: "primary",
+        label: `${Number(h.toFixed(1))} cm`,
+      },
+      {
+        shape: "polygon",
+        vertices: [[midX, 0], [midX, 0.4], [midX + 0.4, 0.4], [midX + 0.4, 0]] as [number, number][],
+        color: "muted",
+        fill: "none",
+      },
+      {
+        shape: "point",
+        vertices: [[midX, 0]] as [number, number][],
+        color: "primary",
+      }
+    ];
+
+    const labels = [
+      { text: vertexA, position: [midX, topY + 0.5] as [number, number], color: "primary" },
+      { text: vertexB, position: [leftX - 0.4, -0.4] as [number, number], color: "primary" },
+      { text: vertexC, position: [rightX + 0.4, -0.4] as [number, number], color: "primary" },
+      { text: "H", position: [midX, -0.4] as [number, number], color: "primary" },
+      { text: `${b} cm`, position: [(leftX + midX) / 2 - 0.8, topY / 2] as [number, number], color: "muted" },
+      { text: `${b} cm`, position: [(rightX + midX) / 2 + 0.8, topY / 2] as [number, number], color: "muted" },
+      { text: `${a/2} cm`, position: [(leftX + midX) / 2, -0.4] as [number, number], color: "muted" },
+      { text: `${a/2} cm`, position: [(rightX + midX) / 2, -0.4] as [number, number], color: "muted" },
+    ];
+
+    return normalizeDiagramBlocks([{
+      diagramType: "geometry",
+      spec: {
+        shapes,
+        labels,
+        options: {
+          xMin: leftX - 1.5,
+          xMax: rightX + 1.5,
+          yMin: -1.2,
+          yMax: topY + 1.5,
+          grid: false,
+          showOrigin: false,
+        }
+      },
+      renderer: "zupiq-svg",
+      version: 1,
+      cacheKey: `triangle-altitude-${vertexA}${vertexB}${vertexC}-${a}-${b}`
+    }]);
+  }
+  return [];
+}
+
 function inferTriangleExteriorAngleBlocks(
   problem: string,
   solutionText: string,
@@ -2901,11 +3033,11 @@ export function inferVectorRightTriangleBlocks(
 
   // Type B: Standard magnitude and angle vector problem
   const magnitude = firstNumberAfter(source, [
-    /(?:\bmagnitude\b|\blength\b|ម៉ូឌុល|រង្វាស់)\s*(?:=|ស្មើ|:|នៃ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+    /(?:\bmagnitude\b|\blength\b|ម៉ូឌុល|រង្វាស់)\s*(?:=|ស្មើ|:|នៃ)?[^\d\n]{0,25}(\d+(?:\.\d+)?)/i,
   ]);
   const angle = firstNumberAfter(source, [
-    /(\d+(?:\.\d+)?)\s*(?:\^\{?\\?circ\}?|\^\{?\\?text\{o\}\}?|\^\{?o\}?|\\circ|°|degree|ដឺក្រេ)/i,
-    /(?:\btheta\b|angle|មុំ)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
+    /(\d+(?:\.\d+)?)\s*(?:\^\{?\\?circ\}?|\^\{?\\?text\{o\}\}?|\^\{?o\}?|\\circ|°|\bdegree\b|ដឺក្រេ)/i,
+    /(?:\btheta\b|\bangle\b|មុំ)\s*(?:=|ស្មើ|:)?[^\d\n]{0,25}(\d+(?:\.\d+)?)/i,
   ]);
 
   if (Number.isFinite(magnitude) && Number.isFinite(angle) && magnitude > 0 && angle > 0 && angle < 360) {
@@ -3797,6 +3929,11 @@ ${DIAGRAM_SPEC_GUIDE}`,
   if (/(elevation|depression|building|tree|tower|cliff|height|shadow|មុំងើប|មុំបន្ទាប|កម្ពស់|អគារ|ដើមឈើ|បង្គោល|ប្រវែងស្រមោល)/i.test(problem + "\n" + solutionText)) {
     const rightTriangleTrigFallback = inferRightTriangleTrigBlocks(problem, solutionText, normalized);
     if (rightTriangleTrigFallback.length) return rightTriangleTrigFallback;
+  }
+
+  if (/(triangle|ត្រីកោណ|សមបាត)/i.test(problem + "\n" + solutionText)) {
+    const triangleFallback = inferIsoscelesTriangleBlocks(problem, solutionText, normalized);
+    if (triangleFallback.length) return triangleFallback;
   }
 
   if (/(vector|magnitude|កម្លាំង|ខាងកើត|ខាងជើង|កម្លាំងសរុប|ពីតាហ្គ័រ|ត្រីកោណកែង)/i.test(problem + "\n" + solutionText)) {

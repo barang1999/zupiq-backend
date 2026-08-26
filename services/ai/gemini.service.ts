@@ -895,7 +895,7 @@ function graphIntentFromProblemIntent(intent: unknown): "secant-interval" | "sha
   return null;
 }
 
-function inferVennDiagramBlocks(
+export function inferVennDiagramBlocks(
   problem: string,
   solutionText: string,
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
@@ -915,18 +915,40 @@ function inferVennDiagramBlocks(
 
   const leftTotal = firstNumberAfter(source, [
     new RegExp(`n\\s*\\(\\s*${L}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
-    /(\d+)\s*(?:នាក់)?[^\n]*(?:គណិត|math|mathematics)/i,
+    new RegExp(`\\|${L}\\|\\s*=\\s*(\\d+)`, "i"),
+    /(\d+)\s*(?:នាក់)?[^\n]*(?:គណិត|math|mathematics|english|អង់គ្លេស)/i,
   ]);
   const rightTotal = firstNumberAfter(source, [
     new RegExp(`n\\s*\\(\\s*${R}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
-    /(\d+)\s*(?:នាក់)?[^\n]*(?:វិទ្យាសាស្ត្រ|science)/i,
+    new RegExp(`\\|${R}\\|\\s*=\\s*(\\d+)`, "i"),
+    /(\d+)\s*(?:នាក់)?[^\n]*(?:វិទ្យាសាស្ត្រ|science|french|បារាំង)/i,
   ]);
   const intersection = firstNumberAfter(source, [
-    new RegExp(`n\\s*\\(\\s*${L}\\s*\\\\cap\\s*${R}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
+    new RegExp(`n\\s*\\(\\s*${L}\\s*(?:\\\\cap|∩)\\s*${R}\\s*\\)\\s*=\\s*(\\d+)`, "i"),
+    new RegExp(`\\|${L}\\s*(?:\\\\cap|∩)\\s*${R}\\|\\s*=\\s*(\\d+)`, "i"),
     /(\d+)\s*(?:នាក់)?[^\n]*(?:ទាំងពីរ|ចូលចិត្តទាំង|both|intersection)/i,
   ]);
 
   if (!Number.isFinite(leftTotal) || !Number.isFinite(rightTotal) || !Number.isFinite(intersection)) return [];
+
+  const universalTotal = firstNumberAfter(source, [
+    /\|U\|_?s*=\s*(\d+)/i,
+    /group\s+of\s+(\d+)/i,
+    /(?:សរុប|total)\s*(?::|ស្មើ|នៃ)?[^\d]*?(\d+)/i,
+    /n\s*\(\s*U\s*\)\s*=\s*(\d+)/i,
+  ]);
+
+  let neither = firstNumberAfter(source, [
+    /neither\s*(?:=|ស្មើ|:)?[^\d\r\n]*?(\d+)/i,
+    /មិនរៀន\s*(?:=|ស្មើ|:)?[^\d\r\n]*?(\d+)/i,
+    /មិនចូលចិត្ត\s*(?:=|ស្មើ|:)?[^\d\r\n]*?(\d+)/i,
+  ]);
+
+  if (!Number.isFinite(neither) && Number.isFinite(universalTotal)) {
+    const leftOnlyVal = Math.max(0, leftTotal - intersection);
+    const rightOnlyVal = Math.max(0, rightTotal - intersection);
+    neither = Math.max(0, universalTotal - (leftOnlyVal + intersection + rightOnlyVal));
+  }
 
   return normalizeDiagramBlocks([{
     diagramType: "venn-diagram",
@@ -939,7 +961,9 @@ function inferVennDiagramBlocks(
       leftOnly: Math.max(0, leftTotal - intersection),
       intersection,
       rightOnly: Math.max(0, rightTotal - intersection),
+      ...(Number.isFinite(neither) ? { neither } : {}),
     },
+    ...(Number.isFinite(universalTotal) ? { universalTotal } : {}),
   }]);
 }
 
@@ -2398,6 +2422,473 @@ function inferLadderRightTriangleBlocks(
   }]);
 }
 
+function parseTrigAngle(prob: string, sol: string) {
+  const text = `${prob}\n${sol}`;
+  const radFracRegex = /\\theta\s*=\s*(?:-\\frac|\\frac)?\s*\{\s*(?:(\d+)?\\pi|\\pi)\s*\}\s*\{\s*(\d+)\}/i;
+  const radSlashRegex = /\\theta\s*=\s*(?:-)?(\d+)?\\pi\s*\/\s*(\d+)/i;
+  const degRegex = /(\d+)\s*(?:\^\{?\\?circ\}?|\^\{?\\?text\{o\}\}?|\^\{?o\}?|\\circ|°|degree|ដឺក្រេ)/gi;
+
+  const mFrac = text.match(radFracRegex);
+  if (mFrac) {
+    const num = mFrac[1] ? Number(mFrac[1]) : 1;
+    const den = Number(mFrac[2]);
+    const deg = (num / den) * 180;
+    return { deg, label: `\\frac{${num === 1 ? '' : num}\\pi}{${den}}` };
+  }
+
+  const mSlash = text.match(radSlashRegex);
+  if (mSlash) {
+    const num = mSlash[1] ? Number(mSlash[1]) : 1;
+    const den = Number(mSlash[2]);
+    const deg = (num / den) * 180;
+    return { deg, label: `\\frac{${num === 1 ? '' : num}\\pi}{${den}}` };
+  }
+
+  const degMatches = Array.from(text.matchAll(degRegex)).map(m => Number(m[1]));
+  const commonTrigAngles = [30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360];
+  const matchedAngle = degMatches.find(d => commonTrigAngles.includes(d));
+  if (matchedAngle) {
+    return { deg: matchedAngle, label: `${matchedAngle}^\\circ` };
+  }
+
+  return null;
+}
+
+function parseTrigCoords(sol: string) {
+  const cosLines = Array.from(sol.matchAll(/\\cos\s*(?:\\left\()?[^\n$]+=[^\n$]+/gi)).map(m => m[0]);
+  const sinLines = Array.from(sol.matchAll(/\\sin\s*(?:\\left\()?[^\n$]+=[^\n$]+/gi)).map(m => m[0]);
+
+  const cleanVal = (v: string) => v.replace(/\s*[\$]+$/, '').trim();
+  const isClean = (v: string) => {
+    const normalized = cleanVal(v);
+    if (/\\cos|\\sin|\\tan|\\theta|\\pi/i.test(normalized)) return false;
+    return true;
+  };
+
+  const getFinalValue = (lines: string[]) => {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const parts = lines[i].split("=");
+      const lastPart = parts[parts.length - 1];
+      const cleaned = cleanVal(lastPart);
+      if (isClean(cleaned)) return cleaned;
+    }
+    return null;
+  };
+
+  const cosVal = getFinalValue(cosLines);
+  const sinVal = getFinalValue(sinLines);
+
+  if (cosVal && sinVal) {
+    return { cos: cosVal, sin: sinVal };
+  }
+  return null;
+}
+
+export function inferTrigUnitCircleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsTrigCircle = (emptyBlocks.some((b) => b.diagramType === "geometry" && b.mathFamily === "trigonometric")
+    || /(unit circle|trigonometric circle|រង្វង់ត្រីកោណមាត្រ|រង្វង់ឯកតា|រង្វង់ត្រីកោណមាត្រឯកតា)/i.test(source)
+    || (/(circle|រង្វង់)/i.test(source) && /(sin|cos|tan|theta|\\theta|មុំ)/i.test(source)))
+    && !/(sector|សិចទ័រ)/i.test(source);
+
+  if (!wantsTrigCircle) return [];
+
+  const parsedAngle = parseTrigAngle(problem, solutionText);
+  if (!parsedAngle) return [];
+
+  const angleDeg = parsedAngle.deg;
+  const angleLabel = parsedAngle.label;
+
+  const rad = (angleDeg * Math.PI) / 180;
+  const x = Number(Math.cos(rad).toFixed(4));
+  const y = Number(Math.sin(rad).toFixed(4));
+
+  let cosLabel = String(Number(x.toFixed(2)));
+  let sinLabel = String(Number(y.toFixed(2)));
+
+  const parsedCoords = parseTrigCoords(solutionText);
+  if (parsedCoords) {
+    cosLabel = parsedCoords.cos;
+    sinLabel = parsedCoords.sin;
+  }
+
+  const pLabel = `P\\left(${cosLabel}, ${sinLabel}\\right)`;
+
+  const O: [number, number] = [0, 0];
+  const P: [number, number] = [x, y];
+  const Px: [number, number] = [x, 0];
+  const Py: [number, number] = [0, y];
+  const InitEnd: [number, number] = [1, 0];
+  const PAngleFrom: [number, number] = [0.35, 0];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "trigonometric",
+    shapes: [
+      { shape: "circle", center: O, radius: 1, fill: "none", color: "primary" },
+      { shape: "arrow", start: O, end: InitEnd, label: "", color: "muted" },
+      { shape: "arrow", start: O, end: P, label: pLabel, color: "primary" },
+      { shape: "line", start: P, end: Px, color: "muted" },
+      { shape: "line", start: P, end: Py, color: "muted" },
+      { shape: "angle", vertex: O, from: PAngleFrom, to: P, label: angleLabel, radius: 26, color: "red" },
+    ],
+    options: {
+      xMin: -1.3,
+      xMax: 1.3,
+      yMin: -1.3,
+      yMax: 1.3,
+      grid: false,
+      showOrigin: true,
+      xAxisLabel: "\\cos \\theta",
+      yAxisLabel: "\\sin \\theta"
+    }
+  }]);
+}
+
+export function inferSectorBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsSector = emptyBlocks.some((b) => b.diagramType === "geometry")
+    || /(sector|សិចទ័រ|ក្រឡាផ្ទៃសិចទ័រ)/i.test(source);
+
+  if (!wantsSector) return [];
+
+  let rVal = firstNumberAfter(source, [
+    /(?:radius|កាំ|r)\s*(?:=|ស្មើ|:|នៃ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+  ]);
+  if (!Number.isFinite(rVal)) rVal = 6;
+
+  let angleVal = firstNumberAfter(source, [
+    /(\d+(?:\.\d+)?)\s*(?:°|\\?circ|degree|ដឺក្រេ)/i,
+    /(?:angle|មុំ|មុំផ្ចិត|\\theta|theta)\s*(?:=|ស្មើ|:|នៃ)?[^\d]*?(\d+(?:\.\d+)?)/i,
+  ]);
+  if (!Number.isFinite(angleVal)) angleVal = 120;
+
+  const rad = (angleVal * Math.PI) / 180;
+  const tx = Number(Math.cos(rad).toFixed(4));
+  const ty = Number(Math.sin(rad).toFixed(4));
+
+  const O: [number, number] = [0, 0];
+  const PEnd: [number, number] = [1, 0];
+  const PTerminal: [number, number] = [tx, ty];
+
+  const rLabel = `${rVal} cm`;
+  const angleLabel = `${angleVal}^\\circ`;
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "geometry",
+    shapes: [
+      {
+        shape: "sector",
+        center: O,
+        radius: 1,
+        startAngle: 0,
+        endAngle: angleVal,
+        color: "primary",
+        label: angleLabel
+      },
+      {
+        shape: "line",
+        start: O,
+        end: PEnd,
+        label: rLabel,
+        color: "primary"
+      },
+      {
+        shape: "line",
+        start: O,
+        end: PTerminal,
+        color: "primary"
+      }
+    ],
+    options: {
+      xMin: -1.2,
+      xMax: 1.2,
+      yMin: -1.2,
+      yMax: 1.2,
+      grid: false,
+      showOrigin: false
+    }
+  }]);
+}
+
+export function inferEllipseBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  const wantsEllipse = emptyBlocks.some((b) => b.diagramType === "geometry" || b.diagramType === "function-graph")
+    || /(ellipse|អេលីប)/i.test(source);
+
+  if (!wantsEllipse) return [];
+
+  // Parse denominators under x^2 and y^2
+  // e.g. \frac{x^2}{25} + \frac{y^2}{9} = 1
+  const fracRegex = /\\frac\s*\{\s*x\^2\s*\}\s*\{\s*(\d+)\s*\}\s*\+\s*\\frac\s*\{\s*y\^2\s*\}\s*\{\s*(\d+)\s*\}\s*=\s*1/i;
+  const slashRegex = /x\^2\s*\/\s*(\d+)\s*\+\s*y\^2\s*\/\s*(\d+)\s*=\s*1/i;
+
+  let denomX = 25;
+  let denomY = 9;
+
+  const mFrac = source.match(fracRegex);
+  if (mFrac) {
+    denomX = Number(mFrac[1]);
+    denomY = Number(mFrac[2]);
+  } else {
+    const mSlash = source.match(slashRegex);
+    if (mSlash) {
+      denomX = Number(mSlash[1]);
+      denomY = Number(mSlash[2]);
+    }
+  }
+
+  const rx = Number(Math.sqrt(denomX).toFixed(3));
+  const ry = Number(Math.sqrt(denomY).toFixed(3));
+
+  if (!(rx > 0 && ry > 0)) return [];
+
+  const maxAxis = Math.max(rx, ry);
+  const pad = Math.max(1, maxAxis * 0.25);
+  const xLimit = Number((maxAxis + pad).toFixed(2));
+  const yLimit = Number((maxAxis + pad).toFixed(2));
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "geometry",
+    shapes: [
+      { shape: "ellipse", center: [0, 0], rx, ry, color: "primary", fill: "none" },
+      { shape: "line", start: [-rx, 0], end: [rx, 0], color: "muted" },
+      { shape: "line", start: [0, -ry], end: [0, ry], color: "muted" },
+      { shape: "point", vertices: [[0, 0]], labels: ["Center (0,0)"], color: "primary" },
+      { shape: "point", vertices: [[rx, 0]], labels: [`V_1 (${rx},0)`], color: "primary" },
+      { shape: "point", vertices: [[-rx, 0]], labels: [`V_2 (-${rx},0)`], color: "primary" },
+      { shape: "point", vertices: [[0, ry]], labels: [`C_1 (0,${ry})`], color: "primary" },
+      { shape: "point", vertices: [[0, -ry]], labels: [`C_2 (0,-${ry})`], color: "primary" },
+    ],
+    options: {
+      xMin: -xLimit,
+      xMax: xLimit,
+      yMin: -yLimit,
+      yMax: yLimit,
+      grid: true,
+      showOrigin: true,
+    }
+  }]);
+}
+
+function parseCoordinatePairs(text: string): Array<[number, number]> {
+  const normalized = normalizeDigits(text);
+  const matches = Array.from(normalized.matchAll(/\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g));
+  const points: Array<[number, number]> = [];
+  const seen = new Set<string>();
+
+  for (const m of matches) {
+    const x = Number(m[1]);
+    const y = Number(m[2]);
+    const key = `${x},${y}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      points.push([x, y]);
+    }
+  }
+  return points;
+}
+
+export function inferMidpointSegmentBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+  finalAnswer: string = "",
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}\n${finalAnswer}`);
+  const wantsMidpoint = emptyBlocks.some((b) => b.diagramType === "geometry" || b.diagramType === "function-graph")
+    || /(midpoint|segment|ចំណុចកណ្តាល|អង្កត់|កូអរដោនេ)/i.test(source);
+
+  if (!wantsMidpoint) return [];
+
+  const regex = /([A-Z])\s*(?:=)?\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g;
+  const matches = Array.from(source.matchAll(regex));
+
+  const pointMap = new Map<string, [number, number]>();
+  for (const m of matches) {
+    const name = m[1];
+    const x = Number(m[2]);
+    const y = Number(m[3]);
+    if (!pointMap.has(name)) {
+      pointMap.set(name, [x, y]);
+    }
+  }
+
+  let A = pointMap.get("A");
+  let B = pointMap.get("B");
+  let M = pointMap.get("M");
+
+  if (!A || !B) {
+    const parsed = Array.from(pointMap.entries());
+    if (parsed.length >= 2) {
+      A = parsed[0][1];
+      B = parsed[1][1];
+      if (parsed.length >= 3) {
+        M = parsed[2][1];
+      }
+    }
+  }
+
+  if (!A || !B) return [];
+
+  if (!M) {
+    M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+  }
+
+  const xs = [A[0], B[0], M[0]];
+  const ys = [A[1], B[1], M[1]];
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs, 0);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 0);
+
+  const dx = maxX - minX || 1;
+  const dy = maxY - minY || 1;
+  const padX = Math.max(2, dx * 0.25);
+  const padY = Math.max(2, dy * 0.25);
+
+  const xMin = Number((minX - padX * 0.5).toFixed(2));
+  const xMax = Number((maxX + padX).toFixed(2));
+  const yMin = Number((minY - padY * 0.5).toFixed(2));
+  const yMax = Number((maxY + padY).toFixed(2));
+
+  const shapes: any[] = [
+    { shape: "line", start: A, end: B, color: "primary" },
+    { shape: "point", vertices: [A], labels: [`A(${A[0]}, ${A[1]})`], color: "primary" },
+    { shape: "point", vertices: [B], labels: [`B(${B[0]}, ${B[1]})`], color: "primary" },
+    { shape: "point", vertices: [M], labels: [`M(${M[0]}, ${M[1]})`], color: "danger" }
+  ];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "geometry",
+    shapes,
+    options: {
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      grid: true,
+      showOrigin: true,
+      xAxisLabel: "x",
+      yAxisLabel: "y"
+    }
+  }]);
+}
+
+export function inferInequalityFeasibleRegionBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+  finalAnswer: string = "",
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}\n${finalAnswer}`);
+  const wantsInequality = emptyBlocks.some((b) => b.diagramType === "geometry" || b.diagramType === "function-graph")
+    || /(feasible region|system of inequalities|វិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(source);
+
+  if (!wantsInequality) return [];
+
+  let coords = parseCoordinatePairs(finalAnswer);
+  if (coords.length < 3) {
+    const lines = solutionText.split("\n");
+    const vertexCoords: Array<[number, number]> = [];
+    const seen = new Set<string>();
+    for (const line of lines) {
+      if (/(កំពូល|ចំណុចកំពូល|vertex|vertices|corner|A|B|C|P)/i.test(line)) {
+        const lineCoords = parseCoordinatePairs(line);
+        for (const pt of lineCoords) {
+          const key = `${pt[0]},${pt[1]}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            vertexCoords.push(pt);
+          }
+        }
+      }
+    }
+    if (vertexCoords.length >= 3) {
+      coords = vertexCoords;
+    } else {
+      coords = parseCoordinatePairs(solutionText);
+    }
+  }
+
+  if (coords.length < 3) return [];
+
+  const cx = coords.reduce((sum, p) => sum + p[0], 0) / coords.length;
+  const cy = coords.reduce((sum, p) => sum + p[1], 0) / coords.length;
+  const sorted = [...coords].sort((a, b) => {
+    const angleA = Math.atan2(a[1] - cy, a[0] - cx);
+    const angleB = Math.atan2(b[1] - cy, b[0] - cx);
+    return angleA - angleB;
+  });
+
+  const xs = sorted.map(p => p[0]);
+  const ys = sorted.map(p => p[1]);
+  const minX = Math.min(...xs, 0);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys);
+
+  const dx = maxX - minX || 1;
+  const dy = maxY - minY || 1;
+  const padX = Math.max(1.5, dx * 0.3);
+  const padY = Math.max(1.5, dy * 0.3);
+
+  const xMin = Number((minX - padX * 0.4).toFixed(2));
+  const xMax = Number((maxX + padX).toFixed(2));
+  const yMin = Number((minY - padY * 0.4).toFixed(2));
+  const yMax = Number((maxY + padY).toFixed(2));
+
+  const shapes: any[] = [
+    { shape: "polygon", vertices: sorted, fill: "rgba(37,99,255,0.08)", color: "primary" },
+  ];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const p1 = sorted[i];
+    const p2 = sorted[(i + 1) % sorted.length];
+    shapes.push({ shape: "line", start: p1, end: p2, color: "primary" });
+  }
+
+  for (const pt of sorted) {
+    shapes.push({
+      shape: "point",
+      vertices: [pt],
+      labels: [`(${pt[0]},${pt[1]})`],
+      color: "primary"
+    });
+  }
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "linear",
+    shapes,
+    options: {
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      grid: true,
+      showOrigin: true,
+      xAxisLabel: "x",
+      yAxisLabel: "y"
+    }
+  }]);
+}
+
 export function inferVectorRightTriangleBlocks(
   problem: string,
   solutionText: string,
@@ -2413,7 +2904,7 @@ export function inferVectorRightTriangleBlocks(
     /(?:\bmagnitude\b|\blength\b|ម៉ូឌុល|រង្វាស់)\s*(?:=|ស្មើ|:|នៃ)?[^\d]*?(\d+(?:\.\d+)?)/i,
   ]);
   const angle = firstNumberAfter(source, [
-    /(\d+(?:\.\d+)?)\s*(?:°|\\?circ|degree|ដឺក្រេ)/i,
+    /(\d+(?:\.\d+)?)\s*(?:\^\{?\\?circ\}?|\^\{?\\?text\{o\}\}?|\^\{?o\}?|\\circ|°|degree|ដឺក្រេ)/i,
     /(?:\btheta\b|angle|មុំ)\s*(?:=|ស្មើ|:)?[^\d]*?(\d+(?:\.\d+)?)/i,
   ]);
 
@@ -2560,6 +3051,190 @@ export function inferVectorRightTriangleBlocks(
       xMax: f1 + paddingX,
       yMin: -paddingY,
       yMax: f2 + paddingY,
+    }
+  }]);
+}
+
+export function inferWeightedGraphBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+
+  const isGraphProblem = /(graph|weighted|shortest.path|cities|connected|ក្រាហ្វ|គែម|ទម្ងន់|កំពូល|ទីក្រុង|គន្លងខ្លីបំផុត)/i.test(source)
+    && /[A-Z][A-Z]\s*=\s*\d+/.test(source);
+
+  if (!isGraphProblem) return [];
+
+  const connectionMatches = Array.from(source.matchAll(/\b([A-Z])([A-Z])\s*=\s*(\d+(?:\.\d+)?)\b/g));
+  if (connectionMatches.length === 0) return [];
+
+  const connectionsMap = new Map<string, { u: string; v: string; w: number }>();
+  const nodesSet = new Set<string>();
+
+  for (const match of connectionMatches) {
+    const u = match[1];
+    const v = match[2];
+    const w = Number(match[3]);
+    if (u !== v) {
+      const key = u < v ? u + v : v + u;
+      connectionsMap.set(key, { u, v, w });
+      nodesSet.add(u);
+      nodesSet.add(v);
+    }
+  }
+
+  const connections = Array.from(connectionsMap.values());
+
+  const nodes = Array.from(nodesSet).sort();
+  if (nodes.length < 2) return [];
+
+  const pos: Record<string, [number, number]> = {};
+
+  if (nodes.length === 4) {
+    const [n1, n2, n3, n4] = nodes;
+    pos[n1] = [1, 2.5];
+    pos[n2] = [3, 4];
+    pos[n3] = [3, 1];
+    pos[n4] = [5, 2.5];
+  } else {
+    const cx = 3;
+    const cy = 2.5;
+    const r = 1.8;
+    const n = nodes.length;
+    nodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / n;
+      pos[node] = [
+        cx + r * Math.cos(angle),
+        cy + r * Math.sin(angle)
+      ];
+    });
+  }
+
+  const connectionShapes = connections.map(conn => {
+    return {
+      shape: "segment",
+      vertices: [pos[conn.u], pos[conn.v]],
+      label: String(conn.w),
+      color: "primary"
+    };
+  });
+
+  const pointShapes = nodes.map(node => {
+    return {
+      shape: "point",
+      vertices: [pos[node]],
+      labels: [node],
+      color: "primary"
+    };
+  });
+
+  const shapes = [...connectionShapes, ...pointShapes];
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    mathFamily: "graph",
+    diagramIntent: "basic-graph",
+    spec: {
+      type: "geometry",
+      labels: [],
+      shapes,
+      options: {
+        grid: false,
+        xMin: 0,
+        xMax: 6,
+        yMin: 0,
+        yMax: 5,
+        showOrigin: false,
+        xAxisLabel: "",
+        yAxisLabel: ""
+      },
+      mathFamily: "graph",
+      diagramIntent: "weighted-graph"
+    }
+  }]);
+}
+
+export function inferRightTriangleTrigBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  
+  const hasTrigElevation = /(elevation|depression|building|tree|tower|cliff|height|shadow|មុំងើប|មុំបន្ទាប|កម្ពស់|អគារ|ដើមឈើ|បង្គោល|ប្រវែងស្រមោល)/i.test(source)
+    && /(tan|cos|sin|តង់សង់|កូតង់សង់|ស៊ីនុស|កូស៊ីនុស)/i.test(source);
+    
+  if (!hasTrigElevation) return [];
+
+  // 1. Find all angle candidates
+  const angleCandidates = Array.from(source.matchAll(/(\d+(?:\.\d+)?)\s*(?:\^\{?\\?circ\}?|\^\{?\\?text\{o\}\}?|\^\{?o\}?|\\circ|°|degree|ដឺក្រេ)/gi))
+    .map(m => Number(m[1]))
+    .filter(a => a > 0 && a < 90);
+  const angle = angleCandidates[0] || 30; // default 30
+
+  // 2. Find all distance/length candidates
+  const lengthCandidates = Array.from(source.matchAll(/(\d+(?:\.\d+)?)\s*(?:m|meters|ម៉ែត្រ|ម៉ែត)\b/gi))
+    .map(m => Number(m[1]))
+    .filter(n => n > 0 && n < 1000);
+    
+  const problemNumbers = Array.from(problem.matchAll(/(\d+(?:\.\d+)?)/g))
+    .map(m => Number(m[0]))
+    .filter(n => n > 0 && n !== 90 && n !== 45 && n !== 30 && n !== 60 && n < 1000);
+
+  const allLengths = [...new Set([...lengthCandidates, ...problemNumbers])];
+
+  let base = 25;
+  let height = 0;
+
+  if (allLengths.length >= 1) {
+    const parsedBase = firstNumberAfter(source, [
+      /(?:stands|distance|ចម្ងាយ|ឆ្ងាយ)\s*(?:of|ពី)?\s*(\d+(?:\.\d+)?)/i,
+    ]);
+    if (parsedBase && allLengths.includes(parsedBase)) {
+      base = parsedBase;
+    } else {
+      base = allLengths[0];
+    }
+  }
+
+  const expectedHeight = Number((base * Math.tan((angle * Math.PI) / 180)).toFixed(2));
+  
+  const foundHeight = allLengths.find(l => l !== base && Math.abs(l - expectedHeight) < expectedHeight * 0.15);
+  height = foundHeight || expectedHeight;
+
+  const O: [number, number] = [0, 0];
+  const Px: [number, number] = [base, 0];
+  const Pxy: [number, number] = [base, height];
+  
+  const paddingX = base * 0.15 || 2;
+  const paddingY = height * 0.15 || 2;
+
+  const xMin = -paddingX;
+  const xMax = base + paddingX;
+  const yMin = -paddingY;
+  const yMax = height + paddingY;
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    shapes: [
+      { shape: "polygon", vertices: [O, Px, Pxy], labels: ["", "", ""] },
+      { shape: "line", start: O, end: Px, label: `${base} m`, color: "muted" },
+      { shape: "line", start: Px, end: Pxy, label: `h ≈ ${height} m`, color: "primary" },
+      { shape: "line", start: O, end: Pxy, label: "", color: "muted" },
+      { shape: "angle", vertex: O, from: Px, to: Pxy, label: `${angle}°`, radius: 24, color: "red" },
+      { shape: "angle", vertex: Px, from: O, to: Pxy, label: "90°", radius: 10, color: "muted" },
+    ],
+    options: {
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      grid: false,
+      showOrigin: false,
+      xAxisLabel: "",
+      yAxisLabel: ""
     }
   }]);
 }
@@ -3114,6 +3789,41 @@ ${DIAGRAM_SPEC_GUIDE}`,
     if (solidFallback.length) return solidFallback;
   }
 
+  if (/(unit circle|trigonometric circle|រង្វង់ត្រីកោណមាត្រ|រង្វង់ឯកតា|រង្វង់ត្រីកោណមាត្រឯកតា)/i.test(problem + "\n" + solutionText)) {
+    const trigCircleFallback = inferTrigUnitCircleBlocks(problem, solutionText, normalized);
+    if (trigCircleFallback.length) return trigCircleFallback;
+  }
+
+  if (/(elevation|depression|building|tree|tower|cliff|height|shadow|មុំងើប|មុំបន្ទាប|កម្ពស់|អគារ|ដើមឈើ|បង្គោល|ប្រវែងស្រមោល)/i.test(problem + "\n" + solutionText)) {
+    const rightTriangleTrigFallback = inferRightTriangleTrigBlocks(problem, solutionText, normalized);
+    if (rightTriangleTrigFallback.length) return rightTriangleTrigFallback;
+  }
+
+  if (/(vector|magnitude|កម្លាំង|ខាងកើត|ខាងជើង|កម្លាំងសរុប|ពីតាហ្គ័រ|ត្រីកោណកែង)/i.test(problem + "\n" + solutionText)) {
+    const vectorFallback = inferVectorRightTriangleBlocks(problem, solutionText, normalized);
+    if (vectorFallback.length) return vectorFallback;
+  }
+
+  if (/(ellipse|អេលីប)/i.test(problem + "\n" + solutionText)) {
+    const ellipseFallback = inferEllipseBlocks(problem, solutionText, normalized);
+    if (ellipseFallback.length) return ellipseFallback;
+  }
+
+  if (/(sector|សិចទ័រ|ក្រឡាផ្ទៃសិចទ័រ)/i.test(problem + "\n" + solutionText)) {
+    const sectorFallback = inferSectorBlocks(problem, solutionText, normalized);
+    if (sectorFallback.length) return sectorFallback;
+  }
+
+  if (/(feasible region|system of inequalities|វិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(problem + "\n" + solutionText)) {
+    const feasibleRegionFallback = inferInequalityFeasibleRegionBlocks(problem, solutionText, normalized, finalAnswer);
+    if (feasibleRegionFallback.length) return feasibleRegionFallback;
+  }
+
+  if (/(midpoint|segment|ចំណុចកណ្តាល|អង្កត់)/i.test(problem + "\n" + solutionText)) {
+    const midpointFallback = inferMidpointSegmentBlocks(problem, solutionText, normalized, finalAnswer);
+    if (midpointFallback.length) return midpointFallback;
+  }
+
   const rationalInequalityFallback = inferRationalInequalitySignTableBlocks(problem, solutionText);
   if (rationalInequalityFallback.length) return rationalInequalityFallback;
 
@@ -3149,6 +3859,12 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const triangleFallback = inferTriangleExteriorAngleBlocks(problem, solutionText, normalized);
   if (triangleFallback.length) return triangleFallback;
+
+  const weightedGraphFallback = inferWeightedGraphBlocks(problem, solutionText, normalized);
+  if (weightedGraphFallback.length) return weightedGraphFallback;
+
+  const trigCircleFallback = inferTrigUnitCircleBlocks(problem, solutionText, normalized);
+  if (trigCircleFallback.length) return trigCircleFallback;
 
   const circleFallback = inferCircleInscribedAngleBlocks(problem, solutionText, normalized);
   if (circleFallback.length) return circleFallback;

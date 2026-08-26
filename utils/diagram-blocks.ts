@@ -31,6 +31,7 @@ export type DiagramMathFamily =
   | "solid-geometry"
   | "pie-chart"
   | "tree-diagram"
+  | "graph"
   | "unknown";
 
 export type DiagramProblemIntent =
@@ -177,6 +178,7 @@ function normalizeMathFamily(value: unknown): DiagramMathFamily | undefined {
     "solid-geometry",
     "pie-chart",
     "tree-diagram",
+    "graph",
     "unknown",
   ].includes(normalized)
     ? normalized as DiagramMathFamily
@@ -369,6 +371,8 @@ function normalizeVennDiagramSpec(input: Record<string, unknown>, warnings: stri
     regions.rightOnly ?? input.rightOnly,
     Number.isFinite(rightTotal) && Number.isFinite(intersection) ? rightTotal - intersection : Number.NaN,
   );
+  const universalTotal = asFiniteNumber(input.universalTotal ?? input.universeTotal ?? input.total, Number.NaN);
+  const neither = asFiniteNumber(regions.neither ?? regions.none ?? regions.outside ?? input.neither ?? input.none ?? input.outside, Number.NaN);
 
   if (!Number.isFinite(leftOnly) && !Number.isFinite(rightOnly) && !Number.isFinite(intersection)) {
     warnings.push("empty-venn-diagram");
@@ -384,7 +388,9 @@ function normalizeVennDiagramSpec(input: Record<string, unknown>, warnings: stri
       leftOnly: Number.isFinite(leftOnly) ? leftOnly : undefined,
       intersection: Number.isFinite(intersection) ? intersection : undefined,
       rightOnly: Number.isFinite(rightOnly) ? rightOnly : undefined,
+      neither: Number.isFinite(neither) ? neither : undefined,
     },
+    universalTotal: Number.isFinite(universalTotal) ? universalTotal : undefined,
     universeLabel: typeof input.universeLabel === "string" ? input.universeLabel.slice(0, 32) : undefined,
   };
 }
@@ -399,7 +405,7 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (shapeType === "rectangle" || shapeType === "square") {
         shapeType = "polygon";
       }
-      if (!["triangle", "polygon", "circle", "segment", "line", "arrow", "angle", "arc", "semicircle", "sector"].includes(shapeType)) return null;
+      if (!["triangle", "polygon", "circle", "ellipse", "segment", "line", "arrow", "angle", "arc", "semicircle", "sector", "point"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)
         : [];
@@ -410,6 +416,8 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       const from = asPoint(item.from);
       const to = asPoint(item.to);
       const radius = asFiniteNumber(item.radius, Number.NaN);
+      const rx = asFiniteNumber(item.rx, Number.NaN);
+      const ry = asFiniteNumber(item.ry, Number.NaN);
       const startAngle = asFiniteNumber(item.startAngle, Number.NaN);
       const endAngle = asFiniteNumber(item.endAngle, Number.NaN);
       return {
@@ -422,6 +430,8 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
         from,
         to,
         radius: Number.isFinite(radius) ? radius : undefined,
+        rx: Number.isFinite(rx) ? rx : undefined,
+        ry: Number.isFinite(ry) ? ry : undefined,
         startAngle: Number.isFinite(startAngle) ? startAngle : undefined,
         endAngle: Number.isFinite(endAngle) ? endAngle : undefined,
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
@@ -433,11 +443,13 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
     .filter((shape) => {
       if (!shape) return false;
       if (shape.shape === "circle") return Boolean(shape.center) && Number.isFinite(shape.radius);
+      if (shape.shape === "ellipse") return Boolean(shape.center) && Number.isFinite(shape.rx) && Number.isFinite(shape.ry);
       if (shape.shape === "arc") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "semicircle") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "sector") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "arrow" || shape.shape === "line") return Boolean(shape.start) && Boolean(shape.end);
       if (shape.shape === "angle") return Boolean(shape.vertex) && Boolean(shape.from) && Boolean(shape.to);
+      if (shape.shape === "point") return Array.isArray(shape.vertices) && shape.vertices.length > 0;
       return Array.isArray(shape.vertices) && shape.vertices.length >= 2;
     });
   if (!normalizedShapes.length) warnings.push("empty-geometry");

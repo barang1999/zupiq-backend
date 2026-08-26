@@ -121,9 +121,8 @@ function normalizeTextBlockContent(content: string): string {
     // Strip fenced code blocks (mermaid, etc.) that can't be rendered in solution text
     .replace(/```[^\n]*\n[\s\S]*?```/g, "")
     .replace(/[ \t]+\n/g, "\n")
-    // Gemini sometimes emits markdown list markers between inline math segments.
+    // Gemini sometimes emits lonely markdown list markers between inline math segments.
     // Once split into render blocks, they become lonely visible "*" lines.
-    .replace(/(^|\n)\s*[*-]\s+(?=[^\n])/g, "$1")
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     // Ensure numbered items (e.g. 1., 2., 3. or Khmer numbers ១., ២., ៣.) start on a new line for clean lists

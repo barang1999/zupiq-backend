@@ -2363,6 +2363,136 @@ export function inferIsoscelesTriangleBlocks(
   return [];
 }
 
+/**
+ * Draws two similar triangles side by side (e.g. "Triangle ABC ~ Triangle DEF").
+ * Uses the standard vertex-order correspondence between the two triangle names to
+ * find a pair of corresponding sides that are both known (the scale ratio), then
+ * solves any remaining unknown side from that ratio. The two known/derived sides
+ * meeting at the shared middle vertex of each name are drawn with SAS so both
+ * triangles are proportionally accurate to the given side lengths; the same
+ * invented vertex angle is reused for both triangles since similar triangles
+ * share equal angles.
+ */
+export function inferSimilarTriangleBlocks(
+  problem: string,
+  solutionText: string,
+  emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
+): RenderBlock[] {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  // "similar" and "triangle" can appear in either word order ("similar triangles" or
+  // "triangles ... are similar"), and Khmer phrases this with ស្រដៀង (similar-to) or
+  // ដូចគ្នា (identical/same) rather than a fixed compound word, so match each concept
+  // independently instead of a single contiguous phrase.
+  const hasTriangleWord = /(triangle|ត្រីកោណ)/i.test(source);
+  const hasSimilarWord = /(similar|ស្រដៀង|ដូចគ្នា|\\sim)/i.test(source);
+  if (!hasTriangleWord || !hasSimilarWord) return [];
+
+  // Two distinct three-letter uppercase names, e.g. "ABC" and "DEF".
+  const nameMatches = Array.from(new Set(Array.from(source.matchAll(/\b([A-Z]{3})\b/g)).map((m) => m[1]))).filter(
+    (name) => new Set(name.split("")).size === 3
+  );
+  if (nameMatches.length < 2) return [];
+  const [name1, name2] = nameMatches;
+
+  const sideValueMap = new Map<string, number>();
+  for (const m of source.matchAll(/\b([A-Z])([A-Z])\s*=\s*(\d+(?:\.\d+)?)/g)) {
+    const key = [m[1], m[2]].sort().join("");
+    const value = Number(m[3]);
+    if (Number.isFinite(value) && !sideValueMap.has(key)) sideValueMap.set(key, value);
+  }
+
+  const trianglePairs = (name: string): [string, string][] => [
+    [name[0], name[1]],
+    [name[1], name[2]],
+  ];
+  const pairKey = (pair: [string, string]) => [pair[0], pair[1]].sort().join("");
+
+  const pairs1 = trianglePairs(name1);
+  const pairs2 = trianglePairs(name2);
+  const val1: (number | undefined)[] = pairs1.map((p) => sideValueMap.get(pairKey(p)));
+  const val2: (number | undefined)[] = pairs2.map((p) => sideValueMap.get(pairKey(p)));
+
+  let ratio: number | null = null;
+  for (let i = 0; i < 2; i++) {
+    if (Number.isFinite(val1[i]) && Number.isFinite(val2[i]) && (val1[i] as number) > 0) {
+      ratio = (val2[i] as number) / (val1[i] as number);
+      break;
+    }
+  }
+  if (!ratio || !Number.isFinite(ratio) || ratio <= 0) return [];
+
+  let solvedTriangle: 1 | 2 | null = null;
+  let solvedIndex = -1;
+  for (let i = 0; i < 2; i++) {
+    if (!Number.isFinite(val1[i]) && !Number.isFinite(val2[i])) return [];
+    if (!Number.isFinite(val1[i]) && Number.isFinite(val2[i])) {
+      val1[i] = (val2[i] as number) / ratio;
+      solvedTriangle = 1;
+      solvedIndex = i;
+    } else if (Number.isFinite(val1[i]) && !Number.isFinite(val2[i])) {
+      val2[i] = (val1[i] as number) * ratio;
+      solvedTriangle = 2;
+      solvedIndex = i;
+    }
+  }
+
+  const b1 = val1[0] as number; // side name1[0]-name1[1]
+  const a1 = val1[1] as number; // side name1[1]-name1[2]
+  const b2 = val2[0] as number;
+  const a2 = val2[1] as number;
+  if (![a1, b1, a2, b2].every((v) => Number.isFinite(v) && v > 0)) return [];
+
+  const theta = (55 * Math.PI) / 180;
+  const v1_1: [number, number] = [0, 0];
+  const v2_1: [number, number] = [a1, 0];
+  const v0_1: [number, number] = [b1 * Math.cos(theta), b1 * Math.sin(theta)];
+
+  const gap = Math.max(1.5, (a1 + a2) * 0.28);
+  const offsetX = a1 + gap;
+  const v1_2: [number, number] = [offsetX, 0];
+  const v2_2: [number, number] = [offsetX + a2, 0];
+  const v0_2: [number, number] = [offsetX + b2 * Math.cos(theta), b2 * Math.sin(theta)];
+
+  const fmt = (v: number) => Number(v.toFixed(2));
+  const labelFor = (i: number, triangle: 1 | 2) => triangle === solvedTriangle && i === solvedIndex ? "red" : "primary";
+
+  const shapes = [
+    { shape: "triangle", vertices: [v0_1, v1_1, v2_1], color: "primary", fill: "rgba(37,99,255,0.06)", labels: [name1[0], name1[1], name1[2]] },
+    { shape: "triangle", vertices: [v0_2, v1_2, v2_2], color: "secondary", fill: "rgba(148,163,184,0.06)", labels: [name2[0], name2[1], name2[2]] },
+    { shape: "segment", vertices: [v0_1, v1_1], color: labelFor(0, 1), label: `${name1[0]}${name1[1]} = ${fmt(b1)}` },
+    { shape: "segment", vertices: [v1_1, v2_1], color: labelFor(1, 1), label: `${name1[1]}${name1[2]} = ${fmt(a1)}` },
+    { shape: "segment", vertices: [v0_2, v1_2], color: labelFor(0, 2), label: `${name2[0]}${name2[1]} = ${fmt(b2)}` },
+    { shape: "segment", vertices: [v1_2, v2_2], color: labelFor(1, 2), label: `${name2[1]}${name2[2]} = ${fmt(a2)}` },
+  ];
+
+  const xs = [v0_1, v1_1, v2_1, v0_2, v1_2, v2_2].map((p) => p[0]);
+  const ys = [v0_1, v1_1, v2_1, v0_2, v1_2, v2_2].map((p) => p[1]);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  const xPad = Math.max(1, (xMax - xMin) * 0.12);
+  const yPad = Math.max(1, (yMax - yMin) * 0.35);
+
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    spec: {
+      shapes,
+      options: {
+        xMin: xMin - xPad,
+        xMax: xMax + xPad,
+        yMin: yMin - yPad * 0.4,
+        yMax: yMax + yPad,
+        grid: false,
+        showOrigin: false,
+      },
+    },
+    renderer: "zupiq-svg",
+    version: 1,
+    cacheKey: `similar-triangles-${name1}-${name2}-${fmt(a1)}-${fmt(b1)}-${fmt(a2)}-${fmt(b2)}`,
+  }]);
+}
+
 function inferTriangleExteriorAngleBlocks(
   problem: string,
   solutionText: string,
@@ -3929,6 +4059,14 @@ ${DIAGRAM_SPEC_GUIDE}`,
   if (/(elevation|depression|building|tree|tower|cliff|height|shadow|មុំងើប|មុំបន្ទាប|កម្ពស់|អគារ|ដើមឈើ|បង្គោល|ប្រវែងស្រមោល)/i.test(problem + "\n" + solutionText)) {
     const rightTriangleTrigFallback = inferRightTriangleTrigBlocks(problem, solutionText, normalized);
     if (rightTriangleTrigFallback.length) return rightTriangleTrigFallback;
+  }
+
+  if (
+    /(triangle|ត្រីកោណ)/i.test(problem + "\n" + solutionText)
+    && /(similar|ស្រដៀង|ដូចគ្នា|\\sim)/i.test(problem + "\n" + solutionText)
+  ) {
+    const similarTriangleFallback = inferSimilarTriangleBlocks(problem, solutionText, normalized);
+    if (similarTriangleFallback.length) return similarTriangleFallback;
   }
 
   if (/(triangle|ត្រីកោណ|សមបាត)/i.test(problem + "\n" + solutionText)) {

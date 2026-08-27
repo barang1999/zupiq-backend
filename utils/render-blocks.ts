@@ -93,9 +93,14 @@ export function buildMathBlock(input: string, display: boolean): Extract<RenderB
 
   // Attempt SVG rendering for both display and inline math blocks to guarantee
   // consistent cross-platform rendering quality and high performance.
-  const svgHtml = shouldRenderMathSvg(normalizedLatex, display)
-    ? renderMathSvg(normalizedLatex, display)
-    : null;
+  const attemptedSvg = shouldRenderMathSvg(normalizedLatex, display);
+  const svgHtml = attemptedSvg ? renderMathSvg(normalizedLatex, display) : null;
+  // Structurally valid LaTeX can still fail to pre-render (a transient MathJax
+  // error, an unsupported edge case, etc.) — that's a real, if hopefully rare,
+  // failure mode, not "nothing to render". Surface it explicitly instead of
+  // silently shipping a `valid: true` block with no rendering artifact, so
+  // consumers know this one specifically needs a client-side fallback.
+  if (attemptedSvg && !svgHtml) warnings.push("svg-render-failed");
 
   return {
     type: "math",

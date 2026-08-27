@@ -1123,12 +1123,12 @@ router.post(
 router.post(
   "/instant-session",
   async (req: Request, res: Response, next: NextFunction) => {
-    logger.info("[instant-session] request received", { userId: req.user?.sub, hasImageBase64: !!req.body.image_base64, hasUploadId: !!req.body.upload_id });
+    logger.info("[instant-session] request received", { userId: req.user?.sub, hasImageBase64: !!req.body.image_base64, hasUploadId: !!req.body.upload_id, hasUserInstruction: !!req.body.user_instruction });
     const traceId = getAttachTraceId(req);
     const startedAt = Date.now();
     let stage = "init";
     try {
-      const { upload_id, subject, image_base64, image_mime_type, problem_text } = req.body;
+      const { upload_id, subject, image_base64, image_mime_type, problem_text, user_instruction } = req.body;
       const userId = req.user!.sub;
 
       emitProgress(traceId, { stage: "VALIDATING", progress: 5, message: "Validating..." });
@@ -1143,6 +1143,13 @@ router.post(
         subject,
         referenceQuery: typeof problem_text === "string" ? problem_text : subject,
       });
+
+      // Free-text instruction the student typed alongside the photo/problem (e.g.
+      // "only solve question 2"). Capped defensively — this is student input threaded
+      // straight into the solve prompt.
+      if (typeof user_instruction === "string" && user_instruction.trim()) {
+        aiOptions = { ...aiOptions, userInstruction: user_instruction.trim().slice(0, 800) };
+      }
 
       let problemText: string;
       let solution: import("../../services/ai/gemini.service.js").ProblemSolutionFirst;

@@ -1013,6 +1013,17 @@ function parsePolynomial(latex: string): { a: number; b: number; c: number; d: n
 
   if (!clean) return null;
 
+  // This function only understands a bare polynomial — not a rational
+  // expression. Without this guard, a whole-expression \frac{P}{Q} (e.g. a
+  // quadratic-over-quadratic rational that no other parser recognizes) slips
+  // through: "f" from "\frac" gets picked up as the detected variable below,
+  // and the coefficient scan that follows walks across BOTH the numerator's
+  // and denominator's terms as if they were one polynomial, silently
+  // overwriting same-power coefficients left-to-right — so whichever side
+  // comes last in the string (the denominator) wins, and the caller ends up
+  // plotting Q(x) alone as if it were the whole function.
+  if (/\\frac\{[^{}]*\}\{[^{}]*\}/.test(clean)) return null;
+
   // Detect polynomial variable (first letter in the RHS) and normalize it to 'x'
   const varMatch = clean.match(/[a-zA-Z]/);
   const varName = varMatch ? varMatch[0] : "x";
@@ -1052,6 +1063,72 @@ function parsePolynomial(latex: string): { a: number; b: number; c: number; d: n
   }
   
   return foundPower ? coefficients : null;
+}
+
+// General P(x)/Q(x) numeric sampler — the last-resort path for a compound
+// rational function whose shape doesn't match any of the closed-form families
+// above. rational-reciprocal/inverse-square/rational-even all assume a
+// constant numerator; compoundReciprocalParamsFromLatex only handles a linear
+// numerator over a linear denominator. A quadratic-over-quadratic rational
+// like (x²-16)/(x²-3x+4) has a nonzero horizontal asymptote at the ratio of
+// leading coefficients rather than any of those templates' y=k shape, so it
+// needs actual numeric evaluation rather than a closed form. Reuses
+// parsePolynomial on the numerator/denominator fragments individually — safe
+// because each fragment is a bare polynomial, not itself a \frac{}{}.
+function sampleGenericRationalFromLatex(
+  latex: string,
+  domain: [number, number],
+): [number, number][] | null {
+  const compact = String(latex || "")
+    .replace(/\s+/g, "")
+    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
+  const fracMatch = compact.match(/^\\frac\{([^{}]+)\}\{([^{}]+)\}$/);
+  if (!fracMatch) return null;
+  const numerator = parsePolynomial(fracMatch[1]);
+  const denominator = parsePolynomial(fracMatch[2]);
+  if (!numerator || !denominator) return null;
+  // A denominator with no x-dependence at all isn't an interesting rational
+  // shape — the constant-numerator case is parsePolynomial's/
+  // simpleReciprocalParamsFromLatex's own territory, not this fallback's.
+  if (denominator.a === 0 && denominator.b === 0 && denominator.c === 0) return null;
+
+  const [dMin, dMax] = domain;
+  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
+
+  const evalPoly = (p: { a: number; b: number; c: number; d: number }, x: number) =>
+    p.a * x ** 3 + p.b * x ** 2 + p.c * x + p.d;
+
+  const SAMPLES = 120;
+  const points: [number, number][] = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const x = dMin + ((dMax - dMin) * i) / SAMPLES;
+    const qVal = evalPoly(denominator, x);
+    if (Math.abs(qVal) < 0.05) continue; // skip near-asymptote blowups
+    const y = evalPoly(numerator, x) / qVal;
+    if (Number.isFinite(y)) points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
+  }
+  return points.length >= 2 ? points : null;
+}
+
+// True when a set of (x, y) samples actually spans the declared domain,
+// within a tolerance. The AI sometimes emits a points array that runs out of
+// rows partway through the domain it itself declared (e.g. 80 rows at a 0.1
+// step only reach 2 units into a 12-unit-wide domain) — such a curve looks
+// plausible in isolation but silently omits most of the requested range, and
+// frontend renderers draw whatever comes after as a flat/misleading tail.
+function pointsCoverDomain(points: [number, number][], domain: [number, number], toleranceFrac = 0.15): boolean {
+  if (!points.length) return false;
+  const [dMin, dMax] = domain;
+  const width = dMax - dMin;
+  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || !(width > 0)) return true; // can't judge, don't override
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const [x] of points) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+  }
+  const tol = width * toleranceFrac;
+  return minX <= dMin + tol && maxX >= dMax - tol;
 }
 
 /**
@@ -1281,6 +1358,31 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
       let points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
 
+      // Last resort: a compound rational function (P(x)/Q(x), both genuine
+      // polynomials) that none of the closed-form families or parsePolynomial
+      // recognized — sample it numerically from the latex itself rather than
+      // leaving the function empty (dropped) or trusting unverifiable
+      // AI-supplied params/points for a shape this backend has no template for.
+      // Also applies when the AI *did* supply points but they don't actually
+      // cover the domain it declared (ran out of rows partway through) — the
+      // latex is ground truth, so a full deterministic resample is preferred
+      // over a partial/misleading curve. Falls back to the spec-level domain
+      // when this function has no domain of its own (the common case — the
+      // AI usually only sets `domain` once, on the spec, not per-function).
+      const domainForSampling: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
+        ? domain as [number, number]
+        : Array.isArray(input.domain) && input.domain.length === 2
+          ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
+          : [-10, 10];
+      if (!params && latex && (!points.length || (kind === "points" && !pointsCoverDomain(points, domainForSampling)))) {
+        const sampled = sampleGenericRationalFromLatex(latex, domainForSampling);
+        if (sampled) {
+          if (points.length) warnings.push("resampled-incomplete-points");
+          kind = "points";
+          points = sampled;
+        }
+      }
+
       // Never trust AI-supplied sample points for asymptotic rational-function
       // families, even outside the protected reciprocal-interval/inverse-square/
       // rational-even templates — these curves (near-asymptote blowups sampled
@@ -1377,6 +1479,34 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         }
         return null;
       }
+
+      // Guard against a placeholder the AI sometimes emits when it fails to
+      // actually work out the function graph (e.g. for a compound rational it
+      // couldn't classify): kind "quadratic" with no latex at all and the
+      // literal "nothing was specified" params (a=1, b=0, c=0 — a bare y=x^2
+      // through the origin). There's no latex here to verify or derive a real
+      // function from, and this conveys zero information about the actual
+      // problem, so it's worse than no diagram — drop it and let the existing
+      // fallback chain (or an empty diagram) take over instead.
+      if (kind === "quadratic" && !latex && params && typeof params === "object") {
+        const pCheck = params as Record<string, unknown>;
+        const aCheck = asFiniteNumber(pCheck.a, Number.NaN);
+        const bCheck = asFiniteNumber(pCheck.b, Number.NaN);
+        const cCheck = asFiniteNumber(pCheck.c, Number.NaN);
+        if (aCheck === 1 && bCheck === 0 && cCheck === 0) {
+          warnings.push("dropped-placeholder-quadratic");
+          // When this placeholder was the AI's only function for the block,
+          // also force the whole thing to be treated as empty even if a
+          // stray feature point (e.g. this same placeholder's vertex, (0,0))
+          // survives alongside it — a lone dot with no curve is just as
+          // uninformative here as the fake parabola would have been. If
+          // other real functions are present, leave the empty-graph decision
+          // to the normal functions/feature-points check below.
+          if (functions.length === 1) warnings.push("empty-function-graph");
+          return null;
+        }
+      }
+
       return {
         kind: kind || "points",
         latex,

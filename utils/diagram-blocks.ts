@@ -70,6 +70,11 @@ export type DiagramRenderBlock = {
 
 type SupportedFunctionGraphFamily = "rational-reciprocal" | "inverse-square" | "rational-even";
 
+// Asymptotic rational-function kinds whose curve should always be computed from
+// their closed-form params rather than trusted from AI-supplied sample points —
+// see the usage in normalizeFunctionGraphSpec for the full rationale.
+const RATIONAL_ASYMPTOTIC_KINDS = new Set<string>(["rational-reciprocal", "inverse-square", "rational-even"]);
+
 type FunctionGraphIntentBuildInput = {
   mathFamily: SupportedFunctionGraphFamily;
   problemIntent?: DiagramProblemIntent;
@@ -593,6 +598,65 @@ function simpleReciprocalParamsFromLatex(value: unknown): { a: number; h: number
   return null;
 }
 
+// Parses a simple linear expression in x: "coeff*x + constant", e.g. "x-3",
+// "2x+5", "-x", "4+x", "3(x-2)". Returns null if it isn't linear in x.
+function parseLinearExpression(value: string): { coeff: number; constant: number } | null {
+  const clean = value.replace(/^\((.*)\)$/, "$1").replace(/\*/g, "");
+  const scaledGroup = clean.match(/^([+-]?\d+(?:\.\d+)?)\((.+)\)$/);
+  if (scaledGroup) {
+    const scale = Number(scaledGroup[1]);
+    const inner = parseLinearExpression(scaledGroup[2]);
+    return Number.isFinite(scale) && inner
+      ? { coeff: inner.coeff * scale, constant: inner.constant * scale }
+      : null;
+  }
+  // "[coeff]x[+-offset]", e.g. "x-3", "2x+5", "-x", "x"
+  const xFirst = clean.match(/^([+-]?(?:\d+(?:\.\d+)?)?)x(?:(\+|-)(\d+(?:\.\d+)?))?$/);
+  if (xFirst) {
+    const coeff = xFirst[1] === "" || xFirst[1] === "+" ? 1 : xFirst[1] === "-" ? -1 : Number(xFirst[1]);
+    const magnitude = xFirst[3] ? Number(xFirst[3]) : 0;
+    const constant = xFirst[2] === "-" ? -magnitude : magnitude;
+    return Number.isFinite(coeff) && Number.isFinite(constant) ? { coeff, constant } : null;
+  }
+  // "constant[+-][coeff]x", e.g. "4+x", "3-2x", "-4+x"
+  const constFirst = clean.match(/^([+-]?\d+(?:\.\d+)?)(\+|-)(\d+(?:\.\d+)?)?x$/);
+  if (constFirst) {
+    const constant = Number(constFirst[1]);
+    const magnitude = constFirst[3] ? Number(constFirst[3]) : 1;
+    const coeff = constFirst[2] === "-" ? -magnitude : magnitude;
+    return Number.isFinite(constant) && Number.isFinite(coeff) ? { coeff, constant } : null;
+  }
+  return null;
+}
+
+// Parses \frac{P}{Q} where P is a genuine linear-in-x numerator (a constant
+// numerator is simpleReciprocalParamsFromLatex's job) and Q is linear in x,
+// into { a, h, k } via polynomial division:
+//   (px+q)/(rx+s) = p/r + [q/r - p·s/r²] / (x - (-s/r))
+// Deliberately kept separate from simpleReciprocalParamsFromLatex — that
+// function also gates the reciprocal-interval textbook template via
+// isBasicReciprocalLatex, and a compound rational like (x-3)/(4+x) is a plain
+// function-graph curve, not that specific k=0 textbook template.
+function compoundReciprocalParamsFromLatex(value: unknown): { a: number; h: number; k: number } | null {
+  const compact = String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/\\cdot/g, "*")
+    .replace(/^(?:[a-z]\([a-z]\)|[a-z])=/, "");
+  const fracMatch = compact.match(/^\\frac\{([^{}]+)\}\{([^{}]+)\}$/);
+  if (!fracMatch) return null;
+  const numerator = parseLinearExpression(fracMatch[1]);
+  const denominator = parseLinearExpression(fracMatch[2]);
+  if (!numerator || !denominator || Math.abs(denominator.coeff) < 0.0001) return null;
+  if (Math.abs(numerator.coeff) < 0.0001) return null; // constant numerator — not this function's case
+  const { coeff: p, constant: q } = numerator;
+  const { coeff: r, constant: s } = denominator;
+  const h = -s / r;
+  const k = p / r;
+  const a = q / r - (p * s) / (r * r);
+  return Number.isFinite(a) && Number.isFinite(h) && Number.isFinite(k) ? { a, h, k } : null;
+}
+
 function simpleInverseSquareParamsFromLatex(value: unknown): { a: number; h: number; k: number; p: 2 } | null {
   const compact = String(value || "")
     .toLowerCase()
@@ -911,7 +975,17 @@ function fmtCoord(v: number): string {
 function extractLinearCoeff(latex: string): number {
   const clean = String(latex || "")
     .replace(/\s+/g, "")
-    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
+    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "")
+    // Strip \frac{...}{...} sub-expressions before any variable detection.
+    // Without this, a variable letter inside a frac's numerator/denominator —
+    // or even the "f" in "\frac" itself — gets mistaken for the function's
+    // variable (corrupting "\frac" into "\xrac" below) or for a standalone
+    // additive linear term. This function only wants to detect a genuine
+    // "m·x + ..." term added OUTSIDE a reciprocal, e.g. distinguishing
+    // "2x + 3/(x-1)" (m=2) from a single compound fraction like
+    // "(x-3)/(x+4)" (m=0 — the whole thing is one rational expression, not
+    // a linear term plus a reciprocal).
+    .replace(/\\frac\{[^{}]*\}\{[^{}]*\}/g, "");
 
   // Normalise variable to x
   const v = (clean.match(/[a-zA-Z]/) || ["x"])[0];
@@ -1136,7 +1210,24 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           horizontalAsymptote: reciprocalFromLatex.k,
         };
       }
-      
+      // Compound linear-over-linear rationals, e.g. (x-3)/(4+x) — the AI
+      // frequently gets `a`/`h` right here but omits `k` (or gets it wrong),
+      // since it requires doing the polynomial division correctly. The latex
+      // is ground truth, so derive a/h/k from it deterministically and
+      // override whatever params the AI supplied rather than trusting them.
+      const compoundReciprocalFromLatex = !reciprocalFromLatex ? compoundReciprocalParamsFromLatex(latex) : null;
+      if (compoundReciprocalFromLatex) {
+        kind = "rational-reciprocal";
+        params = {
+          ...(params && typeof params === "object" ? params as Record<string, unknown> : {}),
+          a: compoundReciprocalFromLatex.a,
+          h: compoundReciprocalFromLatex.h,
+          k: compoundReciprocalFromLatex.k,
+          verticalAsymptote: compoundReciprocalFromLatex.h,
+          horizontalAsymptote: compoundReciprocalFromLatex.k,
+        };
+      }
+
       if (!params && latex) {
         const poly = parsePolynomial(latex);
         if (poly) {
@@ -1188,8 +1279,28 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         }
       }
 
-      const points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
-      
+      let points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
+
+      // Never trust AI-supplied sample points for asymptotic rational-function
+      // families, even outside the protected reciprocal-interval/inverse-square/
+      // rational-even templates — these curves (near-asymptote blowups sampled
+      // across ~80 points) are exactly the shape LLMs get individually wrong most
+      // often, while the closed-form params (a, h, k/b) are trivial to evaluate
+      // correctly. Discard whatever points were given whenever params are usable;
+      // FunctionGraphDiagram.js already computes the curve from params directly
+      // when points is empty, so this is a safe no-op for rendering, not a
+      // regression risk.
+      if (RATIONAL_ASYMPTOTIC_KINDS.has(kind) && params && typeof params === "object") {
+        const p = params as Record<string, unknown>;
+        const a = asFiniteNumber(p.a, Number.NaN);
+        const h = asFiniteNumber((p.h ?? p.verticalAsymptote) as number, Number.NaN);
+        const bOk = kind !== "rational-even" || Number.isFinite(asFiniteNumber(p.b, Number.NaN));
+        if (Number.isFinite(a) && Number.isFinite(h) && bOk) {
+          if (points.length) warnings.push(`discarded-unverified-points:${kind}`);
+          points = [];
+        }
+      }
+
       let pieces = undefined;
       if (kind === "piecewise" && Array.isArray(item.pieces)) {
         pieces = item.pieces

@@ -786,32 +786,68 @@ function trigFunctionFromLatex(latex: string): { kind: "sine" | "cosine"; params
   const hasCos = /(?:\\cos|cos)/.test(compact);
   if (!hasSin && !hasCos) return null;
 
-  const sinBeforeCos = /(?:\\sin|sin)[^+\-]*(\+|-)(?:\\cos|cos)/.exec(compact);
-  if (sinBeforeCos) {
-    return {
-      kind: "sine",
-      params: {
-        a: Math.SQRT2,
-        b: 1,
-        c: sinBeforeCos[1] === "-" ? -Math.PI / 4 : Math.PI / 4,
-        d: 0,
-      },
-      compound: true,
-    };
+  // This family only models a single trig term (optionally phase-shifted)
+  // applied directly to x, or the classic a*sin(x)±b*cos(x) two-term combo.
+  // `\tan`/`\cot`/`\sec`/`\csc` — or anything else genuinely compound, like
+  // `x\tan x - \cos x` — can't be represented by it; bail out to the general
+  // compound-trig numeric sampler instead of silently misrendering it as a
+  // plain sine/cosine wave (a real observed failure: `x\tan x - \cos x` was
+  // misread as `a=-1` for a bare `-\cos x`, discarding the `x\tan x` term
+  // entirely and producing a bounded curve with no asymptotes at all).
+  if (/\\tan|\\cot|\\sec|\\csc/.test(compact)) return null;
+
+  // The sin±cos combo regexes below are a flat scan for "\sin ... (+|-) ...
+  // \cos" anywhere in the string — they don't understand LaTeX nesting, so
+  // they can match across an unrelated \frac{}{} or \sqrt{}{} boundary (a
+  // real observed failure: `\frac{2x-\sin x}{\sqrt{1-\cos x}}` — a "-"
+  // that's actually part of "1-\cos x" *inside the sqrt in the
+  // denominator* — matched as if it combined the numerator's `\sin x` and
+  // that `\cos x` into a single phase-shifted sinusoid, producing a
+  // completely fabricated `y=√2·sin(x-π/4)` for a function that isn't a
+  // sinusoid at all). Skip combo detection whenever `\frac`/`\sqrt` is
+  // present — leave those to the single-term check below (which will
+  // reject them too, correctly, via its own "nothing but an optional sign
+  // precedes the call" check) or the general compound-trig sampler.
+  if (!/\\frac|\\sqrt/.test(compact)) {
+    const sinBeforeCos = /(?:\\sin|sin)[^+\-]*(\+|-)(?:\\cos|cos)/.exec(compact);
+    if (sinBeforeCos) {
+      return {
+        kind: "sine",
+        params: {
+          a: Math.SQRT2,
+          b: 1,
+          c: sinBeforeCos[1] === "-" ? -Math.PI / 4 : Math.PI / 4,
+          d: 0,
+        },
+        compound: true,
+      };
+    }
+
+    const cosBeforeSin = /(?:\\cos|cos)[^+\-]*(\+|-)(?:\\sin|sin)/.exec(compact);
+    if (cosBeforeSin) {
+      return {
+        kind: "cosine",
+        params: {
+          a: Math.SQRT2,
+          b: 1,
+          c: cosBeforeSin[1] === "-" ? Math.PI / 4 : -Math.PI / 4,
+          d: 0,
+        },
+        compound: true,
+      };
+    }
   }
 
-  const cosBeforeSin = /(?:\\cos|cos)[^+\-]*(\+|-)(?:\\sin|sin)/.exec(compact);
-  if (cosBeforeSin) {
-    return {
-      kind: "cosine",
-      params: {
-        a: Math.SQRT2,
-        b: 1,
-        c: cosBeforeSin[1] === "-" ? Math.PI / 4 : -Math.PI / 4,
-        d: 0,
-      },
-      compound: true,
-    };
+  // Verify nothing besides an optional "y="/"f(x)=" prefix and an optional
+  // leading sign precedes the trig call — anything else left over (like the
+  // "x" in "x\cos x") means a factor is multiplying the trig term, which
+  // `parseTrigAmplitude`'s "ends with -" heuristic would otherwise silently
+  // misread as a plain -1 amplitude.
+  const fnPattern = hasSin ? String.raw`(?:\\sin|sin)` : String.raw`(?:\\cos|cos)`;
+  const fnMatch = new RegExp(fnPattern).exec(compact);
+  if (fnMatch) {
+    const before = compact.slice(0, fnMatch.index).replace(/^[a-z]\([a-z]\)=|^[a-z]=/, "");
+    if (before !== "" && before !== "-") return null;
   }
 
   return hasSin
@@ -1110,6 +1146,286 @@ function sampleGenericRationalFromLatex(
   return points.length >= 2 ? points : null;
 }
 
+// Numerically samples y = sqrt(Q(x)) for a bare `\sqrt{...}` latex whose
+// inner expression is a genuine (non-linear) polynomial — e.g. a semicircle
+// `\sqrt{25 - x^2}`. This codebase's `square-root` closed-form family only
+// models sqrt of a LINEAR inner expression (`a*sqrt(x-h)+k`); a quadratic-or-
+// higher inner has no closed-form family at all, so an AI-supplied `kind`
+// for one of these (commonly a wrong "quadratic" guess) can never actually
+// reproduce the curve — ground truth is only available by sampling the sqrt
+// directly from the latex.
+function sampleSqrtOfPolynomialFromLatex(
+  latex: string,
+  domain: [number, number],
+): [number, number][] | null {
+  const compact = String(latex || "")
+    .replace(/\s+/g, "")
+    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
+  const sqrtMatch = compact.match(/^\\sqrt\{([^{}]+)\}$/);
+  if (!sqrtMatch) return null;
+  const inner = parsePolynomial(sqrtMatch[1]);
+  if (!inner) return null;
+  // A linear (or constant) inner expression is the existing `square-root`
+  // family's territory (sqrt(x-h)) — leave it alone.
+  if (inner.a === 0 && inner.b === 0) return null;
+
+  const [dMin, dMax] = domain;
+  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
+
+  const evalPoly = (p: { a: number; b: number; c: number; d: number }, x: number) =>
+    p.a * x ** 3 + p.b * x ** 2 + p.c * x + p.d;
+
+  const SAMPLES = 120;
+  const points: [number, number][] = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const x = dMin + ((dMax - dMin) * i) / SAMPLES;
+    const inside = evalPoly(inner, x);
+    if (inside < 0) continue; // outside the function's real domain
+    const y = Math.sqrt(inside);
+    if (Number.isFinite(y)) points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
+  }
+  return points.length >= 2 ? points : null;
+}
+
+type TrigAstNode =
+  | { type: "num"; value: number }
+  | { type: "var" }
+  | { type: "pi" }
+  | { type: "neg"; arg: TrigAstNode }
+  | { type: "add"; left: TrigAstNode; right: TrigAstNode }
+  | { type: "sub"; left: TrigAstNode; right: TrigAstNode }
+  | { type: "mul"; left: TrigAstNode; right: TrigAstNode }
+  | { type: "div"; left: TrigAstNode; right: TrigAstNode }
+  | { type: "pow"; base: TrigAstNode; exp: TrigAstNode }
+  | { type: "sqrt"; arg: TrigAstNode }
+  | { type: "func"; name: "sin" | "cos" | "tan"; arg: TrigAstNode };
+
+// Tokenizer for the small recursive-descent parser below. Deliberately
+// minimal: numbers, `x`, `\pi`, +-*/^(){}, `\frac`, `\sqrt`, `\sin`/`\cos`/
+// `\tan`, `\cdot`/`\times`. Anything else (an unrecognized command, a stray
+// symbol) fails the whole parse rather than guessing.
+function tokenizeTrigExpr(compact: string): string[] | null {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < compact.length) {
+    const ch = compact[i];
+    if (compact.startsWith("\\sin", i)) { tokens.push("sin"); i += 4; continue; }
+    if (compact.startsWith("\\cos", i)) { tokens.push("cos"); i += 4; continue; }
+    if (compact.startsWith("\\tan", i)) { tokens.push("tan"); i += 4; continue; }
+    if (compact.startsWith("\\sqrt", i)) { tokens.push("sqrt"); i += 5; continue; }
+    if (compact.startsWith("\\pi", i)) { tokens.push("pi"); i += 3; continue; }
+    if (compact.startsWith("\\cdot", i)) { tokens.push("*"); i += 5; continue; }
+    if (compact.startsWith("\\times", i)) { tokens.push("*"); i += 6; continue; }
+    if (compact.startsWith("\\frac", i)) { tokens.push("frac"); i += 5; continue; }
+    if (/[0-9]/.test(ch)) {
+      let j = i;
+      while (j < compact.length && /[0-9.]/.test(compact[j])) j++;
+      tokens.push(compact.slice(i, j));
+      i = j;
+      continue;
+    }
+    if (ch === "x") { tokens.push("x"); i++; continue; }
+    if ("+-*/^(){}".includes(ch)) { tokens.push(ch); i++; continue; }
+    return null; // unsupported character/command — don't guess
+  }
+  return tokens;
+}
+
+// Small recursive-descent parser/evaluator for compound trig expressions
+// this codebase's closed-form trig family (a single sin/cos term, optionally
+// phase-shifted, or a two-term sin±cos combo) can't represent — e.g.
+// `x\tan x - \cos x`. Supports +-*/^, `\frac{}{}`, `\pi`, implicit
+// multiplication (adjacent factors, e.g. `x\tan x`, `2x`), and `\sin`/`\cos`/
+// `\tan` with either a parenthesized/braced argument or (LaTeX convention)
+// a bare trailing `x`.
+function parseTrigExpr(tokens: string[]): TrigAstNode | null {
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const atomStart = () => {
+    const t = peek();
+    return t !== undefined && (
+      /^[0-9.]+$/.test(t) || t === "x" || t === "pi" || t === "sin" || t === "cos" || t === "tan"
+      || t === "frac" || t === "sqrt" || t === "(" || t === "{"
+    );
+  };
+
+  function parseExpr(): TrigAstNode | null {
+    let left = parseTerm();
+    if (!left) return null;
+    while (peek() === "+" || peek() === "-") {
+      const op = tokens[pos++];
+      const right = parseTerm();
+      if (!right) return null;
+      left = op === "+" ? { type: "add", left, right } : { type: "sub", left, right };
+    }
+    return left;
+  }
+
+  function parseTerm(): TrigAstNode | null {
+    let left = parseUnary();
+    if (!left) return null;
+    for (;;) {
+      if (peek() === "*" || peek() === "/") {
+        const op = tokens[pos++];
+        const right = parseUnary();
+        if (!right) return null;
+        left = op === "*" ? { type: "mul", left, right } : { type: "div", left, right };
+      } else if (atomStart()) {
+        // Implicit multiplication, e.g. "x\tan x" (= x * tan(x)), "2x".
+        const right = parseUnary();
+        if (!right) return null;
+        left = { type: "mul", left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseUnary(): TrigAstNode | null {
+    if (peek() === "-") { pos++; const arg = parseUnary(); return arg ? { type: "neg", arg } : null; }
+    if (peek() === "+") { pos++; return parseUnary(); }
+    return parsePow();
+  }
+
+  function parsePow(): TrigAstNode | null {
+    const base = parseAtom();
+    if (!base) return null;
+    if (peek() === "^") {
+      pos++;
+      const exp = parseUnary();
+      if (!exp) return null;
+      return { type: "pow", base, exp };
+    }
+    return base;
+  }
+
+  function parseFuncArg(): TrigAstNode | null {
+    if (peek() === "(" || peek() === "{") {
+      const close = peek() === "(" ? ")" : "}";
+      pos++;
+      const inner = parseExpr();
+      if (!inner || peek() !== close) return null;
+      pos++;
+      return inner;
+    }
+    // LaTeX convention: `\cos x` (no braces) applies to just the next atom.
+    return parseAtom();
+  }
+
+  function parseAtom(): TrigAstNode | null {
+    const t = peek();
+    if (t === undefined) return null;
+    if (/^[0-9.]+$/.test(t)) { pos++; return { type: "num", value: Number(t) }; }
+    if (t === "x") { pos++; return { type: "var" }; }
+    if (t === "pi") { pos++; return { type: "pi" }; }
+    if (t === "sin" || t === "cos" || t === "tan") {
+      pos++;
+      const arg = parseFuncArg();
+      if (!arg) return null;
+      return { type: "func", name: t, arg };
+    }
+    if (t === "sqrt") {
+      pos++;
+      const arg = parseFuncArg();
+      if (!arg) return null;
+      return { type: "sqrt", arg };
+    }
+    if (t === "frac") {
+      pos++;
+      if (peek() !== "{") return null;
+      pos++;
+      const num = parseExpr();
+      if (!num || peek() !== "}") return null;
+      pos++;
+      if (peek() !== "{") return null;
+      pos++;
+      const den = parseExpr();
+      if (!den || peek() !== "}") return null;
+      pos++;
+      return { type: "div", left: num, right: den };
+    }
+    if (t === "(" || t === "{") {
+      const close = t === "(" ? ")" : "}";
+      pos++;
+      const inner = parseExpr();
+      if (!inner || peek() !== close) return null;
+      pos++;
+      return inner;
+    }
+    return null;
+  }
+
+  const result = parseExpr();
+  if (!result || pos !== tokens.length) return null;
+  return result;
+}
+
+function evalTrigAst(node: TrigAstNode, x: number): number {
+  switch (node.type) {
+    case "num": return node.value;
+    case "var": return x;
+    case "pi": return Math.PI;
+    case "neg": return -evalTrigAst(node.arg, x);
+    case "add": return evalTrigAst(node.left, x) + evalTrigAst(node.right, x);
+    case "sub": return evalTrigAst(node.left, x) - evalTrigAst(node.right, x);
+    case "mul": return evalTrigAst(node.left, x) * evalTrigAst(node.right, x);
+    case "div": return evalTrigAst(node.left, x) / evalTrigAst(node.right, x);
+    case "pow": return Math.pow(evalTrigAst(node.base, x), evalTrigAst(node.exp, x));
+    case "sqrt": return Math.sqrt(evalTrigAst(node.arg, x));
+    case "func": {
+      const argVal = evalTrigAst(node.arg, x);
+      if (node.name === "sin") return Math.sin(argVal);
+      if (node.name === "cos") return Math.cos(argVal);
+      return Math.tan(argVal);
+    }
+    default: return Number.NaN;
+  }
+}
+
+function containsTrigFunc(node: TrigAstNode): boolean {
+  switch (node.type) {
+    case "func": return true;
+    case "neg": case "sqrt": return containsTrigFunc(node.arg);
+    case "add": case "sub": case "mul": case "div":
+      return containsTrigFunc(node.left) || containsTrigFunc(node.right);
+    case "pow": return containsTrigFunc(node.base) || containsTrigFunc(node.exp);
+    default: return false;
+  }
+}
+
+// Numerically samples a compound trig expression (e.g. `x\tan x - \cos x`)
+// that `trigFunctionFromLatex`'s closed-form family can't represent. Ground
+// truth is only available by evaluating the expression directly — there is
+// no other way to know, say, where `x\tan x` actually blows up.
+function sampleCompoundTrigFromLatex(
+  latex: string,
+  domain: [number, number],
+): [number, number][] | null {
+  const compact = String(latex || "")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\s+/g, "")
+    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)=|[a-zA-Z]=)/, "");
+  const tokens = tokenizeTrigExpr(compact);
+  if (!tokens || !tokens.length) return null;
+  const ast = parseTrigExpr(tokens);
+  if (!ast || !containsTrigFunc(ast)) return null;
+
+  const [dMin, dMax] = domain;
+  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
+
+  const SAMPLES = 240; // trig waves + asymptotes need finer resolution than polynomials
+  const MAX_ABS_Y = 60; // treat larger magnitudes as an asymptote blow-up, not real data
+  const points: [number, number][] = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const x = dMin + ((dMax - dMin) * i) / SAMPLES;
+    const y = evalTrigAst(ast, x);
+    if (!Number.isFinite(y) || Math.abs(y) > MAX_ABS_Y) continue;
+    points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
+  }
+  return points.length >= 2 ? points : null;
+}
+
 // True when a set of (x, y) samples actually spans the declared domain,
 // within a tolerance. The AI sometimes emits a points array that runs out of
 // rows partway through the domain it itself declared (e.g. 80 rows at a 0.1
@@ -1243,6 +1559,23 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
       let params = item.params && typeof item.params === "object" ? item.params : undefined;
       const latex = String(item.latex || item.label || "").slice(0, 80);
+
+      // A function's `latex` should be a bare function definition (`y=...`,
+      // `f(x)=...`, or just the expression) — never a full `\lim_{x\to a}...`
+      // statement. Unlike most content bugs, this one doesn't need the
+      // original problem text to catch: a `\lim` inside a function's own
+      // latex is a self-contained red flag that whatever `kind`/`params`/
+      // `points` came with it are unverifiable (a real observed case: the
+      // AI supplied `kind:"cubic"`, `latex:"\lim_{x\to0}\frac{x^3-x\sin
+      // x}{x-\sin^2x}"`, and `points` that traced out plain `y=x^3` — just
+      // the numerator's leading term, discarding everything else about the
+      // actual function under the limit). Drop it outright.
+      if (/\\lim/.test(latex)) {
+        warnings.push("dropped-lim-expression-as-latex");
+        if (functions.length === 1) warnings.push("empty-function-graph");
+        return null;
+      }
+
       const trigFromLatex = trigFunctionFromLatex(latex);
 
       if (trigFromLatex) {
@@ -1357,6 +1690,51 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       }
 
       let points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
+
+      // A bare `\sqrt{...}` latex with a non-linear inner expression (e.g. a
+      // semicircle `\sqrt{25-x^2}`) has no closed-form family in this
+      // renderer — whatever `kind`/`params` the AI supplied for it (often a
+      // wrong "quadratic" guess, since a quadratic evaluator ignores the
+      // sqrt entirely and produces a completely different curve) can never
+      // reproduce the real shape. Always resample it directly from the
+      // latex instead of trusting AI params here.
+      {
+        const sqrtDomain: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
+          ? domain as [number, number]
+          : Array.isArray(input.domain) && input.domain.length === 2
+            ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
+            : [-10, 10];
+        const sqrtSampled = sampleSqrtOfPolynomialFromLatex(latex, sqrtDomain);
+        if (sqrtSampled) {
+          warnings.push(`function-kind-corrected:${kind || "missing"}:sqrt-of-polynomial`);
+          kind = "points";
+          params = undefined;
+          points = sqrtSampled;
+        }
+      }
+
+      // A compound trig expression (e.g. `x\tan x - \cos x`) that
+      // `trigFunctionFromLatex` declined to match (it only models a single
+      // sin/cos term or a sin±cos combo) has no closed-form family here
+      // either — whatever `kind`/`params` the AI supplied for it (often a
+      // wrong plain sine/cosine guess, since that evaluator ignores the rest
+      // of the expression and produces a completely different — usually
+      // bounded, asymptote-free — curve) can never reproduce the real shape.
+      // Always resample it directly from the latex instead.
+      if (!trigFromLatex && /\\sin|\\cos|\\tan/.test(latex)) {
+        const trigDomain: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
+          ? domain as [number, number]
+          : Array.isArray(input.domain) && input.domain.length === 2
+            ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
+            : [-10, 10];
+        const trigSampled = sampleCompoundTrigFromLatex(latex, trigDomain);
+        if (trigSampled) {
+          warnings.push(`function-kind-corrected:${kind || "missing"}:compound-trig-expr`);
+          kind = "points";
+          params = undefined;
+          points = trigSampled;
+        }
+      }
 
       // Last resort: a compound rational function (P(x)/Q(x), both genuine
       // polynomials) that none of the closed-form families or parsePolynomial
@@ -1481,30 +1859,29 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       }
 
       // Guard against a placeholder the AI sometimes emits when it fails to
-      // actually work out the function graph (e.g. for a compound rational it
-      // couldn't classify): kind "quadratic" with no latex at all and the
-      // literal "nothing was specified" params (a=1, b=0, c=0 — a bare y=x^2
-      // through the origin). There's no latex here to verify or derive a real
-      // function from, and this conveys zero information about the actual
-      // problem, so it's worse than no diagram — drop it and let the existing
-      // fallback chain (or an empty diagram) take over instead.
+      // actually work out the function graph — e.g. for a compound rational
+      // it couldn't classify, or (a real observed case) for
+      // (x²-x·sin x)/(x-sin²x), an L'Hôpital limit problem with no
+      // quadratic in sight at all: `kind: "quadratic"` with completely
+      // empty `latex` and params with no relationship to the real function
+      // (that case: y=x²-x, matching neither the original expression nor
+      // its post-L'Hôpital derivative form; an earlier case: the literal
+      // "nothing was specified" a=1,b=0,c=0 default). Once latex is empty
+      // there is no ground truth left to verify ANY params against — a
+      // "quadratic" is not even the right family for most of the trig/limit
+      // problems this fires on — so treat any empty-latex quadratic as
+      // unverifiable and drop it; that's worse than no diagram.
       if (kind === "quadratic" && !latex && params && typeof params === "object") {
-        const pCheck = params as Record<string, unknown>;
-        const aCheck = asFiniteNumber(pCheck.a, Number.NaN);
-        const bCheck = asFiniteNumber(pCheck.b, Number.NaN);
-        const cCheck = asFiniteNumber(pCheck.c, Number.NaN);
-        if (aCheck === 1 && bCheck === 0 && cCheck === 0) {
-          warnings.push("dropped-placeholder-quadratic");
-          // When this placeholder was the AI's only function for the block,
-          // also force the whole thing to be treated as empty even if a
-          // stray feature point (e.g. this same placeholder's vertex, (0,0))
-          // survives alongside it — a lone dot with no curve is just as
-          // uninformative here as the fake parabola would have been. If
-          // other real functions are present, leave the empty-graph decision
-          // to the normal functions/feature-points check below.
-          if (functions.length === 1) warnings.push("empty-function-graph");
-          return null;
-        }
+        warnings.push("dropped-placeholder-quadratic");
+        // When this placeholder was the AI's only function for the block,
+        // also force the whole thing to be treated as empty even if a
+        // stray feature point (e.g. this same placeholder's own vertex)
+        // survives alongside it — a lone dot with no curve is just as
+        // uninformative here as the fake parabola would have been. If
+        // other real functions are present, leave the empty-graph decision
+        // to the normal functions/feature-points check below.
+        if (functions.length === 1) warnings.push("empty-function-graph");
+        return null;
       }
 
       return {
@@ -1521,7 +1898,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     .filter(Boolean)
     .slice(0, 3);
 
-  const normalizedFeaturePoints = featurePoints
+  let normalizedFeaturePoints = featurePoints
     .map((point) => {
       if (!point || typeof point !== "object") return null;
       const item = point as Record<string, unknown>;
@@ -1551,6 +1928,55 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     })
     .filter(Boolean)
     .slice(0, 8);
+
+  // A feature point the AI computed against its *original* (wrong) kind/
+  // params for a function this normalizer just corrected via one of the
+  // numeric fallbacks above (sqrt-of-polynomial, compound-trig-expr, generic
+  // rational) is now stale — it no longer lies on the corrected curve (a
+  // real observed failure: feature points computed from a fabricated
+  // `y=√2·sin(x-π/4)` stayed in the spec unchanged after the curve was
+  // corrected to the true, unrelated function). Drop any feature point that
+  // falls within a densely-sampled `points`-kind function's domain but
+  // doesn't actually lie on it — a wrong dot is worse than no dot.
+  {
+    const sampledCurveFunctions = normalizedFunctions.filter((fn) => {
+      const item = fn as Record<string, unknown>;
+      return item.kind === "points" && Array.isArray(item.points) && (item.points as unknown[]).length > 15;
+    }) as Array<{ points: [number, number][] }>;
+    if (sampledCurveFunctions.length) {
+      const evalSampledCurveAt = (points: [number, number][], x: number): number => {
+        for (let i = 0; i < points.length - 1; i++) {
+          const [x0, y0] = points[i];
+          const [x1, y1] = points[i + 1];
+          if (x >= Math.min(x0, x1) && x <= Math.max(x0, x1)) {
+            if (Math.abs(x1 - x0) < 1e-9) return y0;
+            return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+          }
+        }
+        return Number.NaN;
+      };
+      let droppedStaleFeaturePoint = false;
+      normalizedFeaturePoints = normalizedFeaturePoints.filter((point) => {
+        const item = point as Record<string, unknown>;
+        const coordinates = item.point as [number, number] | undefined;
+        if (!Array.isArray(coordinates)) return true;
+        const [px, py] = coordinates;
+        for (const fn of sampledCurveFunctions) {
+          const xs = fn.points.map((p) => p[0]);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          if (px < minX || px > maxX) continue;
+          const expectedY = evalSampledCurveAt(fn.points, px);
+          if (Number.isFinite(expectedY) && Math.abs(expectedY - py) > 0.15) {
+            droppedStaleFeaturePoint = true;
+            return false;
+          }
+        }
+        return true;
+      });
+      if (droppedStaleFeaturePoint) warnings.push("dropped-stale-feature-point");
+    }
+  }
 
   let resolvedNormalizedFunctions = normalizedFunctions;
   const hasTrigFeaturePoints = normalizedFeaturePoints.some((point) => {

@@ -1,7 +1,7 @@
 import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
-import { buildFunctionGraphIntentDiagramBlock, normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
+import { buildFunctionGraphIntentDiagramBlock, evaluateLatexAt, evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
 import { getGeminiClient } from "./core/client.js";
 import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
@@ -785,6 +785,7 @@ Diagram spec examples:
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 - function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
 - function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
+- function-graph piecewise/jump discontinuity (each piece gets its own "domain" — never rely on latex text like "(x>=0)"): {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1","domain":[0,3]},{"kind":"linear","params":{"m":2,"b":-1},"latex":"y=2x-1","domain":[-3,0]}],"featurePoints":[{"point":[0,1],"label":"(0,1)","closed":true},{"point":[0,-1],"label":"(0,-1)","closed":false}],"domain":[-3,3],"range":[-8,8]}
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
 - function-graph absolute value: {"functions":[{"kind":"absolute-value","params":{"a":1,"h":3,"k":-2,"xIntercepts":[1,5]},"latex":"y=|x-3|-2"}],"domain":[-1,7],"range":[-4,4]}
 - function-graph rational reciprocal: {"functions":[{"kind":"rational-reciprocal","params":{"a":2,"h":1,"k":0,"verticalAsymptote":1,"horizontalAsymptote":0},"latex":"y=\\frac{2}{x-1}"}],"domain":[-5,7],"range":[-6,6]}
@@ -3835,6 +3836,241 @@ function inferPieChartBlocks(
   return [];
 }
 
+// Extracts "f(x0) = y0" / "f(x0) \approx y0" style anchor claims from a
+// solution's own worked text — a common, greppable pattern in these
+// solutions: they substitute a concrete value and state the result inline
+// (e.g. "f(0) = -2", "f(1) \approx 0.19"). Deliberately narrow (only the
+// literal function name "f", only plain decimal numbers, not fractions) to
+// keep false positives near zero — a wrongly-dropped correct diagram is as
+// bad as a wrongly-kept wrong one.
+export function extractAnchorClaims(solutionText: string): Array<{ x: number; y: number }> {
+  const anchors: Array<{ x: number; y: number }> = [];
+  const pattern = /f\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)\s*(?:=|\\approx|\\thickapprox)\s*(-?\d+(?:\.\d+)?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(solutionText)) !== null) {
+    const x = Number(match[1]);
+    const y = Number(match[2]);
+    if (Number.isFinite(x) && Number.isFinite(y)) anchors.push({ x, y });
+  }
+  return anchors.slice(0, 12);
+}
+
+// The one general, deterministic check that catches a diagram plotting the
+// wrong function entirely — not by understanding what the problem is about
+// (which needs the full "is this the right function" judgment call that
+// only a prompt-level fix or a human can make; see DIAGRAM_STRUCTURE_JSON_GUIDE.md's
+// "Wrong Function Selected" section), but by checking whether the plotted
+// function agrees with concrete numbers the solution itself already
+// committed to. A real observed failure this would have caught: a diagram
+// plotted a fabricated y=x^3 (or a semicircle mislabeled as a parabola, or a
+// compound expression collapsed to a bare cosine) while the solution's own
+// worked steps stated "f(0) = -2" and "f(1) ≈ 0.19" — numbers that don't
+// match the plotted curve at all. Runs *after* normalizeDiagramBlocks, so
+// it's checking the same latex the backend's own numeric-verification pass
+// (in diagram-blocks.ts) already trusts — this is a second, independent
+// check against the solution text specifically, which diagram-blocks.ts
+// never sees.
+export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], solutionText: string): RenderBlock[] {
+  if (!blocks.length || !solutionText) return blocks;
+  const anchors = extractAnchorClaims(solutionText);
+  if (!anchors.length) return blocks;
+
+  return blocks.filter((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "function-graph") return true;
+    const spec = block.spec as Record<string, unknown>;
+    const functions = Array.isArray(spec?.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    const primaryFn = functions[0];
+    const latex = typeof primaryFn?.latex === "string" ? primaryFn.latex : "";
+    if (!latex) return true; // nothing to verify against — leave alone
+
+    let checkedCount = 0;
+    let mismatchCount = 0;
+    for (const anchor of anchors) {
+      const evaluated = evaluateLatexAt(latex, anchor.x);
+      if (evaluated === null) continue; // latex doesn't parse, or is undefined there — not this check's job
+      checkedCount++;
+      const tolerance = Math.max(0.05, Math.abs(anchor.y) * 0.02);
+      if (Math.abs(evaluated - anchor.y) > tolerance) mismatchCount++;
+    }
+    // A majority of checkable anchors disagreeing counts as a genuine
+    // mismatch — not "every single one" (a coincidental agreement at one
+    // point, e.g. two different cubics both passing through the origin,
+    // shouldn't save an otherwise-wrong function), but also not "any one"
+    // (a single stray disagreement — rounding in the solution text, or an
+    // anchor that turns out to be about a different function — shouldn't
+    // discard an otherwise-correct diagram).
+    if (checkedCount > 0 && mismatchCount > checkedCount / 2) {
+      logger.warn("[verifyDiagramBlocksAgainstSolution] dropped diagram — plotted function disagrees with solution's own worked numbers", {
+        latex: latex.slice(0, 80),
+        anchors: anchors.slice(0, checkedCount),
+      });
+      return false;
+    }
+    return true;
+  });
+}
+
+// Extracts "\lim_{x \to A} EXPR = TARGET" from a problem statement — the
+// problem's own equation, ground truth independent of whatever the
+// solution's derivation did. Only handles a plain finite limit point (the
+// overwhelming majority of these problems use x -> 0); a one-sided marker
+// like "0^+" has its trailing sign stripped before parsing the point itself
+// (the numeric check below already samples both sides).
+function extractLimitEquation(problem: string): { point: number; expr: string; target: number } | null {
+  const limMatch = problem.match(/\\lim_\{x\s*\\to\s*([^}]+)\}/);
+  if (!limMatch || limMatch.index === undefined) return null;
+  const pointRaw = limMatch[1].trim().replace(/\^\{?[+-]\}?$/, "").replace(/[+-]$/, "");
+  const point = evaluateLatexWithBindings(pointRaw, {});
+  if (point === null) return null;
+
+  const rest = problem.slice(limMatch.index + limMatch[0].length);
+  const eqIndex = rest.lastIndexOf("=");
+  if (eqIndex === -1) return null;
+  const expr = rest.slice(0, eqIndex).trim();
+  const targetRaw = rest.slice(eqIndex + 1).trim().replace(/(\\\$|\$|។|？|\?|\.|\s)+$/g, "");
+  if (!expr || !targetRaw) return null;
+
+  const target = evaluateLatexWithBindings(targetRaw, {});
+  return target === null ? null : { point, expr, target };
+}
+
+// Extracts "VARNAME = VALUE" from a final answer like "$a = \frac{5}{8}$" —
+// the unknown constant these "solve for a" problems ask for. VARNAME is any
+// single Latin letter other than "x"; VALUE is parsed via the same general
+// expression engine (plain numbers, simple \frac{p}{q} fractions).
+function extractConstantAnswer(finalAnswer: string): { name: string; value: number } | null {
+  const match = finalAnswer.match(/([a-wyzA-WYZ])\s*=\s*(\\frac\{[^{}]+\}\{[^{}]+\}|-?\d+(?:\.\d+)?(?:\/-?\d+(?:\.\d+)?)?)/);
+  if (!match) return null;
+  const value = evaluateLatexWithBindings(match[2], {});
+  return value === null ? null : { name: match[1].toLowerCase(), value };
+}
+
+export type ConstantAnswerCheck =
+  | { ok: true }
+  | { ok: false; claimed: string; estimate: number; target: number };
+
+// Pure detection logic for "solve for a constant" final answers (e.g.
+// "a = 5/8" for "find a such that lim_{x->0} EXPR = TARGET"), checked
+// against the problem's own equation — independent of whatever the
+// solution's derivation did, which is exactly where the AI's own
+// arithmetic mistakes live. Nothing else in this pipeline can catch this
+// class of bug: it isn't a diagram issue at all (no diagram, or an empty
+// one, is entirely correct for these problems), and the wrong answer can
+// come from a solution whose steps *look* individually plausible right up
+// until one flipped cross-multiplication. A real observed failure: a
+// solution correctly did every algebraic step except one, landing on
+// a=5/2, when substituting a=5/8 back into the original limit is what
+// actually gives the stated target of 1/8.
+//
+// `{ ok: true }` covers both "verified and correct" and "not this problem
+// shape / couldn't be checked" — this never claims a false positive, only
+// ever a positive detection of a genuine mismatch.
+//
+// Numeric-limit approximation: evaluates EXPR at decreasing step sizes on
+// both sides of the limit point with the claimed constant bound to its
+// stated value, and checks the smallest-step estimate against the stated
+// target. This assumes the limit genuinely exists and is well-approximated
+// by nearby points — true for every case in this problem set (0/0-form
+// algebraic limits), not guaranteed in general, so it's a best-effort
+// safety net, not a proof.
+export function checkConstantSolvingFinalAnswer(problem: string, finalAnswer: string): ConstantAnswerCheck {
+  if (!problem || !finalAnswer) return { ok: true };
+  const equation = extractLimitEquation(problem);
+  if (!equation) return { ok: true }; // not this problem shape — nothing to check
+  const answer = extractConstantAnswer(finalAnswer);
+  if (!answer) return { ok: true };
+  if (!latexReferencesVariable(equation.expr, answer.name)) return { ok: true }; // the claimed constant doesn't even appear in the equation (or the equation doesn't parse) — not this check's job
+
+  const steps = [1e-3, 1e-4, 1e-5];
+  let estimate: number | null = null;
+  for (const h of steps) {
+    const yPlus = evaluateLatexWithBindings(equation.expr, { x: equation.point + h, [answer.name]: answer.value });
+    const yMinus = evaluateLatexWithBindings(equation.expr, { x: equation.point - h, [answer.name]: answer.value });
+    if (yPlus === null || yMinus === null) return { ok: true }; // can't evaluate — don't guess
+    estimate = (yPlus + yMinus) / 2;
+  }
+  if (estimate === null) return { ok: true };
+
+  const tolerance = Math.max(0.01, Math.abs(equation.target) * 0.05);
+  if (Math.abs(estimate - equation.target) > tolerance) {
+    return { ok: false, claimed: `${answer.name}=${answer.value}`, estimate, target: equation.target };
+  }
+  return { ok: true };
+}
+
+// Thin logging wrapper around checkConstantSolvingFinalAnswer — the actual
+// call sites in solveProblemSolutionFirst/solveFromImageDirect use this.
+// This only ever logs; it does not modify or drop anything. Unlike a
+// diagram (where "no diagram" is a safe fallback) there's no safe automatic
+// action for a wrong final answer, so this is an observability check, not
+// a gate, until there's a deliberate decision to do more with it.
+export function verifyConstantSolvingFinalAnswer(problem: string, finalAnswer: string): void {
+  const result = checkConstantSolvingFinalAnswer(problem, finalAnswer);
+  if (result.ok === false) {
+    logger.warn("[verifyConstantSolvingFinalAnswer] final answer does not satisfy the problem's own equation", {
+      problem: problem.slice(0, 200),
+      finalAnswer: finalAnswer.slice(0, 80),
+      claimed: result.claimed,
+      numericLimitEstimate: result.estimate,
+      statedTarget: result.target,
+    });
+  }
+}
+
+export type SolutionCompletenessCheck = { ok: true } | { ok: false; reason: string };
+
+// A real observed case: a Rolle's-theorem existence proof committed to an
+// antiderivative-based method that couldn't actually reach its conclusion
+// for the given interval, and generation stalled mid-argument — twice,
+// independently, on the same problem. `solutionText` ended literally
+// mid-command ("...\frac{a}{3}\left(") one time and mid-*word* the other,
+// with `finalAnswer` either empty or a self-reported "N/A (incomplete)".
+//
+// This deliberately does NOT try to judge whether a solution's *reasoning*
+// is complete (that's the much harder, genuinely open-ended problem — see
+// the prompt-level option this was weighed against) — only whether its
+// *output* is well-formed enough to have plausibly finished at all. Every
+// check here is a structural property a genuinely complete solution can
+// never fail (balanced LaTeX delimiters, a non-empty stated answer), so
+// there's no false-positive risk against correct output — only against
+// output that's already broken in a way nothing downstream can trust.
+export function checkSolutionCompleteness(solutionText: string, finalAnswer: string): SolutionCompletenessCheck {
+  if (!finalAnswer || !finalAnswer.trim()) return { ok: false, reason: "empty-final-answer" };
+  if (/^n\/a\b/i.test(finalAnswer.trim())) return { ok: false, reason: "final-answer-self-reported-na" };
+  if (!solutionText || !solutionText.trim()) return { ok: false, reason: "empty-solution-text" };
+
+  const leftCount = (solutionText.match(/\\left/g) || []).length;
+  const rightCount = (solutionText.match(/\\right/g) || []).length;
+  if (leftCount !== rightCount) return { ok: false, reason: "unbalanced-left-right" };
+
+  const openBraces = (solutionText.match(/{/g) || []).length;
+  const closeBraces = (solutionText.match(/}/g) || []).length;
+  if (openBraces !== closeBraces) return { ok: false, reason: "unbalanced-braces" };
+
+  const displayMathMarkers = (solutionText.match(/\$\$/g) || []).length;
+  if (displayMathMarkers % 2 !== 0) return { ok: false, reason: "unbalanced-display-math" };
+
+  return { ok: true };
+}
+
+// Thin logging wrapper, same posture as verifyConstantSolvingFinalAnswer:
+// observability only. Unlike a wrong number (where the safe action is
+// genuinely unclear), an incomplete solution IS something with an obvious
+// safe fallback — surface it to the student as failed rather than store a
+// broken response — but that's a bigger, separate decision (retrying
+// generation, or gating storage) than this detection pass itself, so it's
+// deliberately left as logging until that decision is made.
+export function verifySolutionCompleteness(solutionText: string, finalAnswer: string): void {
+  const result = checkSolutionCompleteness(solutionText, finalAnswer);
+  if (result.ok === false) {
+    logger.warn("[verifySolutionCompleteness] solution appears truncated or incomplete", {
+      reason: result.reason,
+      solutionTextTail: solutionText.slice(-200),
+      finalAnswer: finalAnswer.slice(0, 80),
+    });
+  }
+}
+
 async function extractDiagramBlocksForSolution(
   problem: string,
   solutionText: string,
@@ -3958,7 +4194,8 @@ DIAGRAM SELECTION RULES (CRITICAL):
    - renderTemplate describes the textbook/layout preset when one is needed.
    Example: average-rate for f(x)=4/x^2 should use mathFamily="inverse-square", problemIntent="average-rate", diagramIntent="secant-interval", then include a curve function, endpoint featurePoints, and a linear secant function.
 5. For a limit, continuity, or root-existence problem, the function you plot MUST be the exact function named in the PROBLEM statement (e.g. the expression whose limit is being taken, or the f(x) the problem defines) — never an intermediate expression that only appears partway through the solution's derivation (an algebraic rewrite, a simplified denominator, a substitution). If the problem asks for lim f(x) and the solution rewrites part of f(x) along the way (e.g. "1 - cos x = 2 sin²(x/2)"), the diagram's function latex must still be f(x) itself, not that rewritten fragment — plotting the fragment instead misrepresents the problem, even though the fragment is mathematically valid on its own.
-6. Never guess a "sign-table"'s sign cells. Before emitting one, actually work out the sign of the named function/expression at a real test value in each interval (e.g. compute f'(-1) numerically, don't assume a pattern) — a wrong sign row is worse than no diagram. Sign-tables are for monotonicity/inequality problems specifically; a straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — return {"diagramBlocks":[]} for those rather than attaching an unnecessary, unverified one.
+6. Never guess a "sign-table"'s sign cells. Before emitting one, actually work out the sign of the named function/expression at a real test value in each interval (e.g. compute f'(-1) numerically, don't assume a pattern) — a wrong sign row is worse than no diagram. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or the sign of something across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — return {"diagramBlocks":[]} for those rather than attaching an unnecessary, unverified one. This applies even when the problem is "solve for an unknown constant using a derivative" (e.g. "find a such that lim f(x)/x = 1/8" solved via L'Hôpital) — computing a derivative once and evaluating it at one point is not monotonicity analysis; it does not justify a sign-table showing "+" on both sides of some interior point, or any sign-table at all.
+7. When a "function-graph" shows a piecewise-defined function (the solution splits into cases like "for x > 0 ... for x < 0 ...", or has a jump/removable discontinuity), every piece that is NOT valid across the whole graph MUST carry its own "domain":[min,max] matching exactly which x-values that piece applies to (e.g. [0,3] for "x ≥ 0", not the graph's overall domain) — never rely on a note like "(x \\ge 0)" written inside "latex"; that text is never parsed as structured data. Two pieces sharing the graph's full domain with no per-piece "domain" render as two overlapping full lines/curves instead of two separate rays/branches meeting at the split — always split "domain" between the pieces so they don't overlap. Mark which side is included with "closed":true/false on the featurePoint at the split (the piece whose domain includes that x gets the closed dot; the other gets an open one).
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -4417,12 +4654,17 @@ Requirements:
   if (rawSolution && !isFallbackContent(rawSolution)) {
     const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
-      const diagramBlocks = await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer, metadata.problemIntent).catch((err) => {
-        logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
-          err: err instanceof Error ? err.message : String(err),
-        });
-        return [];
-      });
+      verifyConstantSolvingFinalAnswer(problem, metadata.finalAnswer);
+      verifySolutionCompleteness(rawSolution, metadata.finalAnswer);
+      const diagramBlocks = verifyDiagramBlocksAgainstSolution(
+        await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer, metadata.problemIntent).catch((err) => {
+          logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }),
+        rawSolution,
+      );
       return normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -4480,7 +4722,8 @@ Rules:
 20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
 21. Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use these as routing fields, then put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 22. For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
-23. Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically; a straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those.`;
+23. Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
+24. For a "function-graph" showing a piecewise-defined function (cases like "for x > 0 ... for x < 0 ...", a jump or removable discontinuity), every piece not valid across the whole graph MUST carry its own "domain":[min,max] for exactly the x-values that piece applies to — never rely on a note like "(x \\ge 0)" written inside "latex", which is never parsed as structured data. Without a per-piece "domain", both pieces render as overlapping full lines/curves across the entire graph instead of separate rays/branches meeting at the split. Mark the split with "closed":true/false on each piece's featurePoint there.`;
 
   const schema = {
     type: Type.OBJECT,
@@ -4543,10 +4786,15 @@ Rules:
   });
 
   if (isUsableProblemSolutionFirst(primary.data)) {
+    verifyConstantSolvingFinalAnswer(problem, primary.data.finalAnswer);
+    verifySolutionCompleteness(primary.data.solutionText, primary.data.finalAnswer);
     const normalizedDiagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks);
-    const diagramBlocks = normalizedDiagramBlocks.length
-      ? normalizedDiagramBlocks
-      : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch(() => []);
+    const diagramBlocks = verifyDiagramBlocksAgainstSolution(
+      normalizedDiagramBlocks.length
+        ? normalizedDiagramBlocks
+        : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch(() => []),
+      primary.data.solutionText,
+    );
     return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
   }
 
@@ -4634,12 +4882,17 @@ End your response with:
         resolvedFinalAnswer = finalAnswerMatch?.[1]?.trim() || "";
       }
 
-      const diagramBlocks = await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer, metadata.problemIntent).catch((err) => {
-        logger.warn("[solveFromImageDirect] diagram extraction failed", {
-          err: err instanceof Error ? err.message : String(err),
-        });
-        return [];
-      });
+      verifyConstantSolvingFinalAnswer(finalProblemText, resolvedFinalAnswer);
+      verifySolutionCompleteness(rawSolution, resolvedFinalAnswer);
+      const diagramBlocks = verifyDiagramBlocksAgainstSolution(
+        await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer, metadata.problemIntent).catch((err) => {
+          logger.warn("[solveFromImageDirect] diagram extraction failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }),
+        rawSolution,
+      );
       const solution = normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -4693,13 +4946,14 @@ Rules for solutionText:
 - Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
 - Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use metadata for routing and put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 - For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
-- Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically; a straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those.
+- Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
 - Diagram spec examples:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
   sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
   venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 	  geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
 	  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+	  function-graph piecewise/jump discontinuity (each piece gets its own "domain" — never rely on latex text like "(x>=0)"): {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1","domain":[0,3]},{"kind":"linear","params":{"m":2,"b":-1},"latex":"y=2x-1","domain":[-3,0]}],"featurePoints":[{"point":[0,1],"label":"(0,1)","closed":true},{"point":[0,-1],"label":"(0,-1)","closed":false}],"domain":[-3,3],"range":[-8,8]}
 	  function-graph trigonometric wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"}]}
 	  solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
 
@@ -4774,15 +5028,20 @@ Return a single JSON object only.`;
   const fallbackUsage = result.usage;
 
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
+    verifyConstantSolvingFinalAnswer(extractedProblemText, data.finalAnswer);
+    verifySolutionCompleteness(data.solutionText, data.finalAnswer);
     const normalizedDiagramBlocks = normalizeDiagramBlocks(data.diagramBlocks);
-    const diagramBlocks = normalizedDiagramBlocks.length
-      ? normalizedDiagramBlocks
-      : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
-        logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
-          err: err instanceof Error ? err.message : String(err),
-        });
-        return [];
-      });
+    const diagramBlocks = verifyDiagramBlocksAgainstSolution(
+      normalizedDiagramBlocks.length
+        ? normalizedDiagramBlocks
+        : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
+          logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
+          return [];
+        }),
+      data.solutionText,
+    );
     const solution = normalizeSolutionFirstPayload(
       { ...data, diagramBlocks, _usage: fallbackUsage },
       extractedProblemText,

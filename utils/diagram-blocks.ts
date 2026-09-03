@@ -75,6 +75,27 @@ type SupportedFunctionGraphFamily = "rational-reciprocal" | "inverse-square" | "
 // see the usage in normalizeFunctionGraphSpec for the full rationale.
 const RATIONAL_ASYMPTOTIC_KINDS = new Set<string>(["rational-reciprocal", "inverse-square", "rational-even"]);
 
+// The function-graph kinds `evalFnAt` actually implements a formula for.
+// Used to decide whether a closed-form kind's own params can be spot-checked
+// against its latex (see the "never trust AI numbers over latex" pass in
+// normalizeFunctionGraphSpec) — "absolute-value"/"logarithmic"/"piecewise"
+// are real closed forms too, but have no evalFnAt branch yet, so there's
+// nothing to spot-check their params against. That's fine: any kind NOT in
+// this set still gets resampled from latex unconditionally whenever the
+// latex parses (see `shouldResampleFromLatex`'s default), which is strictly
+// safer than a spot-check anyway — it's only kinds *in* this set that get
+// the benefit of the doubt pending 4 sample points disagreeing. The general
+// expression engine's grammar does parse `\log`/`\ln` (with an explicit
+// `\log_{base}`, defaulting to base 10 for a bare `\log`) — the gap that let
+// a genuinely logarithmic function get diagrammed as `kind:"linear"`
+// unnoticed. It still doesn't parse `|x|`, though, so "absolute-value"
+// latex still fails to parse and that check is still a no-op there.
+const EVALUATABLE_CLOSED_FORM_KINDS = new Set<string>([
+  "linear", "quadratic", "cubic", "square-root",
+  "rational-reciprocal", "inverse-square", "rational-even",
+  "exponential", "sine", "trig-sine", "cosine", "trig-cosine",
+]);
+
 type FunctionGraphIntentBuildInput = {
   mathFamily: SupportedFunctionGraphFamily;
   problemIntent?: DiagramProblemIntent;
@@ -1101,110 +1122,39 @@ function parsePolynomial(latex: string): { a: number; b: number; c: number; d: n
   return foundPower ? coefficients : null;
 }
 
-// General P(x)/Q(x) numeric sampler — the last-resort path for a compound
-// rational function whose shape doesn't match any of the closed-form families
-// above. rational-reciprocal/inverse-square/rational-even all assume a
-// constant numerator; compoundReciprocalParamsFromLatex only handles a linear
-// numerator over a linear denominator. A quadratic-over-quadratic rational
-// like (x²-16)/(x²-3x+4) has a nonzero horizontal asymptote at the ratio of
-// leading coefficients rather than any of those templates' y=k shape, so it
-// needs actual numeric evaluation rather than a closed form. Reuses
-// parsePolynomial on the numerator/denominator fragments individually — safe
-// because each fragment is a bare polynomial, not itself a \frac{}{}.
-function sampleGenericRationalFromLatex(
-  latex: string,
-  domain: [number, number],
-): [number, number][] | null {
-  const compact = String(latex || "")
-    .replace(/\s+/g, "")
-    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
-  const fracMatch = compact.match(/^\\frac\{([^{}]+)\}\{([^{}]+)\}$/);
-  if (!fracMatch) return null;
-  const numerator = parsePolynomial(fracMatch[1]);
-  const denominator = parsePolynomial(fracMatch[2]);
-  if (!numerator || !denominator) return null;
-  // A denominator with no x-dependence at all isn't an interesting rational
-  // shape — the constant-numerator case is parsePolynomial's/
-  // simpleReciprocalParamsFromLatex's own territory, not this fallback's.
-  if (denominator.a === 0 && denominator.b === 0 && denominator.c === 0) return null;
+// NOTE: this used to be three separate bespoke samplers/parsers
+// (sampleGenericRationalFromLatex for P(x)/Q(x), sampleSqrtOfPolynomialFromLatex
+// for sqrt(Q(x)), sampleCompoundTrigFromLatex for compound trig expressions),
+// each written reactively when a specific shape of AI mistake was found. They
+// were unified into the one general expression engine below
+// (tokenizeMathExpr/parseMathExpr/evalMathAst/sampleExpressionFromLatex) —
+// see its own comment for why: three parsers meant three places a new shape
+// (a rational function INSIDE a sqrt, a trig function times a rational, ...)
+// could still slip through unhandled, when one general AST-based evaluator
+// covers all of them at once.
 
-  const [dMin, dMax] = domain;
-  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
-
-  const evalPoly = (p: { a: number; b: number; c: number; d: number }, x: number) =>
-    p.a * x ** 3 + p.b * x ** 2 + p.c * x + p.d;
-
-  const SAMPLES = 120;
-  const points: [number, number][] = [];
-  for (let i = 0; i <= SAMPLES; i++) {
-    const x = dMin + ((dMax - dMin) * i) / SAMPLES;
-    const qVal = evalPoly(denominator, x);
-    if (Math.abs(qVal) < 0.05) continue; // skip near-asymptote blowups
-    const y = evalPoly(numerator, x) / qVal;
-    if (Number.isFinite(y)) points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
-  }
-  return points.length >= 2 ? points : null;
-}
-
-// Numerically samples y = sqrt(Q(x)) for a bare `\sqrt{...}` latex whose
-// inner expression is a genuine (non-linear) polynomial — e.g. a semicircle
-// `\sqrt{25 - x^2}`. This codebase's `square-root` closed-form family only
-// models sqrt of a LINEAR inner expression (`a*sqrt(x-h)+k`); a quadratic-or-
-// higher inner has no closed-form family at all, so an AI-supplied `kind`
-// for one of these (commonly a wrong "quadratic" guess) can never actually
-// reproduce the curve — ground truth is only available by sampling the sqrt
-// directly from the latex.
-function sampleSqrtOfPolynomialFromLatex(
-  latex: string,
-  domain: [number, number],
-): [number, number][] | null {
-  const compact = String(latex || "")
-    .replace(/\s+/g, "")
-    .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)|[a-zA-Z])=/, "");
-  const sqrtMatch = compact.match(/^\\sqrt\{([^{}]+)\}$/);
-  if (!sqrtMatch) return null;
-  const inner = parsePolynomial(sqrtMatch[1]);
-  if (!inner) return null;
-  // A linear (or constant) inner expression is the existing `square-root`
-  // family's territory (sqrt(x-h)) — leave it alone.
-  if (inner.a === 0 && inner.b === 0) return null;
-
-  const [dMin, dMax] = domain;
-  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
-
-  const evalPoly = (p: { a: number; b: number; c: number; d: number }, x: number) =>
-    p.a * x ** 3 + p.b * x ** 2 + p.c * x + p.d;
-
-  const SAMPLES = 120;
-  const points: [number, number][] = [];
-  for (let i = 0; i <= SAMPLES; i++) {
-    const x = dMin + ((dMax - dMin) * i) / SAMPLES;
-    const inside = evalPoly(inner, x);
-    if (inside < 0) continue; // outside the function's real domain
-    const y = Math.sqrt(inside);
-    if (Number.isFinite(y)) points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
-  }
-  return points.length >= 2 ? points : null;
-}
-
-type TrigAstNode =
+type MathAstNode =
   | { type: "num"; value: number }
-  | { type: "var" }
+  | { type: "var"; name: string }
   | { type: "pi" }
-  | { type: "neg"; arg: TrigAstNode }
-  | { type: "add"; left: TrigAstNode; right: TrigAstNode }
-  | { type: "sub"; left: TrigAstNode; right: TrigAstNode }
-  | { type: "mul"; left: TrigAstNode; right: TrigAstNode }
-  | { type: "div"; left: TrigAstNode; right: TrigAstNode }
-  | { type: "pow"; base: TrigAstNode; exp: TrigAstNode }
-  | { type: "sqrt"; arg: TrigAstNode }
-  | { type: "func"; name: "sin" | "cos" | "tan"; arg: TrigAstNode };
+  | { type: "neg"; arg: MathAstNode }
+  | { type: "add"; left: MathAstNode; right: MathAstNode }
+  | { type: "sub"; left: MathAstNode; right: MathAstNode }
+  | { type: "mul"; left: MathAstNode; right: MathAstNode }
+  | { type: "div"; left: MathAstNode; right: MathAstNode }
+  | { type: "pow"; base: MathAstNode; exp: MathAstNode }
+  | { type: "sqrt"; arg: MathAstNode }
+  | { type: "func"; name: "sin" | "cos" | "tan"; arg: MathAstNode }
+  | { type: "log"; base: number; arg: MathAstNode };
 
 // Tokenizer for the small recursive-descent parser below. Deliberately
-// minimal: numbers, `x`, `\pi`, +-*/^(){}, `\frac`, `\sqrt`, `\sin`/`\cos`/
-// `\tan`, `\cdot`/`\times`. Anything else (an unrecognized command, a stray
-// symbol) fails the whole parse rather than guessing.
-function tokenizeTrigExpr(compact: string): string[] | null {
+// minimal: numbers, single-letter variables (`x`, or any other bare Latin
+// letter — e.g. an unknown constant like `a` in "1+ax-\sqrt{1+x}"), `\pi`,
+// +-*/^(){}, `\frac`, `\sqrt`, `\sin`/`\cos`/`\tan`, `\log`/`\ln`,
+// `\cdot`/`\times`.
+// Anything else (an unrecognized command, a stray symbol) fails the whole
+// parse rather than guessing.
+function tokenizeMathExpr(compact: string): string[] | null {
   const tokens: string[] = [];
   let i = 0;
   while (i < compact.length) {
@@ -1213,6 +1163,32 @@ function tokenizeTrigExpr(compact: string): string[] | null {
     if (compact.startsWith("\\cos", i)) { tokens.push("cos"); i += 4; continue; }
     if (compact.startsWith("\\tan", i)) { tokens.push("tan"); i += 4; continue; }
     if (compact.startsWith("\\sqrt", i)) { tokens.push("sqrt"); i += 5; continue; }
+    if (compact.startsWith("\\ln", i)) { tokens.push("ln"); i += 3; continue; }
+    if (compact.startsWith("\\log", i)) {
+      i += 4;
+      let base = 10; // bare `\log` (no subscript) defaults to base 10, this codebase's convention
+      if (compact[i] === "_") {
+        i++;
+        if (compact[i] === "{") {
+          i++;
+          const closeIndex = compact.indexOf("}", i);
+          if (closeIndex === -1) return null;
+          const parsedBase = Number(compact.slice(i, closeIndex));
+          if (!Number.isFinite(parsedBase) || parsedBase <= 0 || parsedBase === 1) return null;
+          base = parsedBase;
+          i = closeIndex + 1;
+        } else if (/[0-9]/.test(compact[i])) {
+          let j = i;
+          while (j < compact.length && /[0-9]/.test(compact[j])) j++;
+          base = Number(compact.slice(i, j));
+          i = j;
+        } else {
+          return null; // unrecognized subscript shape — don't guess
+        }
+      }
+      tokens.push(`log_${base}`);
+      continue;
+    }
     if (compact.startsWith("\\pi", i)) { tokens.push("pi"); i += 3; continue; }
     if (compact.startsWith("\\cdot", i)) { tokens.push("*"); i += 5; continue; }
     if (compact.startsWith("\\times", i)) { tokens.push("*"); i += 6; continue; }
@@ -1224,7 +1200,12 @@ function tokenizeTrigExpr(compact: string): string[] | null {
       i = j;
       continue;
     }
-    if (ch === "x") { tokens.push("x"); i++; continue; }
+    // A single Latin letter that isn't part of one of the multi-character
+    // keywords matched above (those are all checked first via startsWith)
+    // is a bare variable — "x" in the overwhelming majority of cases, but
+    // for a problem's own equation ("1+ax-\sqrt{1+x}") a second letter
+    // (the unknown constant, e.g. "a") legitimately appears too.
+    if (/[a-zA-Z]/.test(ch)) { tokens.push(ch); i++; continue; }
     if ("+-*/^(){}".includes(ch)) { tokens.push(ch); i++; continue; }
     return null; // unsupported character/command — don't guess
   }
@@ -1238,18 +1219,28 @@ function tokenizeTrigExpr(compact: string): string[] | null {
 // multiplication (adjacent factors, e.g. `x\tan x`, `2x`), and `\sin`/`\cos`/
 // `\tan` with either a parenthesized/braced argument or (LaTeX convention)
 // a bare trailing `x`.
-function parseTrigExpr(tokens: string[]): TrigAstNode | null {
+function parseMathExpr(tokens: string[]): MathAstNode | null {
   let pos = 0;
   const peek = () => tokens[pos];
+  // Plain `boolean` return types, deliberately not `t is string` type
+  // predicates: `t` is already narrowed to `string` by the caller's own
+  // `t === undefined` check by the time these run, so a predicate asserting
+  // that same type collapses TS's negative-branch narrowing to `never`
+  // (Exclude<string, string>) — harmless for callers that only do literal
+  // `===` comparisons afterward, but a real compile error the moment a
+  // later branch calls a string method (as isLogToken's caller below does).
+  const isVarToken = (t: string | undefined): boolean => t !== undefined && /^[a-zA-Z]$/.test(t);
+  const isLogToken = (t: string | undefined): boolean => t !== undefined && t.startsWith("log_");
   const atomStart = () => {
     const t = peek();
     return t !== undefined && (
-      /^[0-9.]+$/.test(t) || t === "x" || t === "pi" || t === "sin" || t === "cos" || t === "tan"
+      /^[0-9.]+$/.test(t) || isVarToken(t) || t === "pi" || t === "sin" || t === "cos" || t === "tan"
+      || t === "ln" || isLogToken(t)
       || t === "frac" || t === "sqrt" || t === "(" || t === "{"
     );
   };
 
-  function parseExpr(): TrigAstNode | null {
+  function parseExpr(): MathAstNode | null {
     let left = parseTerm();
     if (!left) return null;
     while (peek() === "+" || peek() === "-") {
@@ -1261,7 +1252,7 @@ function parseTrigExpr(tokens: string[]): TrigAstNode | null {
     return left;
   }
 
-  function parseTerm(): TrigAstNode | null {
+  function parseTerm(): MathAstNode | null {
     let left = parseUnary();
     if (!left) return null;
     for (;;) {
@@ -1282,13 +1273,13 @@ function parseTrigExpr(tokens: string[]): TrigAstNode | null {
     return left;
   }
 
-  function parseUnary(): TrigAstNode | null {
+  function parseUnary(): MathAstNode | null {
     if (peek() === "-") { pos++; const arg = parseUnary(); return arg ? { type: "neg", arg } : null; }
     if (peek() === "+") { pos++; return parseUnary(); }
     return parsePow();
   }
 
-  function parsePow(): TrigAstNode | null {
+  function parsePow(): MathAstNode | null {
     const base = parseAtom();
     if (!base) return null;
     if (peek() === "^") {
@@ -1300,7 +1291,7 @@ function parseTrigExpr(tokens: string[]): TrigAstNode | null {
     return base;
   }
 
-  function parseFuncArg(): TrigAstNode | null {
+  function parseFuncArg(): MathAstNode | null {
     if (peek() === "(" || peek() === "{") {
       const close = peek() === "(" ? ")" : "}";
       pos++;
@@ -1313,17 +1304,29 @@ function parseTrigExpr(tokens: string[]): TrigAstNode | null {
     return parseAtom();
   }
 
-  function parseAtom(): TrigAstNode | null {
+  function parseAtom(): MathAstNode | null {
     const t = peek();
     if (t === undefined) return null;
     if (/^[0-9.]+$/.test(t)) { pos++; return { type: "num", value: Number(t) }; }
-    if (t === "x") { pos++; return { type: "var" }; }
+    if (isVarToken(t)) { pos++; return { type: "var", name: t }; }
     if (t === "pi") { pos++; return { type: "pi" }; }
     if (t === "sin" || t === "cos" || t === "tan") {
       pos++;
       const arg = parseFuncArg();
       if (!arg) return null;
       return { type: "func", name: t, arg };
+    }
+    if (t === "ln") {
+      pos++;
+      const arg = parseFuncArg();
+      if (!arg) return null;
+      return { type: "log", base: Math.E, arg };
+    }
+    if (isLogToken(t)) {
+      pos++;
+      const arg = parseFuncArg();
+      if (!arg) return null;
+      return { type: "log", base: Number(t.slice(4)), arg };
     }
     if (t === "sqrt") {
       pos++;
@@ -1361,32 +1364,42 @@ function parseTrigExpr(tokens: string[]): TrigAstNode | null {
   return result;
 }
 
-function evalTrigAst(node: TrigAstNode, x: number): number {
+// `bindings` maps variable names to values — almost always just `{ x }` for
+// diagram sampling, but the final-answer verification pass in
+// gemini.service.ts also binds a second name (an unknown constant like `a`)
+// to its claimed value. A variable name with no binding evaluates to NaN
+// (not 0, not an error) — the same "can't evaluate, don't guess" posture as
+// an unparseable expression, so an equation the AI got a stray extra letter
+// into still safely fails to verify rather than silently treating that
+// letter as zero.
+function evalMathAst(node: MathAstNode, bindings: Record<string, number>): number {
   switch (node.type) {
     case "num": return node.value;
-    case "var": return x;
+    case "var": return bindings[node.name] ?? Number.NaN;
     case "pi": return Math.PI;
-    case "neg": return -evalTrigAst(node.arg, x);
-    case "add": return evalTrigAst(node.left, x) + evalTrigAst(node.right, x);
-    case "sub": return evalTrigAst(node.left, x) - evalTrigAst(node.right, x);
-    case "mul": return evalTrigAst(node.left, x) * evalTrigAst(node.right, x);
-    case "div": return evalTrigAst(node.left, x) / evalTrigAst(node.right, x);
-    case "pow": return Math.pow(evalTrigAst(node.base, x), evalTrigAst(node.exp, x));
-    case "sqrt": return Math.sqrt(evalTrigAst(node.arg, x));
+    case "neg": return -evalMathAst(node.arg, bindings);
+    case "add": return evalMathAst(node.left, bindings) + evalMathAst(node.right, bindings);
+    case "sub": return evalMathAst(node.left, bindings) - evalMathAst(node.right, bindings);
+    case "mul": return evalMathAst(node.left, bindings) * evalMathAst(node.right, bindings);
+    case "div": return evalMathAst(node.left, bindings) / evalMathAst(node.right, bindings);
+    case "pow": return Math.pow(evalMathAst(node.base, bindings), evalMathAst(node.exp, bindings));
+    case "sqrt": return Math.sqrt(evalMathAst(node.arg, bindings));
     case "func": {
-      const argVal = evalTrigAst(node.arg, x);
+      const argVal = evalMathAst(node.arg, bindings);
       if (node.name === "sin") return Math.sin(argVal);
       if (node.name === "cos") return Math.cos(argVal);
       return Math.tan(argVal);
     }
+    case "log": return Math.log(evalMathAst(node.arg, bindings)) / Math.log(node.base);
     default: return Number.NaN;
   }
 }
 
-function containsTrigFunc(node: TrigAstNode): boolean {
+function containsTrigFunc(node: MathAstNode): boolean {
   switch (node.type) {
     case "func": return true;
     case "neg": case "sqrt": return containsTrigFunc(node.arg);
+    case "log": return containsTrigFunc(node.arg);
     case "add": case "sub": case "mul": case "div":
       return containsTrigFunc(node.left) || containsTrigFunc(node.right);
     case "pow": return containsTrigFunc(node.base) || containsTrigFunc(node.exp);
@@ -1394,57 +1407,137 @@ function containsTrigFunc(node: TrigAstNode): boolean {
   }
 }
 
-// Numerically samples a compound trig expression (e.g. `x\tan x - \cos x`)
-// that `trigFunctionFromLatex`'s closed-form family can't represent. Ground
-// truth is only available by evaluating the expression directly — there is
-// no other way to know, say, where `x\tan x` actually blows up.
-function sampleCompoundTrigFromLatex(
-  latex: string,
-  domain: [number, number],
-): [number, number][] | null {
-  const compact = String(latex || "")
+function containsVarNamed(node: MathAstNode, name: string): boolean {
+  switch (node.type) {
+    case "var": return node.name === name;
+    case "neg": case "sqrt": return containsVarNamed(node.arg, name);
+    case "add": case "sub": case "mul": case "div":
+      return containsVarNamed(node.left, name) || containsVarNamed(node.right, name);
+    case "pow": return containsVarNamed(node.base, name) || containsVarNamed(node.exp, name);
+    case "func": return containsVarNamed(node.arg, name);
+    case "log": return containsVarNamed(node.arg, name);
+    default: return false;
+  }
+}
+
+// Strips a leading "y="/"f(x)="-style prefix and normalizes whitespace/
+// \left\right — the common first step before tokenizing any latex expression
+// in this file.
+function stripLatexPrefix(latex: string): string {
+  return String(latex || "")
     .replace(/\\left|\\right/g, "")
     .replace(/\s+/g, "")
     .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)=|[a-zA-Z]=)/, "");
-  const tokens = tokenizeTrigExpr(compact);
+}
+
+// Parses a latex expression into the general MathAstNode grammar (numbers,
+// `x`, `\pi`, +-*/^, `\frac`, `\sqrt`, `\sin`/`\cos`/`\tan`, `\log`/`\ln`,
+// implicit multiplication). Returns null for anything outside that grammar
+// (an unrecognized command, mismatched braces, ...) rather than guessing.
+//
+// This is the ONE place in the codebase that turns a function's own latex
+// into numeric ground truth. It replaces what used to be three separate,
+// narrower, reactively-written parsers — one for P(x)/Q(x) rationals, one
+// for sqrt(Q(x)), one for compound trig expressions — each added only after
+// a specific AI mistake shape was found in production. A single general
+// expression engine closes off that whole *class* of bug at once (it
+// already handles combinations none of the three bespoke parsers could,
+// like sqrt of a rational or a trig function times a rational) instead of
+// needing a fourth, fifth, sixth bespoke parser every time a new shape
+// shows up. See `sampleExpressionFromLatex` and `evaluateLatexAt` for its
+// two jobs: sampling a curve, and verifying a single claimed value.
+function parseMathExpressionFromLatex(latex: string): MathAstNode | null {
+  const compact = stripLatexPrefix(latex);
+  const tokens = tokenizeMathExpr(compact);
   if (!tokens || !tokens.length) return null;
-  const ast = parseTrigExpr(tokens);
-  if (!ast || !containsTrigFunc(ast)) return null;
+  return parseMathExpr(tokens);
+}
+
+// Evaluates a function's latex at a single x, or null if the latex can't be
+// parsed by the general engine or evaluates to a non-finite result there.
+// This is the general-purpose "never trust AI numbers — code evaluates"
+// primitive: anywhere a claimed value (a feature point, a sign-table cell,
+// a solution's own worked number) needs checking against a function's actual
+// formula, this is what does the checking.
+export function evaluateLatexAt(latex: string, x: number): number | null {
+  const ast = parseMathExpressionFromLatex(latex);
+  if (!ast) return null;
+  const y = evalMathAst(ast, { x });
+  return Number.isFinite(y) ? y : null;
+}
+
+// General form of evaluateLatexAt for an expression with more than one
+// named variable — e.g. a problem's own equation "1+ax-\sqrt{1+x}" where `a`
+// is an unknown constant a solution claims to have solved for. Binds every
+// name in `bindings`; any variable in the expression left unbound evaluates
+// to NaN rather than being guessed at, so an incomplete binding set safely
+// fails to verify instead of silently substituting 0.
+export function evaluateLatexWithBindings(latex: string, bindings: Record<string, number>): number | null {
+  const ast = parseMathExpressionFromLatex(latex);
+  if (!ast) return null;
+  const y = evalMathAst(ast, bindings);
+  return Number.isFinite(y) ? y : null;
+}
+
+// True when `name` genuinely appears as a variable somewhere in `latex`, or
+// null if the latex doesn't parse at all. Deliberately AST-based rather than
+// a word-boundary regex — LaTeX has no spacing between implicitly-
+// multiplied single-letter factors ("ax" tokenizes as two separate
+// variables, "a" and "x", not one two-letter identifier), so a regex using
+// `(?<![a-z])a(?![a-z])`-style lookarounds would wrongly reject "a" in
+// exactly that "ax" case. Used to sanity-check that a claimed constant
+// (e.g. from a final answer) is actually part of the equation being
+// verified, not an unrelated variable mention.
+export function latexReferencesVariable(latex: string, name: string): boolean | null {
+  const ast = parseMathExpressionFromLatex(latex);
+  if (!ast) return null;
+  return containsVarNamed(ast, name);
+}
+
+// Numerically samples any expression the general engine can parse: a
+// compound rational (P(x)/Q(x)), sqrt of a polynomial, a compound trig
+// expression, or any combination — e.g. sqrt of a rational, a trig function
+// times x. This is the last-resort ground truth for a function graph whose
+// shape doesn't match any of this codebase's closed-form families (see the
+// family detectors in normalizeFunctionGraphSpec, which run first and take
+// priority — they produce exact closed-form params, which the frontend
+// evaluates precisely, rather than a finite interpolated sample).
+function sampleExpressionFromLatex(
+  latex: string,
+  domain: [number, number],
+): [number, number][] | null {
+  const ast = parseMathExpressionFromLatex(latex);
+  if (!ast) return null;
 
   const [dMin, dMax] = domain;
   if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) return null;
 
   const SAMPLES = 240; // trig waves + asymptotes need finer resolution than polynomials
-  const MAX_ABS_Y = 60; // treat larger magnitudes as an asymptote blow-up, not real data
+  const MAX_ABS_Y = 1e4; // treat very large magnitudes as an asymptote blow-up, not real data
   const points: [number, number][] = [];
   for (let i = 0; i <= SAMPLES; i++) {
     const x = dMin + ((dMax - dMin) * i) / SAMPLES;
-    const y = evalTrigAst(ast, x);
+    const y = evalMathAst(ast, { x });
     if (!Number.isFinite(y) || Math.abs(y) > MAX_ABS_Y) continue;
     points.push([Number(x.toFixed(6)), Number(y.toFixed(6))]);
   }
   return points.length >= 2 ? points : null;
 }
 
-// True when a set of (x, y) samples actually spans the declared domain,
-// within a tolerance. The AI sometimes emits a points array that runs out of
-// rows partway through the domain it itself declared (e.g. 80 rows at a 0.1
-// step only reach 2 units into a 12-unit-wide domain) — such a curve looks
-// plausible in isolation but silently omits most of the requested range, and
-// frontend renderers draw whatever comes after as a flat/misleading tail.
-function pointsCoverDomain(points: [number, number][], domain: [number, number], toleranceFrac = 0.15): boolean {
-  if (!points.length) return false;
-  const [dMin, dMax] = domain;
-  const width = dMax - dMin;
-  if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || !(width > 0)) return true; // can't judge, don't override
-  let minX = Infinity;
-  let maxX = -Infinity;
-  for (const [x] of points) {
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
+// Linear interpolation over a densely-sampled `points`-kind curve — the
+// shared "ask the corrected curve what it actually says at x" primitive
+// used to check both feature points and guide lines against a curve that
+// was just resampled from latex (see the two call sites below).
+function evalPiecewiseLinearCurveAt(points: [number, number][], x: number): number {
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[i + 1];
+    if (x >= Math.min(x0, x1) && x <= Math.max(x0, x1)) {
+      if (Math.abs(x1 - x0) < 1e-9) return y0;
+      return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+    }
   }
-  const tol = width * toleranceFrac;
-  return minX <= dMin + tol && maxX >= dMax - tol;
+  return Number.NaN;
 }
 
 /**
@@ -1670,6 +1763,31 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         ? [asFiniteNumber(item.domain[0], -Number.MAX_VALUE), asFiniteNumber(item.domain[1], Number.MAX_VALUE)]
         : undefined;
 
+      // A piecewise function's own latex sometimes carries its domain
+      // restriction as free text rather than a structured `domain` field —
+      // e.g. "y = 2x + 1 \quad (x \ge 0)" for one half of a jump-
+      // discontinuity graph. Without an explicit `domain`, the renderer
+      // draws the full line across the whole graph instead of just this
+      // piece's ray, overlapping the other half entirely — a real observed
+      // case: two half-lines of a jump discontinuity (both slope 2, one
+      // "(x \ge 0)" and one "(x < 0)"), rendered as two full parallel lines
+      // spanning the entire x-axis instead of two rays split at x=0. Parse
+      // a simple `(x OP N)` restriction out of the latex and use it as this
+      // function's domain, clamped to the graph's own overall domain.
+      if (!domain && latex) {
+        const restrictionMatch = latex.match(/\(\s*x\s*(\\ge|\\geq|\\gt|\\leq|\\le|\\lt|>=|<=|>|<)\s*(-?\d+(?:\.\d+)?)\s*\)/);
+        if (restrictionMatch) {
+          const bound = Number(restrictionMatch[2]);
+          if (Number.isFinite(bound)) {
+            const specDomain: [number, number] = Array.isArray(input.domain) && input.domain.length === 2
+              ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
+              : [-10, 10];
+            const isLowerBound = ["\\ge", "\\geq", "\\gt", ">=", ">"].includes(restrictionMatch[1]);
+            domain = isLowerBound ? [bound, specDomain[1]] : [specDomain[0], bound];
+          }
+        }
+      }
+
       if (kind === "segment") {
         kind = "linear";
         const start = asPoint(item.start);
@@ -1691,73 +1809,76 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
 
       let points = Array.isArray(item.points) ? item.points.map(asPoint).filter(Boolean).slice(0, 80) : [];
 
-      // A bare `\sqrt{...}` latex with a non-linear inner expression (e.g. a
-      // semicircle `\sqrt{25-x^2}`) has no closed-form family in this
-      // renderer — whatever `kind`/`params` the AI supplied for it (often a
-      // wrong "quadratic" guess, since a quadratic evaluator ignores the
-      // sqrt entirely and produces a completely different curve) can never
-      // reproduce the real shape. Always resample it directly from the
-      // latex instead of trusting AI params here.
-      {
-        const sqrtDomain: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
+      // The single, general "never trust AI-computed numbers over the
+      // function's own latex" pass. Replaces what used to be three separate
+      // bespoke overrides (a bare-sqrt-of-polynomial sampler, a
+      // compound-trig sampler, a P(x)/Q(x) rational sampler), each added
+      // reactively for one observed shape of AI mistake. Two situations
+      // trigger a full resample from latex here, replacing whatever
+      // kind/params/points came before:
+      //  1. No recognized, evaluable closed-form kind is assigned (kind is
+      //     "points", empty, or some other/AI-invented label) — there is no
+      //     ground truth other than evaluating the latex directly (e.g.
+      //     `x\tan x - \cos x`, `\sqrt{25-x^2}`, `(x^2-16)/(x^2-3x+4)`, or
+      //     an AI-supplied `points` array that's simply wrong or doesn't
+      //     cover the declared domain).
+      //  2. A recognized, evaluable closed-form kind IS assigned, but its
+      //     own evaluator (evalFnAt) disagrees with the latex at real
+      //     sample points — i.e. the AI classified the shape correctly but
+      //     computed wrong numbers for it (a fabricated quadratic/cubic
+      //     coefficient is the general case this closes off, beyond any one
+      //     bug already found and fixed one at a time).
+      // "piecewise" is exempted: it has no `params`-based evaluator (it uses
+      // `pieces` instead) and is genuinely out of scope here.
+      if (kind !== "piecewise" && latex) {
+        const domainForSampling: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
           ? domain as [number, number]
           : Array.isArray(input.domain) && input.domain.length === 2
             ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
             : [-10, 10];
-        const sqrtSampled = sampleSqrtOfPolynomialFromLatex(latex, sqrtDomain);
-        if (sqrtSampled) {
-          warnings.push(`function-kind-corrected:${kind || "missing"}:sqrt-of-polynomial`);
-          kind = "points";
-          params = undefined;
-          points = sqrtSampled;
-        }
-      }
-
-      // A compound trig expression (e.g. `x\tan x - \cos x`) that
-      // `trigFunctionFromLatex` declined to match (it only models a single
-      // sin/cos term or a sin±cos combo) has no closed-form family here
-      // either — whatever `kind`/`params` the AI supplied for it (often a
-      // wrong plain sine/cosine guess, since that evaluator ignores the rest
-      // of the expression and produces a completely different — usually
-      // bounded, asymptote-free — curve) can never reproduce the real shape.
-      // Always resample it directly from the latex instead.
-      if (!trigFromLatex && /\\sin|\\cos|\\tan/.test(latex)) {
-        const trigDomain: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
-          ? domain as [number, number]
-          : Array.isArray(input.domain) && input.domain.length === 2
-            ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
-            : [-10, 10];
-        const trigSampled = sampleCompoundTrigFromLatex(latex, trigDomain);
-        if (trigSampled) {
-          warnings.push(`function-kind-corrected:${kind || "missing"}:compound-trig-expr`);
-          kind = "points";
-          params = undefined;
-          points = trigSampled;
-        }
-      }
-
-      // Last resort: a compound rational function (P(x)/Q(x), both genuine
-      // polynomials) that none of the closed-form families or parsePolynomial
-      // recognized — sample it numerically from the latex itself rather than
-      // leaving the function empty (dropped) or trusting unverifiable
-      // AI-supplied params/points for a shape this backend has no template for.
-      // Also applies when the AI *did* supply points but they don't actually
-      // cover the domain it declared (ran out of rows partway through) — the
-      // latex is ground truth, so a full deterministic resample is preferred
-      // over a partial/misleading curve. Falls back to the spec-level domain
-      // when this function has no domain of its own (the common case — the
-      // AI usually only sets `domain` once, on the spec, not per-function).
-      const domainForSampling: [number, number] = Array.isArray(domain) && Number.isFinite(domain[0]) && Number.isFinite(domain[1])
-        ? domain as [number, number]
-        : Array.isArray(input.domain) && input.domain.length === 2
-          ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
-          : [-10, 10];
-      if (!params && latex && (!points.length || (kind === "points" && !pointsCoverDomain(points, domainForSampling)))) {
-        const sampled = sampleGenericRationalFromLatex(latex, domainForSampling);
-        if (sampled) {
-          if (points.length) warnings.push("resampled-incomplete-points");
-          kind = "points";
-          points = sampled;
+        const ast = parseMathExpressionFromLatex(latex);
+        if (ast) {
+          const isEvaluableClosedForm = kind !== "points" && EVALUATABLE_CLOSED_FORM_KINDS.has(kind) && params && typeof params === "object";
+          let shouldResampleFromLatex = true;
+          if (isEvaluableClosedForm) {
+            const [dMin, dMax] = domainForSampling;
+            let mismatchCount = 0;
+            let checkedCount = 0;
+            for (let i = 1; i <= 4; i++) {
+              const x = dMin + ((dMax - dMin) * i) / 5;
+              const claimed = evalFnAt({ kind, params } as Record<string, unknown>, x);
+              const truth = evalMathAst(ast, { x });
+              if (!Number.isFinite(truth)) continue; // e.g. near an asymptote the closed form also has
+              checkedCount++;
+              const tolerance = Math.max(0.05, Math.abs(truth) * 0.02);
+              if (!Number.isFinite(claimed) || Math.abs(claimed - truth) > tolerance) mismatchCount++;
+            }
+            // A strict majority of checkable samples disagreeing counts as a
+            // genuine mismatch. This used to require *every* sample to
+            // disagree, but the 4 fixed sample points (evenly spaced across
+            // the domain) can coincide exactly with a root of
+            // (claimed-truth) purely by chance — a real observed case: kind
+            // "sine" params {a:1,b:1,c:0,d:0} (i.e. plain sin x) claimed for
+            // latex "sin x - x + 1" over domain [-1,4]. Those two agree
+            // exactly at x=1 (where "-x+1"=0), which is exactly one of the 4
+            // sample points, so only 3 of 4 disagreed — not unanimous, so
+            // the wrong closed-form params survived uncorrected. A strict
+            // majority still protects the original intent (a single stray
+            // disagreement, e.g. floating-point noise right at a shared
+            // asymptote, is a minority and won't trigger) while closing this
+            // gap.
+            shouldResampleFromLatex = checkedCount > 0 && mismatchCount > checkedCount / 2;
+          }
+          if (shouldResampleFromLatex) {
+            const sampled = sampleExpressionFromLatex(latex, domainForSampling);
+            if (sampled) {
+              const tag = containsTrigFunc(ast) ? "compound-trig-expr" : ast.type === "sqrt" ? "sqrt-of-polynomial" : "expression-sampled";
+              warnings.push(`function-kind-corrected:${kind || "missing"}:${tag}`);
+              kind = "points";
+              params = undefined;
+              points = sampled;
+            }
+          }
         }
       }
 
@@ -1944,17 +2065,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       return item.kind === "points" && Array.isArray(item.points) && (item.points as unknown[]).length > 15;
     }) as Array<{ points: [number, number][] }>;
     if (sampledCurveFunctions.length) {
-      const evalSampledCurveAt = (points: [number, number][], x: number): number => {
-        for (let i = 0; i < points.length - 1; i++) {
-          const [x0, y0] = points[i];
-          const [x1, y1] = points[i + 1];
-          if (x >= Math.min(x0, x1) && x <= Math.max(x0, x1)) {
-            if (Math.abs(x1 - x0) < 1e-9) return y0;
-            return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
-          }
-        }
-        return Number.NaN;
-      };
+      const evalSampledCurveAt = evalPiecewiseLinearCurveAt;
       let droppedStaleFeaturePoint = false;
       normalizedFeaturePoints = normalizedFeaturePoints.filter((point) => {
         const item = point as Record<string, unknown>;
@@ -2358,7 +2469,40 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ...(Array.isArray(input.guideLines) ? input.guideLines : []),
     ...(Array.isArray(input.referenceLines) ? input.referenceLines : []),
   ];
-  const guideLines = guideLineInputs.map(normalizeGuideLine).filter(Boolean).slice(0, 10);
+  const rawGuideLines = guideLineInputs.map(normalizeGuideLine).filter(Boolean).slice(0, 10);
+
+  // Same "stale after a curve correction" problem as feature points above,
+  // for the same reason: a guide line's (value, to) pair is this codebase's
+  // convention for marking a specific point on the curve (a peak, a shared
+  // value at a given x) — e.g. a real observed case, a vertical/horizontal
+  // guide-line pair marking (pi/2, 1) as the peak of what the AI labeled
+  // "sine" params (plain sin x), left in place unchanged after the curve
+  // was corrected to its true latex, sin x - x + 1, whose value at pi/2 is
+  // actually ~0.43, not 1. Drop any guide line whose implied curve point
+  // falls within a densely-sampled `points`-kind function's domain but
+  // doesn't actually lie on it.
+  const sampledCurveFunctionsForGuideLines = resolvedFunctions.filter((fn) => {
+    const item = fn as Record<string, unknown>;
+    return item.kind === "points" && Array.isArray(item.points) && (item.points as unknown[]).length > 15;
+  }) as Array<{ points: [number, number][] }>;
+  const guideLines = sampledCurveFunctionsForGuideLines.length
+    ? rawGuideLines.filter((guide) => {
+      const item = guide as Record<string, unknown>;
+      const to = item.to as number | undefined;
+      if (to === undefined || !Number.isFinite(to)) return true; // nothing to check against
+      const value = item.value as number;
+      const [claimedX, claimedY] = item.orientation === "vertical" ? [value, to] : [to, value];
+      for (const fn of sampledCurveFunctionsForGuideLines) {
+        const xs = fn.points.map((p) => p[0]);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        if (claimedX < minX || claimedX > maxX) continue;
+        const expectedY = evalPiecewiseLinearCurveAt(fn.points, claimedX);
+        if (Number.isFinite(expectedY) && Math.abs(expectedY - claimedY) > 0.15) return false;
+      }
+      return true;
+    })
+    : rawGuideLines;
   const hasTrigFunction = resolvedFunctions.some((fn) => {
     const item = fn as Record<string, unknown>;
     return ["sine", "trig-sine", "cosine", "trig-cosine"].includes(String(item.kind || ""))
@@ -2603,18 +2747,6 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   const reciprocalXTicks = Array.from({ length: reciprocalMaxX + 2 }).map((_, index) => index - 1);
   const outputDomain = graphStyle === "reciprocal-interval" ? [-1, reciprocalMaxX] : domain;
   const outputRange = graphStyle === "reciprocal-interval" ? [-1, 4] : range;
-  const outputXTicks = graphStyle === "reciprocal-interval"
-    ? reciprocalXTicks.map((value) => ({ value, label: String(value), major: value === 0 }))
-    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : xTicks?.length ? xTicks : graphStyle === "trig-wave" ? defaultTrigWaveXTicks() : undefined;
-  const outputYTicks = graphStyle === "reciprocal-interval"
-    ? [-1, 0, 1, 2, 3, 4].map((value) => ({ value, label: String(value), major: value === 0 }))
-    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : yTicks?.length ? yTicks : graphStyle === "trig-wave" ? defaultTrigWaveYTicks() : undefined;
-  const outputGuideLines = graphStyle === "reciprocal-interval"
-    ? [
-      { orientation: "vertical", value: reciprocalGuidePoint[0], from: -1, to: 4, color: "primary" },
-      { orientation: "horizontal", value: reciprocalGuidePoint[1], from: 0, to: reciprocalGuidePoint[0], color: "primary" },
-    ]
-    : hasBasicReciprocalFunction || hasInverseSquareFunction ? [] : guideLines.length ? guideLines : graphStyle === "trig-wave" ? computedGuideLines.length ? computedGuideLines : defaultSineWaveGuideLines() : [];
 
   // The AI sometimes hands back a plausible-looking but too-small range (e.g. a
   // generic [-5, 5] default) that doesn't actually contain what gets plotted —
@@ -2680,6 +2812,32 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       ? [outputRange[0], smartMax] as [number, number]
       : outputRange as [number, number];
   })();
+
+  // The AI sometimes copies a canned example's tick set verbatim (e.g. the
+  // full-period trig wave fixture's 0/pi/2/pi/3pi/2/2pi ticks) without
+  // adapting it to this problem's own, much narrower, domain — a real
+  // observed case: a piecewise function restricted to [-pi/2, pi/2] shipped
+  // with xTicks out to 2pi. Those extra ticks land off the visible plot and
+  // get clipped by the frontend today, so they aren't a visible rendering
+  // bug yet, but they're still wrong data that shouldn't be stored. Drop any
+  // tick whose value falls meaningfully outside the axis it labels.
+  const domainTolerance = Math.max(0.01, Math.abs(outputDomain[1] - outputDomain[0]) * 0.02);
+  const rangeTolerance = Math.max(0.01, Math.abs(finalRange[1] - finalRange[0]) * 0.02);
+  const xTicksInDomain = xTicks?.filter((tick) => tick.value >= outputDomain[0] - domainTolerance && tick.value <= outputDomain[1] + domainTolerance);
+  const yTicksInRange = yTicks?.filter((tick) => tick.value >= finalRange[0] - rangeTolerance && tick.value <= finalRange[1] + rangeTolerance);
+
+  const outputXTicks = graphStyle === "reciprocal-interval"
+    ? reciprocalXTicks.map((value) => ({ value, label: String(value), major: value === 0 }))
+    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : xTicksInDomain?.length ? xTicksInDomain : graphStyle === "trig-wave" ? defaultTrigWaveXTicks() : undefined;
+  const outputYTicks = graphStyle === "reciprocal-interval"
+    ? [-1, 0, 1, 2, 3, 4].map((value) => ({ value, label: String(value), major: value === 0 }))
+    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : yTicksInRange?.length ? yTicksInRange : graphStyle === "trig-wave" ? defaultTrigWaveYTicks() : undefined;
+  const outputGuideLines = graphStyle === "reciprocal-interval"
+    ? [
+      { orientation: "vertical", value: reciprocalGuidePoint[0], from: -1, to: 4, color: "primary" },
+      { orientation: "horizontal", value: reciprocalGuidePoint[1], from: 0, to: reciprocalGuidePoint[0], color: "primary" },
+    ]
+    : hasBasicReciprocalFunction || hasInverseSquareFunction ? [] : guideLines.length ? guideLines : graphStyle === "trig-wave" ? (computedGuideLines.length ? computedGuideLines : primaryTrigFunction ? defaultSineWaveGuideLines() : []) : [];
 
   return {
     type: "function-graph",

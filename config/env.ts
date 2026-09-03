@@ -116,6 +116,11 @@ export const env = {
   TEST_PREMIUM_EMAIL: optionalEnv("TEST_PREMIUM_EMAIL", ""),
   TEST_PREMIUM_PASSWORD: optionalEnv("TEST_PREMIUM_PASSWORD", ""),
   TEST_PREMIUM_FULL_NAME: optionalEnv("TEST_PREMIUM_FULL_NAME", "Jenny"),
+
+  // VIP users — comma-separated list of email addresses that automatically
+  // receive pro access without going through the payment flow.
+  // Example: VIP_EMAILS=alice@example.com,bob@example.com
+  VIP_EMAILS: optionalEnv("VIP_EMAILS", ""),
 } as const;
 
 export type Env = typeof env;

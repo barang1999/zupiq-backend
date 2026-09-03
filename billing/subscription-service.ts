@@ -6,6 +6,7 @@ import { PLAN_CATALOG, listPublicPlans } from "./catalog.js";
 import { canAccessEntitlement, getUsageLimit, resolveEffectivePlanKey, resolveEntitlements } from "./entitlements.js";
 import { listRevenueCatPlanMappings } from "./providers/revenuecat.js";
 import { listStripePlanMappings } from "./providers/stripe.js";
+import { buildVipAccessState, hasVipEmailsConfigured, isVipEmail } from "./vip.js";
 import type {
   BillingInterval,
   BillingProvider,
@@ -376,7 +377,28 @@ export async function cancelUserSubscription(input: CancelPlanInput): Promise<No
   return toNormalizedSubscription(next);
 }
 
+async function resolveVipAccessState(userId: string): Promise<EffectiveAccessState | null> {
+  // Fast-path: skip DB lookup entirely when no VIP emails are configured.
+  if (!hasVipEmailsConfigured()) return null;
+
+  const db = getSupabaseAdmin();
+  const { data } = await db
+    .from("users")
+    .select("email")
+    .eq("id", userId)
+    .single();
+
+  const email: string | null = (data as { email?: string } | null)?.email ?? null;
+  if (!email || !isVipEmail(email)) return null;
+
+  logger.info("[vip] access granted", { userId, email });
+  return buildVipAccessState(userId);
+}
+
 export async function getEffectiveAccessState(userId: string): Promise<EffectiveAccessState> {
+  const vipState = await resolveVipAccessState(userId);
+  if (vipState) return vipState;
+
   const subscription = await ensureSubscriptionSeed(userId);
   const effectivePlanKey = resolveEffectivePlanKey(subscription);
   const effectivePlan = PLAN_CATALOG[effectivePlanKey];

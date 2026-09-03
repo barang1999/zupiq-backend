@@ -576,3 +576,59 @@ describe("piecewise domain restriction inferred from latex", () => {
     expect(functions[0].domain).toBeUndefined();
   });
 });
+
+describe("range re-fit after a kind correction", () => {
+  it("tightly re-fits the y-range once a function's kind/params were shown untrustworthy, instead of only ever growing the AI's original guess", () => {
+    // Real observed case: f(x) = -3x^4 + sin(2x^3 - 1) was misclassified as
+    // "cubic", and its declared range was [-309, 159] — the true curve never
+    // goes above about -0.8, so once the curve got corrected to "points",
+    // the AI's own range guess (computed against the same wrong assumption)
+    // left well over half the chart's vertical space empty. The general
+    // "grow if too small" range-fit never shrinks an oversized range, so
+    // this needed a separate rule specifically for the corrected case.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-309, 159], domain: [-2, 3],
+        functions: [{ kind: "cubic", latex: "f(x) = -3x^4 + \\sin(2x^3 - 1)", params: { a: -12, b: 0, c: 6, d: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const range = spec.range as [number, number];
+    // The true data spans about [-242.6, -0.84] — the re-fit range should be
+    // close to that with padding, nowhere near the original [-309, 159].
+    expect(range[1]).toBeLessThan(30);
+    expect(range[0]).toBeGreaterThan(-280);
+  });
+
+  it("still only grows (never shrinks) an undersized range when nothing was corrected", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-1, 1], domain: [-1, 1],
+        functions: [{ kind: "linear", latex: "y = 5x", params: { m: 5, b: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const range = spec.range as [number, number];
+    // y=5x over [-1,1] spans [-5,5] — outside the AI's stated [-1,1], so this
+    // should grow to fit, same as before this change (no correction fired).
+    expect(range[0]).toBeLessThanOrEqual(-5);
+    expect(range[1]).toBeGreaterThanOrEqual(5);
+  });
+
+  it("does not shrink a correctly-sized range when nothing was corrected", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-10, 10], domain: [-1, 1],
+        functions: [{ kind: "linear", latex: "y = 2x", params: { m: 2, b: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    expect(spec.range).toEqual([-10, 10]);
+  });
+});

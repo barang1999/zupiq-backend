@@ -2784,8 +2784,20 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       }
     }
     if (!Number.isFinite(dataYMin) || !Number.isFinite(dataYMax)) return outputRange as [number, number];
-    if (dataYMin >= outputRange[0] && dataYMax <= outputRange[1]) return outputRange as [number, number];
     const pad = Math.max(0.5, (dataYMax - dataYMin) * 0.1);
+    // Once a function's own kind/params have already been shown untrustworthy
+    // by the general expression engine (resampled from latex instead of the
+    // AI's original claim), the AI's separately-stated `range` was computed
+    // against that same wrong assumption and isn't trustworthy either — a
+    // real observed case: -3x^4+sin(2x^3-1) got misclassified as "cubic",
+    // and its stated range was [-309,159] despite the true curve never going
+    // above about -0.8, leaving well over half the chart's vertical space
+    // empty even after the curve itself was corrected. In that case, fit the
+    // range tightly to the corrected data — don't just grow the AI's
+    // original (equally suspect) bounds, replace them.
+    const anyFunctionCorrected = warnings.some((w) => w.startsWith("function-kind-corrected:"));
+    if (anyFunctionCorrected) return [dataYMin - pad, dataYMax + pad] as [number, number];
+    if (dataYMin >= outputRange[0] && dataYMax <= outputRange[1]) return outputRange as [number, number];
     return [Math.min(outputRange[0], dataYMin - pad), Math.max(outputRange[1], dataYMax + pad)] as [number, number];
   })();
 

@@ -4788,11 +4788,25 @@ Rules:
   if (isUsableProblemSolutionFirst(primary.data)) {
     verifyConstantSolvingFinalAnswer(problem, primary.data.finalAnswer);
     verifySolutionCompleteness(primary.data.solutionText, primary.data.finalAnswer);
+    // Prefer a dedicated second pass, grounded in the now-complete solutionText,
+    // over whatever diagramBlocks the joint solve-and-diagram call produced —
+    // most of this codebase's diagram bugs came from the model inventing the
+    // diagram's structure in parallel with the solution, with nothing forcing
+    // the two to agree. A second call handed the already-verified solution
+    // text as ground truth is structurally less likely to diverge from it.
+    // Only fall back to the joint call's own diagramBlocks if the dedicated
+    // pass genuinely fails (network/parse error) — a `null` sentinel from the
+    // catch distinguishes that from the pass correctly deciding no diagram is
+    // needed, which must NOT fall back to a possibly-stale joint-call diagram.
     const normalizedDiagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks);
+    const extractedDiagramBlocks = await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch((err) => {
+      logger.warn("[solveProblemSolutionFirst] dedicated diagram extraction failed, falling back to joint-call diagramBlocks", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
     const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-      normalizedDiagramBlocks.length
-        ? normalizedDiagramBlocks
-        : await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch(() => []),
+      extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
       primary.data.solutionText,
     );
     return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
@@ -5030,16 +5044,17 @@ Return a single JSON object only.`;
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
     verifyConstantSolvingFinalAnswer(extractedProblemText, data.finalAnswer);
     verifySolutionCompleteness(data.solutionText, data.finalAnswer);
+    // Same "prefer the dedicated, solution-grounded pass" priority as
+    // solveProblemSolutionFirst above — see the comment there.
     const normalizedDiagramBlocks = normalizeDiagramBlocks(data.diagramBlocks);
+    const extractedDiagramBlocks = await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
+      logger.warn("[solveFromImageDirect] dedicated diagram extraction failed, falling back to joint-call diagramBlocks", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    });
     const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-      normalizedDiagramBlocks.length
-        ? normalizedDiagramBlocks
-        : await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
-          logger.warn("[solveFromImageDirect] fallback diagram extraction failed", {
-            err: err instanceof Error ? err.message : String(err),
-          });
-          return [];
-        }),
+      extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
       data.solutionText,
     );
     const solution = normalizeSolutionFirstPayload(

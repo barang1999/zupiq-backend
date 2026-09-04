@@ -566,6 +566,15 @@ router.post(
         throw new ValidationError("messages array is required");
       }
 
+      const requestStartedAt = Date.now();
+      console.log("[ChatDebug] /api/ai/chat request received:", {
+        session_id, step_id, subject, upload_id,
+        messageCount: messages.length,
+        lastMessagePreview: typeof messages[messages.length - 1]?.content === "string"
+          ? messages[messages.length - 1].content.slice(0, 120)
+          : messages[messages.length - 1]?.content,
+      });
+
       const userId = req.user!.sub;
       const budget = await reserveTokenBudget(userId);
       const lastUserMessage = messages[messages.length - 1];
@@ -574,6 +583,11 @@ router.post(
         session_id,
         step_id,
         referenceQuery: typeof lastUserMessage?.content === "string" ? lastUserMessage.content : "",
+      });
+      console.log("[ChatDebug] aiOptions resolved:", {
+        hasStepContext: !!aiOptions.stepContext,
+        stepContextLength: aiOptions.stepContext?.length ?? 0,
+        elapsedMs: Date.now() - requestStartedAt,
       });
 
       let imagePart: { data: string; mimeType: string } | undefined;
@@ -585,7 +599,16 @@ router.post(
         }
       }
 
+      console.log("[ChatDebug] calling chat()...", { elapsedMs: Date.now() - requestStartedAt });
       const chatResult = await chat(messages, aiOptions, imagePart);
+      console.log("[ChatDebug] chat() returned:", {
+        elapsedMs: Date.now() - requestStartedAt,
+        textLength: chatResult.text.length,
+        textIsEmpty: chatResult.text.trim().length === 0,
+        textPreview: chatResult.text.slice(0, 200),
+        finishReason: chatResult.finishReason,
+        usage: chatResult.usage,
+      });
       const aiSegments = segmentMathContent(chatResult.text);
 
       // Persist last user message and AI response
@@ -627,6 +650,10 @@ router.post(
         source: chatResult.usage.source,
       });
 
+      console.log("[ChatDebug] sending response to client:", {
+        elapsedMs: Date.now() - requestStartedAt,
+        responseLength: chatResult.text.length,
+      });
       res.json({
         response: chatResult.text,
         session_id: sid,
@@ -635,6 +662,10 @@ router.post(
         visualTable: chatResult.visualTable,
       });
     } catch (err) {
+      console.log("[ChatDebug] /api/ai/chat threw:", {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack?.split("\n").slice(0, 5).join("\n") : undefined,
+      });
       next(err);
     }
   }

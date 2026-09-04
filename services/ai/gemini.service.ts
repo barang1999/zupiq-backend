@@ -138,10 +138,28 @@ export async function chat(
     });
   }
 
+  console.log("[ChatDebug] calling chatSession.sendMessage()...", {
+    model: env.GEMINI_MODEL,
+    historyLength: history.length,
+    lastMessagePreview: lastMessage.content.slice(0, 120),
+    hasImagePart: !!imagePart,
+  });
+  const sendMessageStartedAt = Date.now();
   const response = await chatSession.sendMessage({ message: parts });
   const text = (response.text ?? "").trim();
   const providerUsage = extractProviderUsage(response);
   const finishReason = extractFinishReason(response);
+  console.log("[ChatDebug] chatSession.sendMessage() returned:", {
+    elapsedMs: Date.now() - sendMessageStartedAt,
+    rawTextLength: (response.text ?? "").length,
+    trimmedTextIsEmpty: text.length === 0,
+    textPreview: text.slice(0, 200),
+    finishReason,
+    usageMetadata: (response as any)?.usageMetadata,
+    candidateCount: (response as any)?.candidates?.length ?? null,
+    firstCandidatePartsCount: (response as any)?.candidates?.[0]?.content?.parts?.length ?? null,
+    firstCandidatePartsThoughtFlags: (response as any)?.candidates?.[0]?.content?.parts?.map((p: any) => !!p.thought) ?? null,
+  });
 
   // If the user asked for a table, generate it as a separate structured call
   // using responseMimeType + responseSchema so the output is always valid JSON.

@@ -216,7 +216,7 @@ describe("generic expression engine — sampling fallback", () => {
   });
 });
 
-describe("dropped-placeholder-quadratic guard", () => {
+describe("dropped-placeholder guard (any kind, not just quadratic)", () => {
   it("drops a quadratic with empty latex regardless of its specific params", () => {
     // Two real observed signatures: the canonical {a:1,b:0,c:0} default,
     // and a fabricated {a:1,b:-1,c:0} for an L'Hôpital limit problem with
@@ -250,6 +250,80 @@ describe("dropped-placeholder-quadratic guard", () => {
     // documents that intentional behavior rather than a hypothetical
     // "should survive" case.
     expect(blocks.length).toBe(0);
+  });
+
+  it("drops a non-quadratic (e.g. cubic) placeholder with empty latex and no params, just raw points", () => {
+    // Real observed case: y=x^4-3x^2+x^-2 (second-derivative problem) got a
+    // diagram with kind:"cubic", latex:"", no params at all — just a raw
+    // `points` array tracing an entirely fabricated y=4x^3-3, invented from
+    // numbers that loosely echo the problem's own coefficients (the "4"
+    // from 4x^3 in y', the "3" from -3x^2 in y) with no real derivation,
+    // and with none of the real function's x=0 vertical asymptote (from its
+    // x^-2 term) anywhere in sight. The old guard only ever fired for
+    // kind:"quadratic" with a `params` object — this shape has neither.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-42, 36], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "", points: [[-2, -35], [0, -3], [2, 29]] }],
+        featurePoints: [{ color: "primary", label: "(0, -3)", point: [0, -3] }],
+      },
+    }]);
+    expect(blocks.length).toBe(0);
+  });
+
+  it("does not drop a function that has real latex, even with unusual kind/params combinations", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-10, 10], domain: [-3, 3],
+        functions: [{ kind: "cubic", latex: "y = x^3", params: { a: 1, b: 0, c: 0, d: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    expect(blocks.length).toBe(1);
+  });
+});
+
+describe("dropped-unparseable guard (implicit relations in both x and y)", () => {
+  it("drops a closed-form kind claimed for an implicit relation the engine can't parse as y=f(x)", () => {
+    // Real observed case: an implicit-differentiation problem for
+    // "4xy = x^2 + y^2" — actually a degenerate conic (a pair of straight
+    // lines through the origin, y=(2±√3)x, since y^2-4xy+x^2=0 factors) —
+    // got diagrammed as kind:"quadratic" with params for a completely
+    // unrelated y=x^2+x. The engine only evaluates a single-variable
+    // y=f(x); this latex has a genuine "=" left over after stripping the
+    // ordinary "y="/"f(x)=" prefix, so it's a real equation in two
+    // variables, not a bare expression — unparseable and unverifiable.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-3, 3], domain: [-2, 1],
+        functions: [{ kind: "quadratic", latex: "4xy = x^2 + y^2", params: { a: 1, b: 1, c: 0 }, points: [] }],
+        featurePoints: [{ color: "primary", label: "(-0.5, -0.25)", point: [-0.5, -0.25], closed: true }],
+      },
+    }]);
+    expect(blocks.length).toBe(0);
+  });
+
+  it("does not misfire on a piecewise domain annotation that also fails to parse but has no leftover '='", () => {
+    // "y=2x+1 \quad (x \ge 0)" also fails to parse (per the piecewise
+    // domain-restriction test below), but after stripping the "y=" prefix
+    // there's no bare "=" left in "2x+1\quad(x\ge0)" — \ge is a single
+    // LaTeX command token, not an equals sign. This must stay a supported,
+    // deliberately-tolerated shape, not get swept up by the new guard.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-8.4, 8.4], domain: [-3, 3],
+        functions: [{ kind: "linear", latex: "y = 2x + 1 \\quad (x \\ge 0)", params: { b: 1, m: 2 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    expect(blocks.length).toBe(1);
+    expect((blocks[0]?.spec as Record<string, unknown>).functions).toEqual([
+      expect.objectContaining({ kind: "linear", domain: [0, 3] }),
+    ]);
   });
 });
 
@@ -402,7 +476,7 @@ describe("stale xTicks/yTicks outside the graph's own domain/range", () => {
   });
 });
 
-describe("closed-form spot-check: majority mismatch, not unanimous", () => {
+describe("closed-form spot-check: at least half mismatch, not a strict majority", () => {
   it("corrects a wrong 'sine' classification whose curve coincidentally agrees at one of the 4 fixed sample points", () => {
     // Real observed case: an IVT proof for sin(x) = x-1 diagrams
     // f(x) = sin x - x + 1, but the AI classified it as kind "sine" with
@@ -471,6 +545,35 @@ describe("closed-form spot-check: majority mismatch, not unanimous", () => {
     expect(fn.kind).toBe("sine");
     const spec = blocks[0]?.spec as Record<string, unknown>;
     expect((spec.guideLines as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("corrects a wrong 'cubic' classification whose mismatch is an exact 2-of-4 tie", () => {
+    // Real observed case: y=x^4-3x^3+x^2 (a second-derivative problem) got
+    // kind:"cubic" params for -3x^3+x^2 — the AI dropped the x^4 term
+    // entirely. claimed-vs-truth disagrees by exactly x^4 at every sample
+    // point: tiny at the two sample points close to x=0 (where x^4 is
+    // small enough to fall inside the tolerance floor), large at the two
+    // further out — an exact 2-of-4 tie that a strict "more than half"
+    // rule doesn't count as a majority, letting the wrong cubic survive
+    // with a stale (0,-3) feature point (the real function has f(0)=0).
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-42, 36], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "y = x^4 - 3x^3 + x^2", params: { a: -3, b: 1, c: 0, d: 0 }, points: [] }],
+        featurePoints: [{ color: "primary", label: "(0, -3)", point: [0, -3] }],
+      },
+    }]);
+    const fn = firstFunction(blocks)!;
+    expect(fn.kind).toBe("points");
+    const points = fn.points as [number, number][];
+    const trueF = (x: number) => x ** 4 - 3 * x ** 3 + x ** 2;
+    for (const x of [-2, -1, 1, 2]) {
+      const [, y] = nearestPoint(points, x);
+      expect(y).toBeCloseTo(trueF(x), 1);
+    }
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    expect(spec.featurePoints).toEqual([]);
   });
 });
 

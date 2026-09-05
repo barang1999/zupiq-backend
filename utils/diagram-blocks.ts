@@ -1853,7 +1853,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
               const tolerance = Math.max(0.05, Math.abs(truth) * 0.02);
               if (!Number.isFinite(claimed) || Math.abs(claimed - truth) > tolerance) mismatchCount++;
             }
-            // A strict majority of checkable samples disagreeing counts as a
+            // At least half of checkable samples disagreeing counts as a
             // genuine mismatch. This used to require *every* sample to
             // disagree, but the 4 fixed sample points (evenly spaced across
             // the domain) can coincide exactly with a root of
@@ -1862,12 +1862,21 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             // latex "sin x - x + 1" over domain [-1,4]. Those two agree
             // exactly at x=1 (where "-x+1"=0), which is exactly one of the 4
             // sample points, so only 3 of 4 disagreed — not unanimous, so
-            // the wrong closed-form params survived uncorrected. A strict
-            // majority still protects the original intent (a single stray
-            // disagreement, e.g. floating-point noise right at a shared
-            // asymptote, is a minority and won't trigger) while closing this
-            // gap.
-            shouldResampleFromLatex = checkedCount > 0 && mismatchCount > checkedCount / 2;
+            // the wrong closed-form params survived uncorrected.
+            // A strict *majority* (more than half) closed that gap but
+            // opened a narrower one: kind "cubic" params for -3x³+x²
+            // claimed for latex "x⁴-3x³+x²" (the AI dropped the x⁴ term
+            // entirely) disagrees by exactly x⁴ at every sample point — tiny
+            // near the two sample points close to x=0 (where x⁴ is small),
+            // large at the two further out. The `max(0.05, |truth|·0.02)`
+            // tolerance floor swallows the two near-zero points (true value
+            // itself is small there), leaving exactly 2 of 4 flagged — a
+            // dead-even tie that "more than half" doesn't count as a
+            // majority. "At least half" still protects the original intent
+            // (a single stray disagreement, e.g. floating-point noise right
+            // at a shared asymptote, stays a minority and won't trigger)
+            // while also catching an exact tie.
+            shouldResampleFromLatex = checkedCount > 0 && mismatchCount >= checkedCount / 2;
           }
           if (shouldResampleFromLatex) {
             const sampled = sampleExpressionFromLatex(latex, domainForSampling);
@@ -1879,6 +1888,27 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
               points = sampled;
             }
           }
+        } else if (
+          kind !== "points" && EVALUATABLE_CLOSED_FORM_KINDS.has(kind) && params && typeof params === "object"
+          && stripLatexPrefix(latex).includes("=")
+        ) {
+          // Latex is present but doesn't parse — and, unlike the piecewise
+          // domain-restriction case below (e.g. "y=2x+1 \quad (x \ge 0)",
+          // which also fails to parse but is a bare function once that
+          // trailing annotation is ignored), a leftover "=" after stripping
+          // the ordinary "y="/"f(x)=" prefix means this genuinely isn't a
+          // function of a single variable x at all — it's an implicit
+          // relation. This engine only evaluates y=f(x), so it can't verify
+          // one. A real observed case: an implicit-differentiation problem
+          // for "4xy = x^2 + y^2" (actually a degenerate conic — a pair of
+          // straight lines through the origin, y=(2±√3)x — not any kind of
+          // parabola) got diagrammed as kind:"quadratic" with params for a
+          // completely unrelated y=x²+x, vertex (-0.5,-0.25) — a real
+          // vertex, just for the wrong function entirely. Treat this the
+          // same as empty latex: unverifiable, drop it.
+          warnings.push(`dropped-unparseable-${kind}`);
+          if (functions.length === 1) warnings.push("empty-function-graph");
+          return null;
         }
       }
 
@@ -1987,13 +2017,20 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       // empty `latex` and params with no relationship to the real function
       // (that case: y=x²-x, matching neither the original expression nor
       // its post-L'Hôpital derivative form; an earlier case: the literal
-      // "nothing was specified" a=1,b=0,c=0 default). Once latex is empty
-      // there is no ground truth left to verify ANY params against — a
-      // "quadratic" is not even the right family for most of the trig/limit
-      // problems this fires on — so treat any empty-latex quadratic as
-      // unverifiable and drop it; that's worse than no diagram.
-      if (kind === "quadratic" && !latex && params && typeof params === "object") {
-        warnings.push("dropped-placeholder-quadratic");
+      // "nothing was specified" a=1,b=0,c=0 default). A further observed
+      // case showed this isn't quadratic-specific: for y=x⁴-3x²+x⁻², the AI
+      // returned `kind:"cubic"`, empty `latex`, no `params` at all, and a
+      // raw `points` array tracing an entirely fabricated y=4x³-3 — numbers
+      // that loosely echo the problem's own coefficients (the "4" from
+      // 4x³ in y', the "3" from -3x² in y) with no actual derivation, and
+      // with none of the vertical asymptote at x=0 the real function's x⁻²
+      // term produces. Once latex is empty there is no ground truth left to
+      // verify ANY kind/params/points against — not just for "quadratic" —
+      // so treat any empty-latex, non-piecewise function (whether it came
+      // with params, points, or both) as unverifiable and drop it outright;
+      // that's worse than no diagram.
+      if (kind !== "piecewise" && !latex && ((params && typeof params === "object") || points.length > 0)) {
+        warnings.push(`dropped-placeholder-${kind || "unknown"}`);
         // When this placeholder was the AI's only function for the block,
         // also force the whole thing to be treated as empty even if a
         // stray feature point (e.g. this same placeholder's own vertex)

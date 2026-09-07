@@ -1,4 +1,4 @@
-import { segmentMathContent } from "./math-segmenter.js";
+import { segmentMathContent, hasMathDelimiters } from "./math-segmenter.js";
 import { normalizeDiagramBlock, type DiagramRenderBlock } from "./diagram-blocks.js";
 import { renderMathSvg, shouldRenderMathSvg } from "./mathjax-svg.js";
 
@@ -28,7 +28,12 @@ export function buildRenderBlocks(content: string, options: { defaultDisplay?: b
   if (!raw.trim()) return [];
 
   const segments = segmentMathContent(raw);
-  if (segments.length > 0 && segments.some((segment) => segment.type === "math")) {
+  // Gate on whether the raw string actually had delimiters — not on whether any
+  // resulting segment is still typed "math" — because a delimited span can get
+  // downgraded to plain text (e.g. Khmer prose wrapped in "$...$"). Falling through
+  // to the naive paragraph split below would re-use the *original*, still-delimited
+  // string and reintroduce the very "$...$" leak this segmentation exists to prevent.
+  if (segments.length > 0 && (segments.some((segment) => segment.type === "math") || hasMathDelimiters(raw))) {
     return compactTextBlocks(segments.map((segment) => {
       if (segment.type === "math") {
         return buildMathBlock(segment.content, Boolean(segment.display));
@@ -63,26 +68,36 @@ export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
   if (!Array.isArray(blocks)) return [];
 
   return blocks
-    .map((block): RenderBlock | null => {
+    .flatMap((block): RenderBlock[] => {
       if (block?.type === "text") {
-        return buildTextBlock(`${block.content ?? ""}`, typeof block.lang === "string" ? block.lang : undefined);
+        // The AI is asked to pre-split label/description/math blocks itself, but it
+        // still sometimes writes a whole sentence as one "text" block with a raw
+        // "$...$" wrapper baked into the content (e.g. a Khmer sentence mentioning
+        // "xy" and "y^2"). Route it back through the same segmenter used for raw
+        // strings instead of trusting the AI's type tag, so any embedded math still
+        // gets split out and rendered rather than leaking the delimiters verbatim.
+        const rawText = `${block.content ?? ""}`;
+        if (!rawText.trim()) return [];
+        const lang = typeof block.lang === "string" ? block.lang : undefined;
+        return buildRenderBlocks(rawText, { lang });
       }
 
       if (block?.type === "math") {
         const display = block.mode === "display";
         const input = `${block.normalizedLatex || block.latex || block.content || ""}`.trim();
-        if (!input) return null;
-        return {
+        if (!input) return [];
+        return [{
           ...buildMathBlock(input, display),
           latex: typeof block.latex === "string" && block.latex.trim() ? block.latex.trim() : stripMathDelimiters(input),
-        };
+        }];
       }
 
       if (block?.type === "diagram" || block?.diagramType) {
-        return normalizeDiagramBlock(block);
+        const diagram = normalizeDiagramBlock(block);
+        return diagram ? [diagram] : [];
       }
 
-      return null;
+      return [];
     })
     .filter((block): block is RenderBlock => Boolean(block));
 }

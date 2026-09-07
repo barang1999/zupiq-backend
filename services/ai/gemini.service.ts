@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
 import { buildFunctionGraphIntentDiagramBlock, evaluateLatexAt, evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
+import { toPlainTitleText } from "../../utils/plain-title.js";
 import { getGeminiClient } from "./core/client.js";
 import { buildSystemInstruction, LANGUAGE_NAMES } from "./core/system-instruction.js";
 import type { AIRequestOptions } from "./core/types.js";
@@ -554,7 +555,7 @@ function buildFallbackSolutionFirst(
   return {
     version: 2,
     mode: "solution-first",
-    title: problem.slice(0, 70) || "New Solution",
+    title: toPlainTitleText(problem) || "New Solution",
     subject,
     topic: subject.toLowerCase().includes("physic")
       ? "mechanics"
@@ -4558,7 +4559,7 @@ ${rawSolution.slice(0, 4000)}
 PROBLEM HINT: "${problemHint.slice(0, 200)}"
 
 Return JSON with:
-- title: short descriptive title specifically for the math/science problem itself (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar. Describe the specific problem (e.g. "គណនាលំដាប់ស៊េរីតេឡេស្កូប", "Evaluate rational integral", "Difference of squares").
+- title: short descriptive title specifically for the math/science problem itself (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar. Describe the specific problem (e.g. "គណនាលំដាប់ស៊េរីតេឡេស្កូប", "Evaluate rational integral", "Difference of squares").
 - subject: Must be strictly one of: "Math", "Physics", "Chemistry" (and nothing else! No subtopics, no other languages).
 - topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
   * For Math: "algebra" (equations, polynomials, sequences, series), "geometry" (shapes, coordinates, trig), "calculus" (limits, derivatives, integrals), "probability-stats", "arithmetic" (basic numbers, roots, fractions).
@@ -4589,14 +4590,14 @@ Return JSON with:
     },
   });
 
-  const fallbackTitle = problemHint.slice(0, 70) || "New Solution";
+  const fallbackTitle = toPlainTitleText(problemHint) || "New Solution";
   const structuredProblemIntent = problemIntentFromStructuredHint(problemHint);
   const extractedProblemIntent = structuredProblemIntent
     || (isProblemIntent((data as any)?.problemIntent) && (data as any).problemIntent !== "other"
       ? (data as any).problemIntent
       : problemIntentFromStructuredHint(`${problemHint}\n${rawSolution}`) || "other");
   return {
-    title: `${data?.title ?? ""}`.trim() || fallbackTitle,
+    title: toPlainTitleText(data?.title) || fallbackTitle,
     subject: `${data?.subject ?? ""}`.trim() || options.subject || "Math",
     topic: `${data?.topic ?? ""}`.trim() || "algebra",
     problemIntent: extractedProblemIntent,
@@ -4730,7 +4731,7 @@ Rules:
 13. ABSOLUTELY FORBIDDEN: Phrases like "Wait," "Let me recheck," "I made a mistake," "Let's recalculate," or "I found a different solution online."
 14. Finality: Perform all reasoning internally. Output ONLY the final, polished, and correct mathematical derivation. It should look like a finished exam paper, not a scratchpad.
 15. Do NOT use "Step 1:", "Step 2:", or any numbered step headers. The solution should flow naturally.
-16. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+16. title: Must be a short descriptive title specifically for this problem (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
 17. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
 18. topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
@@ -4968,7 +4969,7 @@ Rules for solutionText:
 - Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
 - finalAnswer must be the final answer only.
 - explanationStatus must be "not_generated", explanation must be null.
-- title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+- title: Must be a short descriptive title specifically for this problem (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
 - subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
 - topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
   * For Math: "algebra", "geometry", "calculus", "probability-stats", "arithmetic".
@@ -5089,7 +5090,7 @@ Return a single JSON object only.`;
     const recoveredAnswer = finalAnswerMatch?.[1]?.trim() || (data?.finalAnswer ?? "").trim();
     const recoveredProblem = extractedProblemText || (data?.problemText ?? "").trim() || "Problem";
     const recoveredSubject = (data as any)?.subject ?? "Math";
-    const recoveredTitle = (data as any)?.title?.trim() || recoveredProblem.slice(0, 70);
+    const recoveredTitle = toPlainTitleText((data as any)?.title) || toPlainTitleText(recoveredProblem);
     const recoveredTopic = (data as any)?.topic ?? "algebra";
     const recoveredProblemIntent = isProblemIntent((data as any)?.problemIntent) ? (data as any).problemIntent : "other";
     logger.warn("[solveFromImageDirect] Phase 2 unusable, recovering from Phase 1 raw", {
@@ -5166,7 +5167,7 @@ Rules:
 8. Even for "Problem Analysis" or "Stating Given Values", provide the relevant variables or formula (e.g., $A = \\frac{1}{2}bh$ or $b=13, h=14$).
 9. Do NOT use vague placeholders like "apply formula", "known values -> unknown", or generic template text.
 10. Every step MUST have a corresponding math block to ground the explanation in actual numbers/symbols.
-11. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+11. title: Must be a short descriptive title specifically for this problem (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
 12. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.`;
 
   const nodeSchema = {
@@ -5265,7 +5266,7 @@ export async function instantBreakdown(
   5. The final branch node MUST contain the final answer/result.
   6. All text MUST be in ${targetLangName}.
   7. Use standard LaTeX for math ($...$).
-  8. title: Must be a short descriptive title specifically for this problem (max 70 chars). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
+  8. title: Must be a short descriptive title specifically for this problem (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
   9. subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
   10. Do NOT use manual spacing commands (like \\text{ } or \\quad or \\qquad repeated multiple times) to align or indent math blocks. Use clean, minimal LaTeX alignment.`;
 
@@ -7320,7 +7321,7 @@ function buildFallbackBreakdown(problem: string, subject: string, rawInsight: st
     };
 
   return {
-    title: problem.slice(0, 50) || copy.title,
+    title: toPlainTitleText(problem, 50) || copy.title,
     subject,
     nodes: [
       {

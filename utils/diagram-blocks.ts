@@ -1304,6 +1304,38 @@ function parseMathExpr(tokens: string[]): MathAstNode | null {
     return parseAtom();
   }
 
+  // Trig functions get their own bare-argument rule, distinct from
+  // `parseFuncArg` above (shared by `\sqrt`/`\ln`/`\log`, where a bare
+  // argument really is just the single next token — `\sqrt 2x` renders as
+  // `√2 · x`, not `√(2x)`). For `\sin`/`\cos`/`\tan`, a bare numeric-or-\pi
+  // coefficient directly followed by a single variable is near-universally
+  // read as one argument: `\sin 2x` means `sin(2x)`, not `sin(2)·x`. A real
+  // observed case: "3x^2 - \sin 2x" sampled as "3x^2 - sin(2)*x" — a
+  // straight-line term standing in for the sine term — because the old
+  // "just the next atom" rule grabbed only the "2" token, leaving "x" to
+  // multiply onto the function's *result* via the outer implicit-
+  // multiplication loop in `parseTerm` instead of becoming part of the
+  // argument. That wrong curve happened to agree with the true one at the
+  // domain's two endpoints and at x=0 (sin(±2)=±sin(2), sin(0)=0), so a
+  // spot-check sampling only those three x-values would have missed it
+  // entirely — worth remembering if a future bug here again "checks out at
+  // the edges but is wrong in the middle" of a domain.
+  // Absorption stops at the first token that isn't a plain number/pi/single
+  // variable — in particular, a nested function call or parenthesis is
+  // deliberately NOT absorbed, so "\sin x \cos x" still parses as
+  // `sin(x)*cos(x)` (two separate factors) rather than `sin(x*cos(x))`.
+  function parseTrigFuncArg(): MathAstNode | null {
+    if (peek() === "(" || peek() === "{") return parseFuncArg();
+    let arg = parseAtom();
+    if (!arg) return null;
+    while (peek() !== undefined && (/^[0-9.]+$/.test(peek() as string) || isVarToken(peek()) || peek() === "pi")) {
+      const next = parseAtom();
+      if (!next) break;
+      arg = { type: "mul", left: arg, right: next };
+    }
+    return arg;
+  }
+
   function parseAtom(): MathAstNode | null {
     const t = peek();
     if (t === undefined) return null;
@@ -1312,9 +1344,41 @@ function parseMathExpr(tokens: string[]): MathAstNode | null {
     if (t === "pi") { pos++; return { type: "pi" }; }
     if (t === "sin" || t === "cos" || t === "tan") {
       pos++;
-      const arg = parseFuncArg();
+      // LaTeX's trig-power shorthand: `\tan^2 x` means `(\tan x)^2`, with the
+      // exponent written directly after the function name rather than after
+      // its argument — distinct from `\tan x^2` (power binds to the
+      // argument), which tokenizes with "^" appearing *after* the "x" token
+      // instead of right after "tan". A real observed case: `\tan^2 x` in
+      // "y = x^2 - \tan^2 x" failed to parse at all (this branch had no "^"
+      // handling, so `parseFuncArg` saw "^" where it expected "(" or an
+      // atom and returned null), which silently defeated the general
+      // engine's spot-check entirely — an AI-fabricated placeholder
+      // quadratic (`kind:"quadratic"`, params for plain `y=x^2`, dropping
+      // the `-\tan^2 x` term completely) passed through unverified because
+      // there was no ground truth to compare it against.
+      // `\tan^{-1}x` conventionally means arctan(x), not `1/\tan x` — this
+      // engine has no inverse-trig support, so a negative exponent here
+      // bails (returns null) rather than silently misreading it as a
+      // reciprocal.
+      let powerExpr: MathAstNode | null = null;
+      if (peek() === "^") {
+        pos++;
+        if (peek() === "{") {
+          pos++;
+          powerExpr = parseExpr();
+          if (!powerExpr || peek() !== "}") return null;
+          pos++;
+        } else {
+          powerExpr = parseUnary();
+          if (!powerExpr) return null;
+        }
+        const powerValue = evalMathAst(powerExpr, {});
+        if (!Number.isFinite(powerValue) || powerValue < 0) return null;
+      }
+      const arg = parseTrigFuncArg();
       if (!arg) return null;
-      return { type: "func", name: t, arg };
+      const funcNode: MathAstNode = { type: "func", name: t, arg };
+      return powerExpr ? { type: "pow", base: funcNode, exp: powerExpr } : funcNode;
     }
     if (t === "ln") {
       pos++;
@@ -1540,6 +1604,29 @@ function evalPiecewiseLinearCurveAt(points: [number, number][], x: number): numb
   return Number.NaN;
 }
 
+// Standard "nice" 1/2/5-per-decade tick step, evenly spaced across
+// [min, max], always including 0 when it falls inside the range. Used to
+// replace stale AI-supplied ticks (see the stale-tick-after-correction
+// pass below) with ticks actually proportioned to the axis they label,
+// rather than either the AI's original (now-untrustworthy) values or a
+// canned template's ticks that assume a totally different scale.
+function generateNiceAxisTicks(min: number, max: number, targetCount = 5): { value: number; major: boolean }[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return [{ value: 0, major: true }];
+  const span = max - min;
+  const rawStep = span / targetCount;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const normalized = rawStep / magnitude;
+  const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  const step = niceNormalized * magnitude;
+  const values: number[] = [];
+  const start = Math.ceil(min / step) * step;
+  for (let v = start; v <= max + step * 0.001; v += step) {
+    values.push(Math.round(v / step) * step); // snap away from float noise, e.g. 0.30000000004
+  }
+  if (min <= 0 && max >= 0 && !values.includes(0)) values.push(0);
+  return Array.from(new Set(values)).sort((a, b) => a - b).map((value) => ({ value, major: value === 0 }));
+}
+
 /**
  * Detect a normal-distribution (Gaussian) PDF in a LaTeX string by looking for
  * a standardisation sub-expression \frac{x - mean}{std}.
@@ -1649,6 +1736,17 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const item = fn as Record<string, unknown>;
       let kind = String(item.kind || "").trim();
       if (kind === "line") kind = "linear";
+      // Snapshot before any of the corrections below can mutate `kind` —
+      // used later to decide whether this function's *original* claim was
+      // a genuine closed-form misclassification (untrustworthy range/
+      // ticks too) vs. already `kind:"points"` to begin with (routinely
+      // re-verified against latex regardless, not a sign anything was
+      // actually wrong). Checking the final warning strings for this
+      // instead is unreliable: the legacy `trigFunctionFromLatex` check
+      // below can relabel `kind` from "points" to "sine" before the
+      // general engine's own correction ever runs, so by the time *that*
+      // one fires it sees "sine", not the true original "points".
+      const originalKind = kind;
 
       let params = item.params && typeof item.params === "object" ? item.params : undefined;
       const latex = String(item.latex || item.label || "").slice(0, 80);
@@ -2042,8 +2140,19 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         return null;
       }
 
+      // True only when this function started as a genuine claimed
+      // closed-form kind (not already "points", and not left unspecified)
+      // and ended up needing a full points-based resample — i.e. the AI
+      // was actually shown wrong about the function's fundamental shape,
+      // not just routinely re-verified. See `anyFunctionCorrected` below,
+      // which uses this (not warning-string matching) to decide whether
+      // this function's range/ticks are still trustworthy. Internal only —
+      // stripped from the function objects before the final spec is built.
+      const finalKind = kind || "points";
+      const wasReclassifiedFromClosedForm = originalKind !== "points" && originalKind !== "" && finalKind === "points";
+
       return {
-        kind: kind || "points",
+        kind: finalKind,
         latex,
         simplifiedLatex: typeof item.simplifiedLatex === "string" ? item.simplifiedLatex.slice(0, 80) : undefined,
         points,
@@ -2051,6 +2160,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         pieces,
         domain,
         color: typeof item.color === "string" ? normalizeDiagramColor(item.color) : "primary",
+        _wasReclassifiedFromClosedForm: wasReclassifiedFromClosedForm,
       };
     })
     .filter(Boolean)
@@ -2794,6 +2904,27 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   // their viewport (e.g. reciprocal-interval) already set a deliberate window,
   // so leave those alone.
   const FIT_RANGE_KINDS = new Set(["linear", "quadratic", "cubic", "polynomial", "absolute-value", "square-root", "points"]);
+  // Whether any function's kind/params were already shown untrustworthy by
+  // the general expression engine and had to be resampled from latex.
+  // Hoisted out of the range-fit closure below since the tick-staleness
+  // check further down needs it too — see both usages for the reasoning.
+  //
+  // Uses each function's own `_wasReclassifiedFromClosedForm` marker
+  // (set above, right where `kind` is resolved) rather than scanning
+  // `warnings` strings for `function-kind-corrected:*` — a `kind:"points"`
+  // function is *always* resampled from latex unconditionally, by design
+  // (see the general expression engine above), regardless of whether its
+  // original points were already correct, and that routine resample can
+  // *also* end up tagged under a different kind name than "points" if an
+  // earlier pass (the legacy `trigFunctionFromLatex` check) relabeled
+  // `kind` first — so the warning string alone can't reliably tell "this
+  // function's original claim was genuinely wrong" apart from "this was
+  // already `points`, routinely re-verified." Treating the latter as
+  // untrustworthy too caused a real regression: a correctly-`points`
+  // piecewise function's already-correctly-filtered ticks (`[0, π/2]`) got
+  // needlessly replaced with fresh, plain-number ticks that don't know the
+  // axis is in units of π.
+  const anyFunctionCorrected = resolvedFunctions.some((fn) => (fn as Record<string, unknown>)._wasReclassifiedFromClosedForm === true);
   const fittedRange: [number, number] = (() => {
     if (graphStyle === "reciprocal-interval") return outputRange as [number, number];
     let dataYMin = Infinity;
@@ -2801,6 +2932,29 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     for (const fn of resolvedFunctions) {
       const item = fn as Record<string, unknown>;
       if (!FIT_RANGE_KINDS.has(String(item.kind || ""))) continue;
+      if (item.kind === "points") {
+        // Use the function's own already-densely-sampled points directly,
+        // rather than coarsely re-sampling at just 40 points across the
+        // domain via evalFnAt — a narrow near-asymptote spike can fall
+        // entirely between two of those 40 samples and be missed
+        // entirely, understating the true range even though the actual
+        // stored curve reaches much further. A real observed case:
+        // y=1/sqrt(5x^3+2), whose domain starts right at a vertical
+        // asymptote near x=-0.7368 — the 40-sample grid's nearest point
+        // outside that narrow spike only reached y=1.87, while the
+        // function's own stored points (computed at ~200+ resolution by
+        // sampleExpressionFromLatex) go up to 5.96 right at the edge of
+        // the domain. Scanning the existing dense points is strictly more
+        // accurate than any coarser re-sample, and cheaper too.
+        const pts = Array.isArray(item.points) ? item.points as [number, number][] : [];
+        for (const point of pts) {
+          const y = point?.[1];
+          if (!Number.isFinite(y)) continue;
+          dataYMin = Math.min(dataYMin, y);
+          dataYMax = Math.max(dataYMax, y);
+        }
+        continue;
+      }
       const fnDomain = Array.isArray(item.domain) ? item.domain as [number, number] : (outputDomain as [number, number]);
       const [dMin, dMax] = fnDomain;
       if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) continue;
@@ -2832,7 +2986,6 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     // empty even after the curve itself was corrected. In that case, fit the
     // range tightly to the corrected data — don't just grow the AI's
     // original (equally suspect) bounds, replace them.
-    const anyFunctionCorrected = warnings.some((w) => w.startsWith("function-kind-corrected:"));
     if (anyFunctionCorrected) return [dataYMin - pad, dataYMax + pad] as [number, number];
     if (dataYMin >= outputRange[0] && dataYMax <= outputRange[1]) return outputRange as [number, number];
     return [Math.min(outputRange[0], dataYMin - pad), Math.max(outputRange[1], dataYMax + pad)] as [number, number];
@@ -2875,12 +3028,32 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   const xTicksInDomain = xTicks?.filter((tick) => tick.value >= outputDomain[0] - domainTolerance && tick.value <= outputDomain[1] + domainTolerance);
   const yTicksInRange = yTicks?.filter((tick) => tick.value >= finalRange[0] - rangeTolerance && tick.value <= finalRange[1] + rangeTolerance);
 
+  // Same "already shown untrustworthy, don't keep trusting related
+  // metadata" reasoning as the range re-fit above, applied to ticks: a
+  // real observed case, y=5x^3-2\sin x\cos x, got `kind:"cubic"` corrected
+  // (the true curve spans roughly ±41, growing the range to ±49), but its
+  // xTicks/yTicks — {0, pi/2} and {-1, 0, 1} — were computed for the AI's
+  // *original* wrong assumption (a bounded, canonical-looking trig wave)
+  // and never got re-evaluated once the real function turned out to be
+  // dominated by an unbounded cubic term. They aren't literally out of
+  // range (0/pi/2 and -1/0/1 all technically fall inside ±49), so the
+  // out-of-domain/range filter above doesn't catch them — they're just
+  // uselessly clustered near zero on an axis that now spans ±49. Once a
+  // correction has fired, generate fresh ticks proportioned to the actual
+  // (already recomputed) domain/range instead of trusting the stale ones
+  // or falling back to the canned trig-wave default (which has the exact
+  // same "assumes amplitude ~1" problem as the stale ticks it would
+  // replace).
   const outputXTicks = graphStyle === "reciprocal-interval"
     ? reciprocalXTicks.map((value) => ({ value, label: String(value), major: value === 0 }))
-    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : xTicksInDomain?.length ? xTicksInDomain : graphStyle === "trig-wave" ? defaultTrigWaveXTicks() : undefined;
+    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined
+    : anyFunctionCorrected ? generateNiceAxisTicks(outputDomain[0], outputDomain[1])
+    : xTicksInDomain?.length ? xTicksInDomain : graphStyle === "trig-wave" ? defaultTrigWaveXTicks() : undefined;
   const outputYTicks = graphStyle === "reciprocal-interval"
     ? [-1, 0, 1, 2, 3, 4].map((value) => ({ value, label: String(value), major: value === 0 }))
-    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined : yTicksInRange?.length ? yTicksInRange : graphStyle === "trig-wave" ? defaultTrigWaveYTicks() : undefined;
+    : hasBasicReciprocalFunction || hasInverseSquareFunction ? undefined
+    : anyFunctionCorrected ? generateNiceAxisTicks(finalRange[0], finalRange[1])
+    : yTicksInRange?.length ? yTicksInRange : graphStyle === "trig-wave" ? defaultTrigWaveYTicks() : undefined;
   const outputGuideLines = graphStyle === "reciprocal-interval"
     ? [
       { orientation: "vertical", value: reciprocalGuidePoint[0], from: -1, to: 4, color: "primary" },
@@ -2888,9 +3061,18 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     ]
     : hasBasicReciprocalFunction || hasInverseSquareFunction ? [] : guideLines.length ? guideLines : graphStyle === "trig-wave" ? (computedGuideLines.length ? computedGuideLines : primaryTrigFunction ? defaultSineWaveGuideLines() : []) : [];
 
+  // Strip the internal `_wasReclassifiedFromClosedForm` marker (set above,
+  // read by `anyFunctionCorrected`) before it reaches the stored spec —
+  // it's bookkeeping for this normalization pass, not part of the
+  // function-graph schema the frontend/anything downstream should see.
+  const outputFunctions = resolvedFunctions.map((fn) => {
+    const { _wasReclassifiedFromClosedForm, ...rest } = fn as Record<string, unknown>;
+    return rest;
+  });
+
   return {
     type: "function-graph",
-    functions: resolvedFunctions,
+    functions: outputFunctions,
     featurePoints: resolvedFeaturePoints,
     shadedRegions: normalizedShadedRegions,
     domain: outputDomain,

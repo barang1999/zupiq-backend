@@ -630,6 +630,116 @@ describe("\\log/\\ln support in the general expression engine", () => {
   });
 });
 
+describe("trig-power notation (\\sin^2 x, \\tan^2 x, ...) in the general expression engine", () => {
+  it("evaluates \\tan^2 x as (\\tan x)^2, not a parse failure", () => {
+    expect(evaluateLatexWithBindings("\\tan^2 x", { x: 0.5 })).toBeCloseTo(Math.tan(0.5) ** 2, 10);
+  });
+
+  it("evaluates the Pythagorean identity \\sin^2 x + \\cos^2 x as ~1 everywhere", () => {
+    expect(evaluateLatexWithBindings("\\sin^2 x + \\cos^2 x", { x: 0.7 })).toBeCloseTo(1, 10);
+    expect(evaluateLatexWithBindings("\\sin^{2}x", { x: 0.5 })).toBeCloseTo(Math.sin(0.5) ** 2, 10);
+  });
+
+  it("bails (returns null) on \\tan^{-1} x rather than misreading it as 1/\\tan x", () => {
+    // \tan^{-1}x conventionally means arctan(x) in real math notation, not a
+    // reciprocal — this engine has no inverse-trig support, so silently
+    // computing 1/tan(x) here would be actively wrong, not just unverified.
+    expect(evaluateLatexWithBindings("\\tan^{-1} x", { x: 0.5 })).toBeNull();
+  });
+
+  it("corrects a fabricated placeholder quadratic hiding behind an unparseable \\tan^2 x term", () => {
+    // Real observed case: "y = x^2 - \tan^2 x" (from a derivative problem)
+    // diagrammed as kind:"quadratic", params {a:1,b:0,c:0} — i.e. plain
+    // y=x^2, silently dropping the entire -\tan^2 x term. This slipped
+    // through undetected because \tan^2 x (the exponent written directly
+    // after the function name, before its argument) failed to parse at all
+    // — parseFuncArg saw "^" where it expected "(" or an atom — so the
+    // general engine's spot-check had no ground truth to compare against
+    // and silently no-op'd. The true function is a downward-opening dome
+    // peaking at (0,0) and dropping steeply to ~-1.43 by x=±1, nothing like
+    // the AI's upward-opening y=x^2.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-2, 3], domain: [-1, 1],
+        functions: [{ kind: "quadratic", latex: "y = x^2 - \\tan^2 x", params: { a: 1, b: 0, c: 0 }, points: [] }],
+        featurePoints: [{ color: "primary", label: "(0, 0)", point: [0, 0], closed: true }],
+      },
+    }]);
+    const fn = firstFunction(blocks)!;
+    expect(fn.kind).toBe("points");
+    const points = fn.points as [number, number][];
+    const trueF = (x: number) => x * x - Math.tan(x) ** 2;
+    for (const x of [-1, -0.5, 0, 0.5, 1]) {
+      const [, y] = nearestPoint(points, x);
+      expect(y).toBeCloseTo(trueF(x), 2);
+    }
+    // The old, uncorrected reading (plain y=x^2) would put f(1) at +1; the
+    // true function is deeply negative there — pin down the actual sign.
+    const [, yAtOne] = nearestPoint(points, 1);
+    expect(yAtOne).toBeLessThan(-1);
+  });
+});
+
+describe("bare trig argument absorbs a leading numeric/pi coefficient (\\sin 2x means sin(2x))", () => {
+  it("evaluates \\sin 2x as sin(2x), not sin(2)*x", () => {
+    expect(evaluateLatexWithBindings("\\sin 2x", { x: 0.15 })).toBeCloseTo(Math.sin(0.3), 10);
+  });
+
+  it("evaluates \\cos \\pi x as cos(pi*x)", () => {
+    expect(evaluateLatexWithBindings("\\cos \\pi x", { x: 0.5 })).toBeCloseTo(Math.cos(Math.PI * 0.5), 10);
+  });
+
+  it("still parses \\sin x \\cos x as a product, not sin(x*cos(x))", () => {
+    // The coefficient-absorption rule must stop at a nested function call —
+    // otherwise this would wrongly become sin(x*cos(x)) instead of two
+    // separate multiplied factors.
+    expect(evaluateLatexWithBindings("\\sin x \\cos x", { x: 0.4 })).toBeCloseTo(Math.sin(0.4) * Math.cos(0.4), 10);
+  });
+
+  it("leaves \\sqrt's bare-argument convention alone (\\sqrt 2x is sqrt(2)*x, not sqrt(2x))", () => {
+    // Unlike trig functions, \sqrt (and \ln/\log) genuinely only binds to
+    // the single next token without braces — this is real LaTeX macro
+    // semantics, not a convenience convention like the trig case above, so
+    // the coefficient-absorption fix must not be generalized to them.
+    expect(evaluateLatexWithBindings("\\sqrt2x", { x: 3 })).toBeCloseTo(Math.sqrt(2) * 3, 10);
+  });
+
+  it("corrects a curve that was silently wrong only in the domain's interior, not at its edges", () => {
+    // Real observed case: "y = 3x^2 - \sin 2x" sampled as if it were
+    // "3x^2 - sin(2)*x" — a straight-line term standing in for the sine
+    // term — because the old bare-argument rule for \sin/\cos/\tan grabbed
+    // only the "2" token, leaving "x" to multiply onto the function's
+    // *result* (via the outer implicit-multiplication loop) instead of
+    // becoming part of its argument. Both readings happen to agree at
+    // x=-1, x=0, and x=1 (sin(±2)=±sin(2), sin(0)=0) — exactly the
+    // function-graph's domain endpoints and midpoint — so a spot-check
+    // sampling only those would have missed this bug entirely; the
+    // mismatch only shows up strictly inside the domain (e.g. x=0.15,
+    // where the two readings differ by about 0.16).
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-0.6, 4.4], domain: [-1, 1],
+        functions: [{ kind: "quadratic", latex: "y = 3x^2 - \\sin 2x", params: { a: 3, b: 0, c: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const fn = firstFunction(blocks)!;
+    expect(fn.kind).toBe("points");
+    const points = fn.points as [number, number][];
+    const trueF = (x: number) => 3 * x * x - Math.sin(2 * x);
+    for (const x of [-1, -0.5, -0.15, 0, 0.15, 0.5, 1]) {
+      const [, y] = nearestPoint(points, x);
+      expect(y).toBeCloseTo(trueF(x), 2);
+    }
+    // Pin down the specific interior point that a wrong sin(2)*x reading
+    // would put at a visibly different value (-0.069 instead of -0.228).
+    const [, yAtQuarter] = nearestPoint(points, 0.15);
+    expect(yAtQuarter).toBeCloseTo(-0.228, 2);
+  });
+});
+
 describe("piecewise domain restriction inferred from latex", () => {
   it("clips each half of a jump-discontinuity graph to its own \\quad (x OP N) restriction", () => {
     // Real observed case: a jump discontinuity's two half-lines (both
@@ -733,5 +843,105 @@ describe("range re-fit after a kind correction", () => {
     }]);
     const spec = blocks[0]?.spec as Record<string, unknown>;
     expect(spec.range).toEqual([-10, 10]);
+  });
+
+  it("captures a narrow near-asymptote spike a coarse 40-sample re-grid would step over", () => {
+    // Real observed case: y=1/sqrt(5x^3+2) has a vertical asymptote right
+    // at the edge of its domain, near x=-0.7368. Once corrected to
+    // "points", re-fitting the range by coarsely re-sampling the curve at
+    // just 40 evenly-spaced points across [-2,2] (spacing 0.1) stepped
+    // right over the narrow sliver between the asymptote and the nearest
+    // coarse sample at x=-0.7 — so the fitted range only ever saw y=1.87
+    // there, when the function's own densely-sampled `points` (computed at
+    // ~200+ resolution) actually reach y=5.96 at the domain's edge. The
+    // range must be built from the function's own stored points, not a
+    // coarser re-sample of it.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-2, 3], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "y = \\frac{1}{\\sqrt{5x^3 + 2}}", params: { a: 5, b: 0, c: 0, d: 2 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const range = spec.range as [number, number];
+    // The true near-asymptote peak in the sampled data is ~5.96 — the
+    // range must extend well past that, not stop around 2.4 (where the
+    // coarse-regrid bug would have capped it).
+    expect(range[1]).toBeGreaterThan(5.5);
+  });
+});
+
+describe("stale xTicks/yTicks after a genuine kind correction", () => {
+  it("replaces stale trig-template ticks with ticks proportioned to the corrected range", () => {
+    // Real observed case: y=5x^3-2\sin x\cos x got kind:"cubic" corrected
+    // (compound trig + dominant cubic, true curve spans about ±41, range
+    // grows to ±49), but its xTicks ({0, pi/2}) and yTicks ({-1,0,1}) were
+    // computed for the AI's original wrong assumption — a bounded,
+    // canonical-looking trig wave — and never got re-evaluated. They
+    // aren't literally out of range (all technically fall inside ±49), so
+    // the existing out-of-range tick filter doesn't catch them; they're
+    // just uselessly clustered near zero on an axis that now spans ±49.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-1.25, 1.25], domain: [-2, 2],
+        xTicks: [{ value: 0 }, { value: Math.PI / 2, major: true }],
+        yTicks: [{ value: -1 }, { value: 0, major: true }, { value: 1 }],
+        functions: [{ kind: "cubic", latex: "y = 5x^3 - 2\\sin x \\cos x", params: { a: 5, b: 0, c: 0, d: 0 }, points: [] }],
+        graphStyle: "trig-wave",
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const xTicks = (spec.xTicks as Array<{ value: number }>).map((t) => t.value);
+    const yTicks = (spec.yTicks as Array<{ value: number }>).map((t) => t.value);
+    // The old ticks are gone; the new ones actually span the real range.
+    expect(xTicks).not.toContain(Math.PI / 2);
+    expect(yTicks).not.toEqual([-1, 0, 1]);
+    expect(Math.max(...yTicks.map(Math.abs))).toBeGreaterThan(10);
+  });
+
+  it("does not regenerate ticks for a function that was already kind:\"points\" (routine re-verification, not a genuine correction)", () => {
+    // This is the exact regression this fix caused and then had to
+    // correct: a piecewise function already correctly using kind:"points"
+    // gets a `function-kind-corrected:*` warning on every normalization
+    // (points-kind functions are always re-verified against latex,
+    // unconditionally, by design) — that must NOT be treated as "the AI's
+    // original claim was shown wrong" the way a genuine kind:"cubic" (etc)
+    // misclassification is, or every points-kind diagram's perfectly good,
+    // already-correctly-filtered ticks get needlessly replaced.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-2.5, 2.5], domain: [-Math.PI / 2, Math.PI / 2],
+        xTicks: [
+          { value: 0, label: "0" },
+          { value: Math.PI / 2, label: "\\pi/2", major: true },
+        ],
+        functions: [
+          { kind: "points", latex: "y = \\sin x + \\sqrt{2}", domain: [0, Math.PI / 2], points: [[0, Math.SQRT2], [Math.PI / 2, 1 + Math.SQRT2]] },
+          { kind: "points", latex: "y = \\sin x - \\sqrt{2}", domain: [-Math.PI / 2, 0], points: [[-Math.PI / 2, -1 - Math.SQRT2], [0, -Math.SQRT2]] },
+        ],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const xTicks = (spec.xTicks as Array<{ value: number }>).map((t) => t.value);
+    expect(xTicks).toEqual([0, Math.PI / 2]);
+  });
+
+  it("never leaks the internal _wasReclassifiedFromClosedForm marker into the stored spec", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-5, 5], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "y = x^3", params: { a: 1, b: 0, c: 0, d: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const fn = firstFunction(blocks)!;
+    expect(fn).not.toHaveProperty("_wasReclassifiedFromClosedForm");
   });
 });

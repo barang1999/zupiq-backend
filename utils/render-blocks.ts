@@ -185,11 +185,33 @@ function normalizeLatexForRender(input: string): string {
     // Over-escaped backslashes from JSON serialization (\\frac → \frac)
     .replace(/\\{2,}([a-zA-Z])/g, "\\$1")
     // Tab and other control character artifacts from JSON deserialization:
-    .replace(/\t([a-zA-Z]+)/g, "\\t$1")
-    .replace(/\n([a-zA-Z]+)/g, "\\n$1")
-    .replace(/\r([a-zA-Z]+)/g, "\\r$1")
-    .replace(/\f([a-zA-Z]+)/g, "\\f$1")
-    .replace(/[\b]([a-zA-Z]+)/g, "\\b$1")
+    // a raw LaTeX command like "\tan" or "\nabla" that reaches a JSON parser
+    // without its backslash doubled gets its "\t"/"\n" pair misread as an
+    // actual control character (JSON's escape rules, not this codebase's
+    // choice) — losing the command name's own first letter along with the
+    // backslash, e.g. "\tan(u)" -> TAB+"an(u)", "\nabla" -> FF+"abla". These
+    // five patterns undo exactly that, by re-inserting the missing
+    // backslash+letter in front of the SPECIFIC known command suffixes this
+    // codebase's own LaTeX vocabulary can produce this way.
+    //
+    // Deliberately NOT a blanket "control-char immediately followed by any
+    // letters" repair (an earlier, broader version of this): a multi-line
+    // \begin{aligned}...\end{aligned} block routinely has a genuine,
+    // meaningless-in-LaTeX newline right before the next line's own content
+    // (e.g. "...\\\\\nb &= \lim..." — ordinary formatting, not corruption).
+    // "\n" + "b" matches "any letters" just as well as "\n" + "abla" does,
+    // so the broad version invented a bogus "\nb" command out of a
+    // completely ordinary line break — a real observed case, visibly
+    // rendering "\nb" in red (KaTeX's undefined-command styling) right
+    // before a legitimate "b = \lim_{x\to-\infty}(y-ax)" line. No real
+    // LaTeX command in this codebase's vocabulary corrupts down to just a
+    // single bare letter like "b", so restricting the match to actual
+    // known suffixes closes that gap without losing the genuine repairs.
+    .replace(/\t(an|ext|imes|o|heta)\b/g, "\\t$1")
+    .replace(/\n(eq|abla)\b/g, "\\n$1")
+    .replace(/\r(ightarrow|ho)\b/g, "\\r$1")
+    .replace(/\f(rac|orall)\b/g, "\\f$1")
+    .replace(/[\b](egin|inom|eta|matrix)\b/g, "\\b$1")
     // Keep standard replacement for specific malformed commands just in case
     .replace(/\\tfrac\b/gi, "\\frac")
     // Unicode operators → LaTeX

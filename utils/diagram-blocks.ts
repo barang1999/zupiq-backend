@@ -2213,22 +2213,45 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     }) as Array<{ points: [number, number][] }>;
     if (sampledCurveFunctions.length) {
       const evalSampledCurveAt = evalPiecewiseLinearCurveAt;
+      // Only every function in the diagram being a sampled points-curve makes
+      // "this point's x falls outside every sampled function's own range"
+      // a safe signal on its own — with a mix of kinds (e.g. a points-curve
+      // plus a quadratic), a point legitimately belonging to the *other*
+      // function at an x outside the points-curve's narrow domain would be
+      // wrongly dropped here, since it was never meant to be checked against
+      // this fn in the first place.
+      const allFunctionsAreSampledCurves = sampledCurveFunctions.length === normalizedFunctions.length;
       let droppedStaleFeaturePoint = false;
       normalizedFeaturePoints = normalizedFeaturePoints.filter((point) => {
         const item = point as Record<string, unknown>;
         const coordinates = item.point as [number, number] | undefined;
         if (!Array.isArray(coordinates)) return true;
         const [px, py] = coordinates;
+        let coveredByAnyFn = false;
         for (const fn of sampledCurveFunctions) {
           const xs = fn.points.map((p) => p[0]);
           const minX = Math.min(...xs);
           const maxX = Math.max(...xs);
           if (px < minX || px > maxX) continue;
+          coveredByAnyFn = true;
           const expectedY = evalSampledCurveAt(fn.points, px);
           if (Number.isFinite(expectedY) && Math.abs(expectedY - py) > 0.15) {
             droppedStaleFeaturePoint = true;
             return false;
           }
+        }
+        // A point whose x falls outside every sampled curve's own (non-NaN)
+        // domain isn't just unverified — the curve doesn't even exist there
+        // within the plotted window, so a marker claiming to sit on it is
+        // fabricated, not merely unchecked. Real observed case: y=√(5x-2)/x³
+        // (only defined for x≥2/5) claimed feature point (0,0) — x=0 is
+        // below the sqrt's domain floor, so the sampled curve's own x-range
+        // starts around 0.417 and never covers x=0 to check it against at
+        // all; the old "continue past an out-of-range function, then fall
+        // through to keep" logic let it survive uncorrected.
+        if (!coveredByAnyFn && allFunctionsAreSampledCurves) {
+          droppedStaleFeaturePoint = true;
+          return false;
         }
         return true;
       });

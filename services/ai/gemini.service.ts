@@ -596,6 +596,9 @@ function sanitizeSolutionText(raw: string): string {
   // Strip conversational sign-offs at the end (e.g. "សង្ឃឹមថាចម្លើយនេះ...")
   text = text.replace(/\n+\s*(?:ប្រសិនបើអ្នកមានសំណួរ|បើមានសំណួរ|បើមានចម្ងល់|សង្ឃឹមថា|រីករាយនឹងជួយ|សង្ឃឹមថាចម្លើយនេះ)[^\n]*$/gi, "").trim();
 
+  // Strip trailing horizontal rules (--- or ***) that Gemini appends after the final answer.
+  text = text.replace(/\n+\s*[-*]{3,}\s*$/, "").trim();
+
   // Strip "Diagram" description sections where the AI says it cannot draw —
   // these are redundant since the actual diagram is rendered separately.
   // Matches a bold heading containing "Diagram" or "ដ្យាក្រាម" and strips it plus everything after.
@@ -3874,6 +3877,54 @@ export function extractAnchorClaims(solutionText: string): Array<{ x: number; y:
   return anchors.slice(0, 12);
 }
 
+// A function with an oblique asymptote — the exact problem shape this whole
+// check exists for — becomes arbitrarily close to a straight line as
+// x->infinity by definition, so no finite numeric sample can reliably tell
+// "genuinely affine" apart from "curved but sampled far enough out to look
+// affine" (confirmed directly: sampling y=\sqrt{4x^2+x+5} at x=10,37,91 —
+// already large — landed within the linearity tolerance below, m≈1.997,
+// b≈0.404, close enough to the true asymptote 2x+1/4 to nearly pass as its
+// own evidence). A cheap syntactic pre-filter sidesteps the whole ambiguity:
+// a genuine "y = mx+b" claim never contains a sqrt, an exponent, or a trig/
+// log function, so anything containing one of those is rejected outright,
+// before the numeric check even runs.
+const NON_LINEAR_SIGNAL_REGEX = /\\sqrt|\^|\\sin\b|\\cos\b|\\tan\b|\\log\b|\\ln\b/;
+
+// Extracts "y = EXPR" line-equation claims — the pattern an oblique/slant-
+// asymptote solution states its answer in (e.g. "y = 2x + \frac{1}{4}"),
+// distinct from extractAnchorClaims' "f(x0) = y0" point claims. "y = EXPR"
+// also matches things that are NOT a line claim at all — most notably the
+// problem's own function definition (e.g. "y = \sqrt{4x^2+x+5}") — so a
+// candidate is only trusted once it (a) passes the syntactic pre-filter
+// above and (b) is verified to actually BE affine (mx+b): evaluated at
+// three well-separated sample x-values via the general expression engine,
+// kept only if the third point falls exactly on the line the first two
+// imply.
+export function extractLineEquationClaims(text: string): Array<{ m: number; b: number }> {
+  const claims: Array<{ m: number; b: number }> = [];
+  // Non-greedy capture up to the nearest real terminator — "$", a Khmer/
+  // Latin sentence-ending punctuation mark, or a newline. A "." is only a
+  // terminator when it's not sandwiched between digits, so a decimal
+  // constant like "0.25" survives intact rather than being cut at the dot.
+  const pattern = /y\s*=\s*([\s\S]+?)(?=\$|។|？|\n|(?<!\d)\.(?!\d)|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    const expr = match[1].trim().slice(0, 200);
+    if (!expr || NON_LINEAR_SIGNAL_REGEX.test(expr)) continue;
+    const xs = [10, 37, 91]; // arbitrary, well-separated sample points for the linearity check
+    const ys = xs.map((x) => evaluateLatexAt(expr, x));
+    if (ys.some((y) => y === null || !Number.isFinite(y))) continue;
+    const [y1, y2, y3] = ys as number[];
+    const [x1, x2, x3] = xs;
+    const m = (y2 - y1) / (x2 - x1);
+    const b = y1 - m * x1;
+    const predictedY3 = m * x3 + b;
+    if (Math.abs(predictedY3 - y3) > Math.max(0.01, Math.abs(y3) * 0.001)) continue; // not actually linear — e.g. the problem's own non-linear "y = ..." equation
+    claims.push({ m, b });
+  }
+  return claims.slice(0, 12);
+}
+
 // The one general, deterministic check that catches a diagram plotting the
 // wrong function entirely — not by understanding what the problem is about
 // (which needs the full "is this the right function" judgment call that
@@ -3889,10 +3940,25 @@ export function extractAnchorClaims(solutionText: string): Array<{ x: number; y:
 // (in diagram-blocks.ts) already trusts — this is a second, independent
 // check against the solution text specifically, which diagram-blocks.ts
 // never sees.
-export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], solutionText: string): RenderBlock[] {
+//
+// `finalAnswer` feeds the second check below (line-equation claims) too —
+// an oblique-asymptote solution typically states "y = ax+b" there even more
+// directly than in the derivation prose, and finalAnswer costs nothing
+// extra to include since every call site already has it in hand.
+export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], solutionText: string, finalAnswer?: string): RenderBlock[] {
   if (!blocks.length || !solutionText) return blocks;
   const anchors = extractAnchorClaims(solutionText);
-  if (!anchors.length) return blocks;
+  // Real observed case: an oblique-asymptote problem ("y = \sqrt{4x^2+x+5}")
+  // derives y=2x+1/4 (as x->+inf) and y=-2x-1/4 (as x->-inf), stated
+  // plainly in both solutionText and finalAnswer — but the diagram plotted
+  // y=2x and y=-2x instead, missing the ±1/4 intercept entirely. This slips
+  // past every other check in the pipeline: diagram-blocks.ts's own spot-
+  // check only verifies a function's params against *its own* claimed
+  // latex, and the AI's diagram-generation pass simply claimed the wrong
+  // latex ("y=2x") from the start — params and latex agree with each
+  // other, just not with what the solution actually derived.
+  const lineClaims = extractLineEquationClaims(`${solutionText}\n${finalAnswer ?? ""}`);
+  if (!anchors.length && !lineClaims.length) return blocks;
 
   return blocks.filter((block) => {
     if (block.type !== "diagram" || block.diagramType !== "function-graph") return true;
@@ -3900,31 +3966,60 @@ export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], soluti
     const functions = Array.isArray(spec?.functions) ? spec.functions as Array<Record<string, unknown>> : [];
     const primaryFn = functions[0];
     const latex = typeof primaryFn?.latex === "string" ? primaryFn.latex : "";
-    if (!latex) return true; // nothing to verify against — leave alone
 
-    let checkedCount = 0;
-    let mismatchCount = 0;
-    for (const anchor of anchors) {
-      const evaluated = evaluateLatexAt(latex, anchor.x);
-      if (evaluated === null) continue; // latex doesn't parse, or is undefined there — not this check's job
-      checkedCount++;
-      const tolerance = Math.max(0.05, Math.abs(anchor.y) * 0.02);
-      if (Math.abs(evaluated - anchor.y) > tolerance) mismatchCount++;
+    if (latex && anchors.length) {
+      let checkedCount = 0;
+      let mismatchCount = 0;
+      for (const anchor of anchors) {
+        const evaluated = evaluateLatexAt(latex, anchor.x);
+        if (evaluated === null) continue; // latex doesn't parse, or is undefined there — not this check's job
+        checkedCount++;
+        const tolerance = Math.max(0.05, Math.abs(anchor.y) * 0.02);
+        if (Math.abs(evaluated - anchor.y) > tolerance) mismatchCount++;
+      }
+      // A majority of checkable anchors disagreeing counts as a genuine
+      // mismatch — not "every single one" (a coincidental agreement at one
+      // point, e.g. two different cubics both passing through the origin,
+      // shouldn't save an otherwise-wrong function), but also not "any one"
+      // (a single stray disagreement — rounding in the solution text, or an
+      // anchor that turns out to be about a different function — shouldn't
+      // discard an otherwise-correct diagram).
+      if (checkedCount > 0 && mismatchCount > checkedCount / 2) {
+        logger.warn("[verifyDiagramBlocksAgainstSolution] dropped diagram — plotted function disagrees with solution's own worked numbers", {
+          latex: latex.slice(0, 80),
+          anchors: anchors.slice(0, checkedCount),
+        });
+        return false;
+      }
     }
-    // A majority of checkable anchors disagreeing counts as a genuine
-    // mismatch — not "every single one" (a coincidental agreement at one
-    // point, e.g. two different cubics both passing through the origin,
-    // shouldn't save an otherwise-wrong function), but also not "any one"
-    // (a single stray disagreement — rounding in the solution text, or an
-    // anchor that turns out to be about a different function — shouldn't
-    // discard an otherwise-correct diagram).
-    if (checkedCount > 0 && mismatchCount > checkedCount / 2) {
-      logger.warn("[verifyDiagramBlocksAgainstSolution] dropped diagram — plotted function disagrees with solution's own worked numbers", {
-        latex: latex.slice(0, 80),
-        anchors: anchors.slice(0, checkedCount),
-      });
-      return false;
+
+    // Checks every "linear"-kind function (not just functions[0] — an
+    // asymptote diagram commonly plots two, one per infinite direction)
+    // against the extracted "y = ax+b" claims. Each linear function only
+    // needs to match *some* claim, not one at a specific position — the
+    // diagram's own ordering, or an unrelated reference line alongside the
+    // asymptotes, shouldn't cause a false mismatch.
+    if (lineClaims.length) {
+      for (const fn of functions) {
+        if (fn?.kind !== "linear") continue;
+        const params = fn.params && typeof fn.params === "object" ? fn.params as Record<string, unknown> : {};
+        const m = typeof params.m === "number" ? params.m : Number.NaN;
+        const b = typeof params.b === "number" ? params.b : Number.NaN;
+        if (!Number.isFinite(m) || !Number.isFinite(b)) continue;
+        const matchesSomeClaim = lineClaims.some((claim) =>
+          Math.abs(claim.m - m) <= Math.max(0.02, Math.abs(claim.m) * 0.02)
+          && Math.abs(claim.b - b) <= Math.max(0.05, Math.abs(claim.b) * 0.05)
+        );
+        if (!matchesSomeClaim) {
+          logger.warn("[verifyDiagramBlocksAgainstSolution] dropped diagram — a plotted linear function doesn't match any line equation the solution itself derived", {
+            plotted: { m, b },
+            claims: lineClaims,
+          });
+          return false;
+        }
+      }
     }
+
     return true;
   });
 }
@@ -4683,6 +4778,7 @@ Requirements:
           return [];
         }),
         rawSolution,
+        metadata.finalAnswer,
       );
       return normalizeSolutionFirstPayload(
         {
@@ -4827,6 +4923,7 @@ Rules:
     const diagramBlocks = verifyDiagramBlocksAgainstSolution(
       extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
       primary.data.solutionText,
+      primary.data.finalAnswer,
     );
     return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
   }
@@ -4925,6 +5022,7 @@ End your response with:
           return [];
         }),
         rawSolution,
+        resolvedFinalAnswer,
       );
       const solution = normalizeSolutionFirstPayload(
         {
@@ -5075,6 +5173,7 @@ Return a single JSON object only.`;
     const diagramBlocks = verifyDiagramBlocksAgainstSolution(
       extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
       data.solutionText,
+      data.finalAnswer,
     );
     const solution = normalizeSolutionFirstPayload(
       { ...data, diagramBlocks, _usage: fallbackUsage },

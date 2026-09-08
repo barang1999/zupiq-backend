@@ -381,6 +381,54 @@ describe("stale feature points after a curve correction", () => {
     const spec = blocks[0]?.spec as Record<string, unknown>;
     expect((spec.featurePoints as unknown[]).length).toBe(2);
   });
+
+  it("drops a feature point whose x falls entirely outside the sampled curve's own domain", () => {
+    // Real observed case: y = sqrt(5x-2)/x^3 is only defined for x >= 2/5
+    // (the sqrt's domain floor) — the AI claimed feature point (0,0), but
+    // x=0 is below that floor, so the resampled curve's own points never
+    // reach x=0 at all. The old check only rejected a point whose x fell
+    // *inside* a sampled function's x-range but had the wrong y there — an
+    // x outside every sampled function's range was treated as "nothing to
+    // check against" and silently kept, even though "the curve doesn't
+    // exist there at all" is at least as strong a staleness signal as "the
+    // curve exists there but disagrees."
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-0.57, 6.29], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "y = \\frac{\\sqrt{5x-2}}{x^3}", params: { a: 0, b: 0, c: 5, d: -2 }, points: [] }],
+        featurePoints: [{ color: "primary", label: "(0, 0)", point: [0, 0] }],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    expect(spec.featurePoints).toEqual([]);
+  });
+
+  it("does not drop an out-of-range feature point when the diagram mixes a sampled curve with another kind", () => {
+    // Guard against the obvious false-positive this fix could introduce: in
+    // a diagram with more than one function where only *some* are sampled
+    // points-curves, a feature point outside the points-curve's narrow
+    // domain might genuinely belong to the *other* function instead — it
+    // was never meant to be checked against the points-curve in the first
+    // place, so it must not be dropped just because that curve doesn't
+    // reach that far. Here (0,0) is the genuine vertex of y=x^2; the second
+    // function, y=sqrt(x-1), is only defined for x>=1, so its resampled
+    // points never reach x=0 — the fix must not let that curve's narrow
+    // domain veto a point that was never meant to be checked against it.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-5, 5], domain: [-2, 2],
+        functions: [
+          { kind: "quadratic", latex: "y = x^2", params: { a: 1, b: 0, c: 0 }, points: [] },
+          { kind: "points", color: "secondary", latex: "y = \\sqrt{x-1}", params: {}, points: [] },
+        ],
+        featurePoints: [{ color: "primary", label: "(0, 0)", point: [0, 0] }],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    expect((spec.featurePoints as unknown[]).length).toBe(1);
+  });
 });
 
 describe("multi-variable bindings (a second named variable besides x)", () => {

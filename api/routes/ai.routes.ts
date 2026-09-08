@@ -466,13 +466,23 @@ async function reserveTokenBudget(userId: string): Promise<TokenBudget> {
     dailyLimit
   );
   if (dailyLimit !== null && usageBefore.used >= dailyLimit) {
+    // Usage resets on the UTC day boundary (see utcDateKey() in
+    // billing/usage-service.ts) — not the caller's local midnight — so the
+    // client can render an accurate countdown regardless of timezone.
+    const now = new Date();
+    const resetAt = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0)
+    ).toISOString();
+
     throw new BillingUsageLimitError(
-      `Daily free usage limit reached (${usageBefore.used}/${dailyLimit} tokens today).`,
+      `Daily AI usage limit reached (${usageBefore.used}/${dailyLimit} tokens today).`,
       {
         featureKey: DAILY_DEEP_DIVE_TOKEN_USAGE_FEATURE_KEY,
+        planKey: access.effectivePlanKey,
         used: usageBefore.used,
         limit: dailyLimit,
         remaining: 0,
+        resetAt,
       }
     );
   }

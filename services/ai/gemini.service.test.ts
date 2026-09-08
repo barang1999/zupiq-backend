@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it } from "vitest";
-import { checkConstantSolvingFinalAnswer, checkSolutionCompleteness, extractAnchorClaims, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { checkConstantSolvingFinalAnswer, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 
 describe("extractAnchorClaims", () => {
@@ -76,6 +76,76 @@ describe("verifyDiagramBlocksAgainstSolution", () => {
     }]);
     const verified = verifyDiagramBlocksAgainstSolution(blocks as any, "f(0) = 0, f(1) = -3, f(-1) = 3.");
     expect(verified.length).toBe(blocks.length);
+  });
+
+  // Real observed case: an oblique-asymptote problem for y=sqrt(4x^2+x+5)
+  // derives y=2x+1/4 (x->+inf) and y=-2x-1/4 (x->-inf), stated plainly in
+  // both solutionText and finalAnswer — but the diagram plotted y=2x and
+  // y=-2x, missing the +-1/4 intercept entirely. Nothing else in the
+  // pipeline catches this: diagram-blocks.ts's own spot-check only verifies
+  // a function's params against *its own* claimed latex ("y=2x" matches
+  // params {m:2,b:0} perfectly), so the mismatch is only visible against
+  // the solution's own derived line equation.
+  const asymptoteSolutionText = "រកអាស៊ីមតូតទ្រេតនៃអនុគមន៍ $y = \\sqrt{4x^2 + x + 5}$។ "
+    + "នាំឱ្យសមីការអាស៊ីមតូតទ្រេតខាង $+\\infty$ គឺ $y = 2x + \\frac{1}{4}$។ "
+    + "នាំឱ្យសមីការអាស៊ីមតូតទ្រេតខាង $-\\infty$ គឺ $y = -2x - \\frac{1}{4}$។";
+  const asymptoteFinalAnswer = "$y = 2x + \\frac{1}{4}$ ខាង $+\\infty$ និង $y = -2x - \\frac{1}{4}$ ខាង $-\\infty$";
+
+  function asymptoteDiagramBlock(params1: Record<string, number>, params2: Record<string, number>) {
+    return normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-9, 9], domain: [-4, 4],
+        functions: [
+          { kind: "linear", color: "primary", latex: `y=${params1.m}x`, params: params1, points: [] },
+          { kind: "linear", color: "red", latex: `y=${params2.m}x`, params: params2, points: [] },
+        ],
+        featurePoints: [],
+      },
+    }]);
+  }
+
+  it("drops a diagram whose plotted asymptote lines are missing the intercept the solution derived", () => {
+    const blocks = asymptoteDiagramBlock({ m: 2, b: 0 }, { m: -2, b: 0 });
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, asymptoteSolutionText, asymptoteFinalAnswer);
+    expect(verified.length).toBe(0);
+  });
+
+  it("keeps a diagram whose plotted asymptote lines match the solution's derived equations", () => {
+    const blocks = asymptoteDiagramBlock({ m: 2, b: 0.25 }, { m: -2, b: -0.25 });
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, asymptoteSolutionText, asymptoteFinalAnswer);
+    expect(verified.length).toBe(1);
+  });
+
+  it("does not misfire when finalAnswer is omitted but solutionText alone has the line claims", () => {
+    const blocks = asymptoteDiagramBlock({ m: 2, b: 0 }, { m: -2, b: 0 });
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, asymptoteSolutionText);
+    expect(verified.length).toBe(0);
+  });
+});
+
+describe("extractLineEquationClaims", () => {
+  it("extracts y=mx+b claims, evaluating \\frac constants via the general expression engine", () => {
+    expect(extractLineEquationClaims("$y = 2x + \\frac{1}{4}$ and $y = -2x - \\frac{1}{4}$")).toEqual([
+      { m: 2, b: 0.25 },
+      { m: -2, b: -0.25 },
+    ]);
+  });
+
+  it("does not mistake the function's own (non-linear) equation for a line claim", () => {
+    // y=sqrt(4x^2+x+5) is asymptotically almost indistinguishable from a
+    // straight line for large x — the syntactic pre-filter (rejecting any
+    // "y=..." containing \sqrt, an exponent, or a trig/log command) is what
+    // actually excludes it, not the numeric linearity check alone.
+    expect(extractLineEquationClaims("$y = \\sqrt{4x^2 + x + 5}$")).toEqual([]);
+  });
+
+  it("does not mistake a quadratic for a line claim", () => {
+    expect(extractLineEquationClaims("$y = x^2 + 3x + 1$")).toEqual([]);
+  });
+
+  it("returns nothing when there is no y=... pattern at all", () => {
+    expect(extractLineEquationClaims("The answer is 42.")).toEqual([]);
   });
 });
 

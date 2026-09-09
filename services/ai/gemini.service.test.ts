@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it } from "vitest";
-import { checkConstantSolvingFinalAnswer, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { checkConstantSolvingFinalAnswer, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferInequalityFeasibleRegionBlocks, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 
 describe("extractAnchorClaims", () => {
@@ -260,5 +260,38 @@ describe("checkSolutionCompleteness", () => {
   it("never throws on empty or garbage input", () => {
     expect(() => checkSolutionCompleteness("", "")).not.toThrow();
     expect(checkSolutionCompleteness("", "").ok).toBe(false);
+  });
+});
+
+describe("inferInequalityFeasibleRegionBlocks", () => {
+  it("does not fabricate a feasible-region polygon for a single-function variation problem", () => {
+    // Real observed bug: a rational-function variation problem's last sub-question asks
+    // "find a such that x + 1/x > a for all x > 0". The bare Khmer word for "inequality"
+    // (វិសមភាព), used here only to describe that single-variable inequality, tripped the
+    // feasible-region keyword gate, and the extrema/points scraped out of the solution's own
+    // text ((-1,-2), (1,2), plus stray table values) got connected into a bogus quadrilateral
+    // with nothing to do with the actual curve y = x + 1/x — see
+    // DIAGRAM_STRUCTURE_JSON_GUIDE.md and the studied case for the full story.
+    const problem = "គេឱ្យអនុគមន៍ y = x + 1/x។ កំណត់តម្លៃ a ដើម្បីឱ្យ x + 1/x > a ចំពោះគ្រប់ x > 0។";
+    const solutionText = [
+      "អតិបរមាធៀបត្រង់ (-1,-2), អប្បបរមាធៀបត្រង់ (1,2)។",
+      "យើងមានវិសមភាព x + 1/x > a ចំពោះគ្រប់ x > 0។",
+      "តម្លៃអប្បបរមានៃ f(x) គឺ f(1) = 2 ត្រង់ x = 1។",
+    ].join("\n");
+    const finalAnswer = "a < 2";
+
+    const blocks = inferInequalityFeasibleRegionBlocks(problem, solutionText, [], finalAnswer, "variation");
+    expect(blocks).toEqual([]);
+  });
+
+  it("still builds a polygon for a genuine system-of-inequalities feasible-region problem", () => {
+    const problem = "Solve the system of inequalities and shade the feasible region.";
+    const solutionText = "The feasible region is a triangle with vertices A(0,0), B(4,0), C(0,3).";
+
+    const blocks = inferInequalityFeasibleRegionBlocks(problem, solutionText, [], "", undefined);
+    expect(blocks.length).toBeGreaterThan(0);
+    const block = blocks[0];
+    expect(block.type).toBe("diagram");
+    if (block.type === "diagram") expect(block.diagramType).toBe("geometry");
   });
 });

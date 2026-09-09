@@ -3110,10 +3110,23 @@ export function inferInequalityFeasibleRegionBlocks(
   solutionText: string,
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
   finalAnswer: string = "",
+  problemIntent?: ProblemIntent,
 ): RenderBlock[] {
+  // A feasible region is a 2D area bounded by a *system* of simultaneous inequalities — never
+  // what a single-function task like graphing, evaluating, or studying one function's variation
+  // is asking for. These problemIntent values are unambiguously single-function tasks, so bail
+  // out before any keyword/coordinate scraping runs — otherwise a lone inequality inside one
+  // sub-question of a variation problem (e.g. "find a such that x + 1/x > a") gets misread as a
+  // feasible-region diagram, and the extrema/table values scraped from the solution text get
+  // connected into a bogus polygon that has nothing to do with the actual function's graph.
+  const singleFunctionIntents: ProblemIntent[] = [
+    "average-rate", "point-membership", "range", "integral", "function-value", "variation",
+  ];
+  if (problemIntent && singleFunctionIntents.includes(problemIntent)) return [];
+
   const source = normalizeDigits(`${problem}\n${solutionText}\n${finalAnswer}`);
   const wantsInequality = emptyBlocks.some((b) => b.diagramType === "geometry" || b.diagramType === "function-graph")
-    || /(feasible region|system of inequalities|វិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(source);
+    || /(feasible region|system of inequalities|ប្រព័ន្ធវិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(source);
 
   if (!wantsInequality) return [];
 
@@ -4481,8 +4494,8 @@ ${DIAGRAM_SPEC_GUIDE}`,
     if (sectorFallback.length) return sectorFallback;
   }
 
-  if (/(feasible region|system of inequalities|វិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(problem + "\n" + solutionText)) {
-    const feasibleRegionFallback = inferInequalityFeasibleRegionBlocks(problem, solutionText, normalized, finalAnswer);
+  if (/(feasible region|system of inequalities|ប្រព័ន្ធវិសមភាព|តំបន់អាចធ្វើបាន|តំបន់ដែលអាចធ្វើទៅបាន)/i.test(problem + "\n" + solutionText)) {
+    const feasibleRegionFallback = inferInequalityFeasibleRegionBlocks(problem, solutionText, normalized, finalAnswer, problemIntent);
     if (feasibleRegionFallback.length) return feasibleRegionFallback;
   }
 

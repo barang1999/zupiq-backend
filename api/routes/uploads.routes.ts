@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import path from "path";
+import fs from "fs";
 import {
   saveUpload,
   getUserUploads,
@@ -206,6 +207,16 @@ router.post(
               storageUrl,
               remoteStorage: storageUrl.startsWith("https://"),
               elapsedMs: Date.now() - fileStartedAt,
+            });
+            // Local temp file is no longer needed — Supabase holds the copy.
+            fs.unlink(localPath, (unlinkErr) => {
+              if (unlinkErr) {
+                logger.warn("[uploads] cleanup:unlink-failed", {
+                  traceId,
+                  localPath,
+                  message: unlinkErr.message,
+                });
+              }
             });
           } catch {
             storageUrl = `/uploads/${file.filename}`;

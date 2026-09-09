@@ -1,0 +1,298 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "moeys-math12-rational-functions",
+    "title": "Khmer Math Grade 12: Rational Functions (Chapter - Oblique Asymptotes)",
+    "titleKh": "គណិតវិទ្យា ថ្នាក់ទី១២ - អនុគមន៍សនិទាន",
+    "author": "ក្រសួងអប់រំ យុវជន និងកីឡា (MOEYS)",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "book",
+    "topics": [
+      "rational_functions",
+      "oblique_asymptotes",
+      "vertical_asymptotes",
+      "polynomial_division",
+      "function_analysis",
+      "derivative_sign_table",
+      "table_of_variation",
+      "curve_sketching",
+      "limits_at_infinity"
+    ],
+    "metadata": {
+      "pageCount": 4,
+      "originalFile": "image.png, image copy.png, image copy 2.png, image copy 3.png",
+      "rawExtractionFile": "image-based extraction (4 scanned pages)"
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "worked_example",
+        "formula_rule",
+        "problem_solution"
+      ],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": [
+        "យើងមានៈ",
+        "នាំអោយ",
+        "តាមរូបមន្ត",
+        "តាមទំនាក់ទំនង",
+        "ដូចនេះ",
+        "ចម្លើយ"
+      ],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "concept_explanation"
+      ],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": [
+        "មានន័យថា",
+        "លុះត្រាតែ",
+        "សម្គាល់ៈ",
+        "ឧទាហរណ៍",
+        "ដូចនេះ"
+      ],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "moeys-math12-rf-p066-c001",
+      "sourceId": "moeys-math12-rational-functions",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 66,
+      "pageEnd": 66,
+      "topic": "oblique_asymptotes_definition",
+      "topicKh": "សិក្ខាអន្តរអន័យ",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": ["khmer-concept-explanation"],
+      "text": "ផ្នែកទី ១.២ — អនុគមន៍សនិទានប្រភេទ y = (ax² + bx + c)/(px + q) មានសិក្ខាអន្តរ (oblique asymptote) ជាបន្ទាត់ y = (a/p)x + b' ដែលក្រាភបន្ទាត់នៃអនុគមន៍ចូលទៅជិតនៅពេល x → ±∞។ ដើម្បីរកសិក្ខាអន្តរ ត្រូវធ្វើការចែករំលែករួចហើយជ្រើសរើសផ្នែក x ជាសិក្ខាអន្តរ។",
+      "normalizedText": "Section 1.2 — Rational functions of the form y = (ax²+bx+c)/(px+q) have an oblique asymptote found by polynomial long division. The oblique asymptote y = mx + b is the non-remainder part of the division. The graph approaches this line as x → ±∞.",
+      "formulas": [
+        {
+          "latex": "y = \\frac{ax^2 + bx + c}{px + q}",
+          "meaning": "General form of rational function with oblique asymptote",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\lim_{x \\to \\pm\\infty} [f(x) - (mx + b)] = 0",
+          "meaning": "Condition for y = mx + b to be an oblique asymptote",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "oblique asymptote", "សិក្ខាអន្តរ", "rational function", "អនុគមន៍សនិទាន",
+        "polynomial division", "ការចែករំលែក", "asymptote", "limit at infinity"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-rf-p066-c002",
+      "sourceId": "moeys-math12-rational-functions",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 66,
+      "pageEnd": 69,
+      "topic": "rational_function_full_analysis",
+      "topicKh": "ការសិក្សាពេញលេញនៃអនុគមន៍សនិទាន",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ឧទាហរណ៍ ១៖ ចូរសិក្សា និងគូរក្រាភនៃអនុគមន៍ f(x) = (x² - 5x + 7)/(x - 2)។ ដែន D = ℝ \\ {2}។ ការចែករំលែក: f(x) = x - 3 + 1/(x-2)។ សិក្ខាឈរ: x = 2។ សិក្ខាអន្តរ: y = x - 3។ អាំងតេរ៉ាល់: f'(x) = 1 - 1/(x-2)² = (x²-4x+3)/(x-2)²។ f'(x) = 0 នៅ x = 1 និង x = 3។ f(1) = -3 (អតិបរមាក្នុងតំបន់) f(3) = 1 (អប្បបរមាក្នុងតំបន់)។",
+      "normalizedText": "Example 1: Full study of f(x) = (x²-5x+7)/(x-2). Find domain, asymptotes (vertical x=2, oblique y=x-3 via polynomial division), derivative f'(x)=(x²-4x+3)/(x-2)², critical points at x=1 (local max f=-3) and x=3 (local min f=1), table of variation, and sketch the curve.",
+      "problem": {
+        "textKh": "ចូរដាក់ដែន ស្វែងរកសិក្ខា គណនាដេរីវេ រៀបចំតារាងប្រែប្រួល និងគូរក្រាភនៃអនុគមន៍ f(x) = (x² - 5x + 7)/(x - 2)",
+        "text": "Study and sketch the graph of the rational function f(x) = (x² - 5x + 7)/(x - 2): find domain, asymptotes, derivative, table of variation, local extrema.",
+        "latex": "f(x) = \\frac{x^2 - 5x + 7}{x - 2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដែន: D = ℝ \\ {2} ព្រោះ x - 2 = 0 នៅ x = 2",
+          "text": "Domain: D = ℝ \\ {2} since denominator is zero at x = 2",
+          "latex": "D = \\mathbb{R} \\setminus \\{2\\}",
+          "explanationKh": "x - 2 = 0 ⟹ x = 2 ត្រូវដកចេញពីដែន",
+          "explanation": "Exclude x = 2 where the denominator vanishes"
+        },
+        {
+          "textKh": "ចែករំលែកដើម្បីរកសិក្ខាអន្តរ: f(x) = x - 3 + 1/(x-2)",
+          "text": "Polynomial long division to isolate the oblique asymptote: f(x) = x - 3 + 1/(x-2)",
+          "latex": "f(x) = \\frac{x^2 - 5x + 7}{x - 2} = x - 3 + \\frac{1}{x - 2}",
+          "explanationKh": "ការចែករំលែក: x²-5x+7 ÷ (x-2) = x-3 សល់ 1",
+          "explanation": "Long division: x²-5x+7 = (x-2)(x-3) + 1, so remainder is 1"
+        },
+        {
+          "textKh": "សិក្ខាឈរ: x = 2 (ព្រោះ f(x) → ±∞ នៅ x → 2)",
+          "text": "Vertical asymptote at x = 2",
+          "latex": "\\lim_{x \\to 2^-} f(x) = -\\infty, \\quad \\lim_{x \\to 2^+} f(x) = +\\infty",
+          "explanationKh": "នៅ x → 2⁻: 1/(x-2) → -∞; នៅ x → 2⁺: 1/(x-2) → +∞",
+          "explanation": "As x approaches 2 from left, f → -∞; from right, f → +∞"
+        },
+        {
+          "textKh": "សិក្ខាអន្តរ: y = x - 3 ព្រោះ lim[f(x)-(x-3)] = lim 1/(x-2) = 0",
+          "text": "Oblique asymptote: y = x - 3, since f(x) - (x-3) = 1/(x-2) → 0 as x → ±∞",
+          "latex": "\\lim_{x \\to \\pm\\infty} [f(x) - (x - 3)] = \\lim_{x \\to \\pm\\infty} \\frac{1}{x-2} = 0",
+          "explanationKh": "ផ្នែក 1/(x-2) ចូលទៅ 0 នៅ x → ±∞ ដូច្នេះ y = x-3 ជាសិក្ខាអន្តរ",
+          "explanation": "The remainder term 1/(x-2) vanishes at infinity, confirming y = x-3 as the oblique asymptote"
+        },
+        {
+          "textKh": "ដេរីវេ: f'(x) = 1 - 1/(x-2)² = (x²-4x+3)/(x-2)²",
+          "text": "Derivative: f'(x) = 1 - 1/(x-2)² = (x²-4x+3)/(x-2)²",
+          "latex": "f'(x) = 1 - \\frac{1}{(x-2)^2} = \\frac{(x-2)^2 - 1}{(x-2)^2} = \\frac{x^2 - 4x + 3}{(x-2)^2}",
+          "explanationKh": "ដេរីវេនៃ 1/(x-2) = -1/(x-2)² ដូច្នេះ f'(x) = 1 - 1/(x-2)²",
+          "explanation": "Derivative of 1/(x-2) is -1/(x-2)², combined with derivative of (x-3) which is 1"
+        },
+        {
+          "textKh": "f'(x) = 0: x²-4x+3 = 0 ⟹ x = 1 ឬ x = 3",
+          "text": "Critical points: f'(x) = 0 when x²-4x+3 = 0, giving x = 1 and x = 3",
+          "latex": "x^2 - 4x + 3 = 0 \\implies (x-1)(x-3) = 0 \\implies x = 1 \\text{ or } x = 3",
+          "explanationKh": "ដំណោះស្រាយ: x = [4 ± √(16-12)]/2 = [4 ± 2]/2 = 1 ឬ 3",
+          "explanation": "Factor or use quadratic formula: discriminant = 16-12 = 4, roots at x=1 and x=3"
+        },
+        {
+          "textKh": "តម្លៃ: f(1) = (1-5+7)/(1-2) = 3/(-1) = -3 (អតិបរមា), f(3) = (9-15+7)/(3-2) = 1/1 = 1 (អប្បបរមា)",
+          "text": "Function values at critical points: f(1) = -3 (local maximum), f(3) = 1 (local minimum)",
+          "latex": "f(1) = \\frac{1 - 5 + 7}{1 - 2} = \\frac{3}{-1} = -3 \\qquad f(3) = \\frac{9 - 15 + 7}{3 - 2} = \\frac{1}{1} = 1",
+          "explanationKh": "f'(x) > 0 លើ (-∞,1) ∪ (3,+∞), f'(x) < 0 លើ (1,2) ∪ (2,3)",
+          "explanation": "f' > 0 on (-∞,1)∪(3,+∞) → increasing; f' < 0 on (1,2)∪(2,3) → decreasing; so x=1 is local max and x=3 is local min"
+        },
+        {
+          "textKh": "ក្រាភ: ប្រព័ន្ធសិក្ខាពីរ x=2 (ឈរ) និង y=x-3 (អន្តរ)។ ក្រាភកើនឡើងលើ (-∞,1), ចុះលើ (1,2)∪(2,3), កើនឡើងលើ (3,+∞)។",
+          "text": "Graph: two asymptotes x=2 (vertical) and y=x-3 (oblique). Curve increases on (-∞,1), decreases on (1,2)∪(2,3), increases on (3,+∞). Local max at (1,-3), local min at (3,1).",
+          "latex": "\\text{Asymptotes: } x = 2 \\text{ (vertical)}, \\quad y = x - 3 \\text{ (oblique)}",
+          "explanationKh": "ក្រាភស្ថិតនៅលើ y=x-3 នៅ x>2 ព្រោះ 1/(x-2)>0 និងនៅក្រោម y=x-3 នៅ x<2",
+          "explanation": "Graph is above oblique asymptote for x>2 (since 1/(x-2)>0) and below for x<2 (since 1/(x-2)<0)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចនេះ អនុគមន៍ f(x) = (x²-5x+7)/(x-2) មានសិក្ខាឈរ x=2, សិក្ខាអន្តរ y=x-3, អតិបរមាក្នុងតំបន់នៅ (1,-3) និងអប្បបរមាក្នុងតំបន់នៅ (3,1)។",
+        "text": "f(x) = (x²-5x+7)/(x-2) has vertical asymptote x=2, oblique asymptote y=x-3, local maximum at (1,-3), local minimum at (3,1).",
+        "latex": "\\begin{cases} \\text{Vertical asymptote: } x = 2 \\\\ \\text{Oblique asymptote: } y = x - 3 \\\\ \\text{Local max: } (1,\\,-3) \\\\ \\text{Local min: } (3,\\,1) \\end{cases}"
+      },
+      "formulas": [
+        {
+          "latex": "f(x) = \\frac{x^2 - 5x + 7}{x - 2} = x - 3 + \\frac{1}{x-2}",
+          "meaning": "Polynomial division — key step to identify oblique asymptote",
+          "confidence": 0.99
+        },
+        {
+          "latex": "f'(x) = \\frac{x^2 - 4x + 3}{(x-2)^2} = \\frac{(x-1)(x-3)}{(x-2)^2}",
+          "meaning": "Derivative used to find monotonicity and critical points",
+          "confidence": 0.99
+        },
+        {
+          "latex": "f(1) = -3, \\quad f(3) = 1",
+          "meaning": "Values at critical points (local max and local min)",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": [
+        "oblique asymptote", "vertical asymptote", "polynomial division", "critical points",
+        "local maximum", "local minimum", "table of variation", "curve sketching",
+        "សិក្ខាអន្តរ", "សិក្ខាឈរ", "ការចែករំលែក", "អតិបរមា", "អប្បបរមា",
+        "rational function", "អនុគមន៍សនិទាន", "derivative", "ដេរីវេ"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-rf-p066-c003",
+      "sourceId": "moeys-math12-rational-functions",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 66,
+      "pageEnd": 69,
+      "topic": "oblique_asymptote_relative_position",
+      "topicKh": "ទីតាំងក្រាភធៀបនឹងសិក្ខាអន្តរ",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": ["khmer-concept-explanation"],
+      "text": "ក្រាភស្ថិតនៅលើ ឬក្រោម សិក្ខាអន្តរ អាស្រ័យលើសញ្ញានៃផ្នែកដែលនៅសល់ (remainder)។ សម្រាប់ f(x) = x-3 + 1/(x-2): នៅ x>2, 1/(x-2)>0 ដូច្នេះ f(x)>x-3 (ក្រាភនៅលើសិក្ខាអន្តរ)។ នៅ x<2, 1/(x-2)<0 ដូច្នេះ f(x)<x-3 (ក្រាភនៅក្រោមសិក្ខាអន្តរ)។",
+      "normalizedText": "The graph of a rational function lies above or below its oblique asymptote depending on the sign of the remainder term. For f(x) = x-3 + 1/(x-2): above y=x-3 when x>2 (remainder positive), below y=x-3 when x<2 (remainder negative). This determines which side of the asymptote the curve approaches from.",
+      "formulas": [
+        {
+          "latex": "f(x) - (x-3) = \\frac{1}{x-2} \\begin{cases} > 0 & x > 2 \\\\ < 0 & x < 2 \\end{cases}",
+          "meaning": "Sign of remainder determines position relative to oblique asymptote",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "relative position", "ទីតាំងក្រាភ", "oblique asymptote", "remainder sign",
+        "above asymptote", "below asymptote", "curve behavior", "អនុគមន៍សនិទាន"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,1218 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-chapter1-baseline",
+    "title": "Grade 12 Math Chapter 1: Limits of Sequences",
+    "titleKh": "គណិតវិទ្យា ថ្នាក់ទី១២ ជំពូក១: លីមីតនៃស្វ៊ីត",
+    "author": "Kim Sokun (គឹម សុគន្ធ)",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "book",
+    "topics": [
+      "sequence_limits",
+      "limit_of_sequence",
+      "sequence_convergence",
+      "sequence_divergence",
+      "squeeze_theorem",
+      "limit_rules",
+      "limit_rationalisation",
+      "limit_ratio_test",
+      "recursive_sequence_limit",
+      "geometric_series",
+      "convergent_series",
+      "divergent_series",
+      "telescoping_series",
+      "infinite_series_sum",
+      "riemann_sum",
+      "area_under_curve",
+      "product_limit",
+      "limit_by_cases"
+    ],
+    "metadata": {
+      "pageCount": 22,
+      "originalFile": "math_12_v1.pdf",
+      "conversionMethod": "without_skill",
+      "conversionNote": "Baseline conversion — manual schema extraction without pdf-to-reference skill"
+    },
+    "quality": {
+      "textExtraction": "medium",
+      "formulaExtraction": "partial",
+      "reviewStatus": "baseline_no_skill",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "worked_example",
+        "formula_rule",
+        "problem_solution"
+      ],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": [
+        "យើងមានៈ",
+        "នាំអោយ",
+        "តាមរូបមន្ត",
+        "តាមទំនាក់ទំនង",
+        "ដូចនេះ",
+        "ចម្លើយ"
+      ],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "concept_explanation"
+      ],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": [
+        "មានន័យថា",
+        "លុះត្រាតែ",
+        "សម្គាល់ៈ",
+        "ឧទាហរណ៍",
+        "ដូចនេះ"
+      ],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-baseline-p001-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 1,
+      "topic": "sequence_convergence_concept",
+      "topicKh": "គំនិតស្វ៊ីតរួម និងស្វ៊ីតរីក",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": ["khmer-concept-explanation"],
+      "text": "ស្វ៊ីតរួម (convergent sequence): ស្វ៊ីត (uₙ) ជាស្វ៊ីតរួម បើ lim uₙ = L ជាចំនួនពិតកំណត់ ។\nស្វ៊ីតរីក (divergent sequence): ស្វ៊ីត (uₙ) ជាស្វ៊ីតរីក បើ lim uₙ = ±∞ ឬ lim uₙ មិនមាន ។\n\nបច្ចេកទេសសំខាន់:\n1. ចែក numerator-denominator ដោយ n^k (k = ថ្នាក់ខ្ពស់)\n2. ប្រើ squeeze theorem ចំពោះ sin, cos (ដែលជាចំនួនទាល់)\n3. ប្រើ lim qⁿ = 0 (|q|<1), lim qⁿ = ∞ (q>1)",
+      "normalizedText": "A sequence converges if its limit is a finite real number L. It diverges if the limit is ±∞ or does not exist. Key techniques: (1) divide numerator and denominator by highest power of n, (2) squeeze theorem for bounded trig functions sin and cos, (3) use geometric limit lim q^n = 0 for |q|<1.",
+      "formulas": [
+        {
+          "latex": "\\lim_{n\\to\\infty}u_n=L\\in\\mathbb{R}",
+          "meaning": "ស្វ៊ីតរួម — limit equals a finite real number",
+          "confidence": 0.98
+        },
+        {
+          "latex": "-1\\le\\sin n\\le 1\\implies\\left|\\frac{\\sin n}{n}\\right|\\le\\frac{1}{n}\\to 0",
+          "meaning": "Squeeze theorem ចំពោះ sin/n",
+          "confidence": 0.97
+        },
+        {
+          "latex": "|q|<1\\implies\\lim_{n\\to\\infty}q^n=0",
+          "meaning": "lim qⁿ ចំពោះ |q| < 1",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតរួម", "ស្វ៊ីតរីក", "convergent", "divergent", "squeeze_theorem",
+        "limit_techniques", "sin", "cos", "q^n"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p001-c002",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 2,
+      "topic": "sequence_convergence_divergence",
+      "topicKh": "ស្វ៊ីតរួម និងស្វ៊ីតរីក — លំហាត់ទី១ (ក, ខ, គ)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១: តើស្វ៊ីត (uₙ) ខាងក្រោមជាស្វ៊ីតរួម ឬរីក?\n\nក. uₙ = 3n² + 5n + 1 — យើងគណនា lim uₙ = lim(3n² + 5n + 1) = +∞ ដូចនេះ (uₙ) ជាស្វ៊ីតរីក។\n\nខ. uₙ = (n² + n)/(2n² + 5) — ចែកភាគយក និងភាគបែងដោយ n²: lim uₙ = lim[(1 + 1/n)/(2 + 5/n²)] = 1/2 ។ ដូចនេះ (uₙ) ជាស្វ៊ីតរួម។\n\nគ. uₙ = sin(2n)/(5n) — ដោយ −1 ≤ sin(2n) ≤ 1 នាំឱ្យ −1/(5n) ≤ uₙ ≤ 1/(5n) ។ ដោយ lim(±1/5n) = 0 ដូចនេះ lim uₙ = 0 ។ (uₙ) ជាស្វ៊ីតរួម។",
+      "normalizedText": "Exercise 1 parts a, b, c: Determine if sequences converge or diverge. (a) uₙ = 3n²+5n+1 diverges to +∞. (b) uₙ = (n²+n)/(2n²+5) converges to 1/2 by dividing by n². (c) uₙ = sin(2n)/(5n) converges to 0 by the squeeze theorem since |sin(2n)| ≤ 1.",
+      "problem": {
+        "textKh": "តើស្វ៊ីត (uₙ) ខាងក្រោមជាស្វ៊ីតរួម ឬរីក? ក. uₙ = 3n² + 5n + 1, ខ. uₙ = (n² + n)/(2n² + 5), គ. uₙ = sin(2n)/(5n)",
+        "text": "Are the following sequences convergent or divergent? (a) uₙ = 3n²+5n+1, (b) uₙ = (n²+n)/(2n²+5), (c) uₙ = sin(2n)/(5n)",
+        "latex": "u_n=3n^2+5n+1,\\quad u_n=\\frac{n^2+n}{2n^2+5},\\quad u_n=\\frac{\\sin 2n}{5n}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. lim(3n² + 5n + 1) = +∞ ដូចនេះ (uₙ) ជាស្វ៊ីតរីក",
+          "text": "For (a): polynomial with positive leading coefficient grows without bound.",
+          "latex": "\\lim_{n\\to\\infty}(3n^2+5n+1)=+\\infty",
+          "explanation": "Polynomial with positive leading coefficient diverges to +∞."
+        },
+        {
+          "textKh": "ខ. ចែកភាគយក និងភាគបែងដោយ n²",
+          "text": "For (b): divide numerator and denominator by n² (highest power).",
+          "latex": "\\lim_{n\\to\\infty}\\frac{n^2+n}{2n^2+5}=\\lim_{n\\to\\infty}\\frac{1+\\frac{1}{n}}{2+\\frac{5}{n^2}}=\\frac{1}{2}",
+          "explanation": "After dividing by n², the extra terms vanish giving limit 1/2."
+        },
+        {
+          "textKh": "គ. ប្រើគម្លាតចំពោះ sin(2n): −1/(5n) ≤ sin(2n)/(5n) ≤ 1/(5n) ហើយ lim(1/(5n)) = 0",
+          "text": "For (c): squeeze theorem — |sin(2n)| ≤ 1 gives |uₙ| ≤ 1/(5n) → 0.",
+          "latex": "-\\frac{1}{5n}\\le\\frac{\\sin 2n}{5n}\\le\\frac{1}{5n},\\quad\\lim_{n\\to\\infty}\\frac{\\sin 2n}{5n}=0",
+          "explanation": "Sine is bounded so the oscillation gets squeezed to zero."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. ស្វ៊ីតរីក, ខ. ស្វ៊ីតរួម (លីមីត = 1/2), គ. ស្វ៊ីតរួម (លីមីត = 0)",
+        "text": "a. divergent, b. convergent (limit = 1/2), c. convergent (limit = 0)",
+        "latex": "\\lim u_n=+\\infty,\\quad\\lim u_n=\\tfrac{1}{2},\\quad\\lim u_n=0"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{n\\to\\infty}\\frac{n^2+n}{2n^2+5}=\\frac{1}{2}",
+          "meaning": "ចែកភាគយក-ភាគបែងដោយថ្នាក់ខ្ពស់បំផុត",
+          "confidence": 0.97
+        },
+        {
+          "latex": "-\\frac{1}{5n}\\le\\frac{\\sin 2n}{5n}\\le\\frac{1}{5n}",
+          "meaning": "Squeeze theorem ចំពោះ sin",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតរួម", "ស្វ៊ីតរីក", "លីមីត", "squeeze theorem", "convergent", "divergent",
+        "limit", "sin", "ចែកដោយ n²"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p002-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 2,
+      "topic": "sequence_convergence_divergence",
+      "topicKh": "ស្វ៊ីតរួម និងស្វ៊ីតរីក — លំហាត់ទី១ (ឃ, ង, ច)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១ (ឃ, ង, ច):\n\nឃ. uₙ = 2n/(n³) + 3n³/(n²+5) ។ lim uₙ = lim(2/n²) + lim(3n/(1+5/n²)) = 0 + ∞ = +∞ ។ ស្វ៊ីតរីក។\n\nង. uₙ = n·sin(n)/(n²+1) ។ ដោយ −1 ≤ sin(n) ≤ 1 នាំឱ្យ −1/(n+1/n) ≤ uₙ ≤ 1/(n+1/n) → 0 ។ ស្វ៊ីតរួម លីមីត = 0 ។\n\nច. uₙ = 2 + 3/n + 4/n² ។ lim uₙ = 2 + 0 + 0 = 2 ។ ស្វ៊ីតរួម។",
+      "normalizedText": "Exercise 1 parts d, e, f: (d) diverges to +∞ (second term grows). (e) uₙ = n·sin(n)/(n²+1) converges to 0 by squeeze theorem. (f) uₙ = 2 + 3/n + 4/n² converges to 2.",
+      "problem": {
+        "textKh": "ឃ. uₙ = 2n/n³ + 3n³/(n²+5), ង. uₙ = n·sin(n)/(n²+1), ច. uₙ = 2 + 3/n + 4/n²",
+        "text": "d. uₙ = 2n/n³ + 3n³/(n²+5), e. uₙ = n·sin(n)/(n²+1), f. uₙ = 2 + 3/n + 4/n²",
+        "latex": "u_n=\\frac{2n}{n^3}+\\frac{3n^3}{n^2+5},\\quad u_n=\\frac{n\\sin n}{n^2+1},\\quad u_n=2+\\frac{3}{n}+\\frac{4}{n^2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ឃ. lim(2n/n³) + lim(3n³/(n²+5)) = 0 + ∞ = +∞ — ស្វ៊ីតរីក",
+          "text": "For (d): the second term 3n grows without bound.",
+          "latex": "\\lim_{n\\to\\infty}\\frac{3n^3}{n^2+5}=\\lim_{n\\to\\infty}\\frac{3n}{1+5/n^2}=+\\infty",
+          "explanation": "The dominant term is 3n which diverges."
+        },
+        {
+          "textKh": "ង. |uₙ| = |sin(n)|/(n+1/n) ≤ 1/n → 0 — squeeze theorem",
+          "text": "For (e): squeeze theorem using |sin n| ≤ 1.",
+          "latex": "\\left|\\frac{n\\sin n}{n^2+1}\\right|=\\frac{|\\sin n|}{n+1/n}\\le\\frac{1}{n}\\to 0",
+          "explanation": "Bounded numerator over growing denominator gives limit 0."
+        },
+        {
+          "textKh": "ច. lim(2 + 3/n + 4/n²) = 2",
+          "text": "For (f): terms with 1/n and 1/n² vanish.",
+          "latex": "\\lim_{n\\to\\infty}\\left(2+\\frac{3}{n}+\\frac{4}{n^2}\\right)=2",
+          "explanation": "Constants dominate as extra terms go to zero."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ឃ. ស្វ៊ីតរីក, ង. ស្វ៊ីតរួម (លីមីត = 0), ច. ស្វ៊ីតរួម (លីមីត = 2)",
+        "text": "d. divergent, e. convergent (limit = 0), f. convergent (limit = 2)",
+        "latex": "\\lim u_n=+\\infty,\\quad\\lim u_n=0,\\quad\\lim u_n=2"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{n\\to\\infty}\\frac{n\\sin n}{n^2+1}=0",
+          "meaning": "Squeeze theorem: sin bounded, denominator grows",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "ស្វ៊ីតរួម", "ស្វ៊ីតរីក", "squeeze theorem", "sin", "convergent", "divergent", "limit"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p002-c002",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 4,
+      "topic": "limit_calculation_rational",
+      "topicKh": "គណនាលីមីតស្វ៊ីត — លំហាត់ទី២ (ក, ខ, គ, ឃ)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី២: គណនាលីមីតស្វ៊ីតខាងក្រោម:\n\nក. lim (n²+3n+1)/(8n²+n+1) — ចែកដោយ n²: = (1 + 3/n + 1/n²)/(8 + 1/n + 1/n²) → 1/8\n\nខ. lim (5n³+n²+n)/(n²+n+1) — ចែកដោយ n²: = (5n + 1 + 1/n)/(1 + 1/n + 1/n²) → +∞\n\nគ. lim (n² + cos²(n)) — ≈ lim n²(1 + cos²n/n²) = +∞\n\nឃ. lim (n²+sin n)/(5n²+cos(πn)) — ដោយ lim(sin n/n²)=0 និង lim(cos(πn)/n²)=0 ហើយ lim = (1+0)/(5+0) = 1/5",
+      "normalizedText": "Exercise 2: Compute sequence limits. (a) (n²+3n+1)/(8n²+n+1) → 1/8 by dividing by n². (b) (5n³+n²+n)/(n²+n+1) → +∞ (degree numerator > denominator). (c) n²+cos²n → +∞. (d) (n²+sin n)/(5n²+cos(πn)) → 1/5 since trig terms are negligible.",
+      "problem": {
+        "textKh": "គណនាលីមីតនៃស្វ៊ីតខាងក្រោម: ក. lim(n²+3n+1)/(8n²+n+1), ខ. lim(5n³+n²+n)/(n²+n+1), ឃ. lim(n²+sin n)/(5n²+cos πn)",
+        "text": "Compute: (a) lim(n²+3n+1)/(8n²+n+1), (b) lim(5n³+n²+n)/(n²+n+1), (d) lim(n²+sin n)/(5n²+cos πn)",
+        "latex": "\\lim\\frac{n^2+3n+1}{8n^2+n+1},\\quad\\lim\\frac{5n^3+n^2+n}{n^2+n+1},\\quad\\lim\\frac{n^2+\\sin n}{5n^2+\\cos(\\pi n)}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. ចែកភាគយក-ភាគបែងដោយ n² (ថ្នាក់ខ្ពស់បំផុត)",
+          "text": "Divide numerator and denominator by n².",
+          "latex": "\\lim_{n\\to\\infty}\\frac{n^2+3n+1}{8n^2+n+1}=\\lim_{n\\to\\infty}\\frac{1+\\frac{3}{n}+\\frac{1}{n^2}}{8+\\frac{1}{n}+\\frac{1}{n^2}}=\\frac{1}{8}",
+          "explanation": "Same degree polynomial fraction: ratio of leading coefficients."
+        },
+        {
+          "textKh": "ខ. ថ្នាក់ភាគយកខ្ពស់ជាងភាគបែង ដូចនេះ lim = +∞",
+          "text": "Degree of numerator (3) > degree of denominator (2), so limit is +∞.",
+          "latex": "\\lim_{n\\to\\infty}\\frac{5n^3+n^2+n}{n^2+n+1}=\\lim_{n\\to\\infty}\\frac{5n+1+1/n}{1+1/n+1/n^2}=+\\infty",
+          "explanation": "Numerator grows faster than denominator."
+        },
+        {
+          "textKh": "ឃ. lim(sin n/n²) = 0 និង lim(cos(πn)/n²) = 0 ដោយ |sin|, |cos| ≤ 1",
+          "text": "The oscillating sin and cos terms are negligible compared to n².",
+          "latex": "\\lim_{n\\to\\infty}\\frac{n^2+\\sin n}{5n^2+\\cos(\\pi n)}=\\frac{1+0}{5+0}=\\frac{1}{5}",
+          "explanation": "Bounded trig over n² → 0, so limit equals ratio of n² coefficients."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. 1/8, ខ. +∞, ឃ. 1/5",
+        "text": "a. 1/8, b. +∞, d. 1/5",
+        "latex": "\\frac{1}{8},\\quad+\\infty,\\quad\\frac{1}{5}"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{n\\to\\infty}\\frac{an^k+\\cdots}{bn^k+\\cdots}=\\frac{a}{b}",
+          "meaning": "លីមីតនៃប្រភាគពហុបទដូចថ្នាក់ = ផ្នែកលេខថ្នាក់ខ្ពស់",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\lim_{n\\to\\infty}\\frac{\\sin n}{n^2}=0",
+          "meaning": "sin bounded, n² grows — squeeze to zero",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "លីមីត", "ស្វ៊ីត", "ចែកដោយ n²", "sin", "cos", "limit_calculation",
+        "rational_sequence", "squeeze_theorem", "oscillating"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p003-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 3,
+      "pageEnd": 4,
+      "topic": "limit_calculation_divergent",
+      "topicKh": "គណនាលីមីតស្វ៊ីត — លំហាត់ទី២ (ង, ច)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី២ (ង, ច):\n\nង. lim (n² + cos²(n)) = lim n²(1 + cos²n/n²) ។ ដោយ lim n² = +∞ និង lim(cos²n/n²) = 0 ដូចនេះ lim(n²+cos²n) = +∞ ។ ស្វ៊ីតរីក។\n\nច. lim (∛(5n³) − ∛(n³+1)) = lim n(∛5 − ∛(1+1/n³)) ≈ lim n(∛5 − 1) = +∞ ដោយ ∛5 > 1 ។",
+      "normalizedText": "Exercise 2 parts e and f: (e) lim(n²+cos²n) = +∞ since n² dominates and cos²n/n²→0. (f) lim(∛(5n³)−∛(n³+1)) = +∞ since ∛5 > 1 and factor n grows.",
+      "problem": {
+        "textKh": "ង. lim(n² + cos²n), ច. lim(∛(5n³) − ∛(n³+1))",
+        "text": "e. lim(n² + cos²n), f. lim(cube_root(5n³) - cube_root(n³+1))",
+        "latex": "\\lim_{n\\to\\infty}(n^2+\\cos^2 n),\\quad\\lim_{n\\to\\infty}\\left(\\sqrt[3]{5n^3}-\\sqrt[3]{n^3+1}\\right)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ង. lim n²(1 + cos²n/n²) = +∞·1 = +∞",
+          "text": "Factor out n²; the trig part vanishes.",
+          "latex": "\\lim_{n\\to\\infty}(n^2+\\cos^2 n)=\\lim_{n\\to\\infty}n^2\\!\\left(1+\\frac{\\cos^2 n}{n^2}\\right)=+\\infty",
+          "explanation": "cos²n is bounded so n² dominates."
+        },
+        {
+          "textKh": "ច. ∛(5n³) = n∛5 ហើយ ∛(n³+1) ≈ n ដូចនេះ lim = n(∛5−1) → +∞",
+          "text": "Cube-root of 5n³ is n·∛5 which exceeds n, so the difference grows.",
+          "latex": "\\lim_{n\\to\\infty}\\left(\\sqrt[3]{5n^3}-\\sqrt[3]{n^3+1}\\right)=\\lim_{n\\to\\infty}n\\left(\\sqrt[3]{5}-\\sqrt[3]{1+\\frac{1}{n^3}}\\right)=+\\infty",
+          "explanation": "∛5 > 1 so the sequence grows without bound."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ង. +∞ (ស្វ៊ីតរីក), ច. +∞ (ស្វ៊ីតរីក)",
+        "text": "e. +∞ (diverges), f. +∞ (diverges)",
+        "latex": "+\\infty"
+      },
+      "formulas": [
+        {
+          "latex": "\\sqrt[3]{5n^3}=n\\sqrt[3]{5}",
+          "meaning": "សម្រួលឬសបីថ្នាក់ n³",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "លីមីត", "cos", "ឬស", "cube root", "divergent", "sequence_divergence"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p004-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 4,
+      "pageEnd": 5,
+      "topic": "limit_rationalisation",
+      "topicKh": "គណនាលីមីតដោយស្គ្រប — លំហាត់ទី៣",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៣: គណនាលីមីតស្វ៊ីតខាងក្រោម:\n\nក. lim(√(n+1) − √n) ។ គុណលើ-ក្រោមដោយ (√(n+1)+√n): = 1/(√(n+1)+√n) → 0 ។\n\nខ. lim n(∛(n³+n) − n) = lim n·n(∛(1+1/n²)−1) ≈ lim n·n·(1/(3n²)) = 1/3 ... ≈ 3/2 ។\n\nគ. lim n(√(n²+1) − n) = lim n·1/(√(n²+1)+n) = lim n/(√(n²+1)+n) → 1/2 ។\n\nឃ. lim n!/(n+1)! · (2/n)^(n³) = lim 1/(n+1)·(2/n)^(n³) → 0 ។",
+      "normalizedText": "Exercise 3: Rationalisation limits. (a) lim(√(n+1)−√n) = 0 by multiplying by conjugate. (b) lim n(∛(n³+n)−n) = 3/2. (c) lim n(√(n²+1)−n) = 1/2. (d) lim n!/(n+1)!·(2/n)^n³ = 0.",
+      "problem": {
+        "textKh": "ក. lim(√(n+1)−√n), ខ. lim n(∛(n³+n)−n), គ. lim n(√(n²+1)−n), ឃ. lim n!/(n+1)!·(2/n)^n³",
+        "text": "a. lim(sqrt(n+1)-sqrt(n)), b. lim n(cbrt(n³+n)-n), c. lim n(sqrt(n²+1)-n)",
+        "latex": "\\lim(\\sqrt{n+1}-\\sqrt{n}),\\quad\\lim n(\\sqrt[3]{n^3+n}-n),\\quad\\lim n(\\sqrt{n^2+1}-n)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. គុណជាមួយ (√(n+1)+√n)/(√(n+1)+√n) = 1/(√(n+1)+√n) → 0",
+          "text": "Rationalise by multiplying by the conjugate.",
+          "latex": "\\sqrt{n+1}-\\sqrt{n}=\\frac{1}{\\sqrt{n+1}+\\sqrt{n}}\\to 0",
+          "explanation": "Numerator stays 1, denominator grows as ~2√n."
+        },
+        {
+          "textKh": "គ. n(√(n²+1)−n) = n·1/(√(n²+1)+n) = n/(√(n²+1)+n) → 1/2",
+          "text": "Multiply and divide by conjugate, then simplify.",
+          "latex": "n(\\sqrt{n^2+1}-n)=\\frac{n}{\\sqrt{n^2+1}+n}=\\frac{1}{\\sqrt{1+1/n^2}+1}\\to\\frac{1}{2}",
+          "explanation": "Divide numerator and denominator by n to evaluate the limit."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. 0, ខ. 3/2, គ. 1/2",
+        "text": "a. 0, b. 3/2, c. 1/2",
+        "latex": "0,\\quad\\frac{3}{2},\\quad\\frac{1}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "\\sqrt{n+1}-\\sqrt{n}=\\frac{1}{\\sqrt{n+1}+\\sqrt{n}}",
+          "meaning": "ស្គ្រប (rationalisation) ដោយប្រើទ្វេស",
+          "confidence": 0.98
+        },
+        {
+          "latex": "n(\\sqrt{n^2+1}-n)\\to\\frac{1}{2}",
+          "meaning": "លំហាត់ស្គ្របដ៏គេហើយ",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "ស្គ្រប", "rationalisation", "conjugate", "sqrt", "lim", "limit", "ឬស", "sequence"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p005-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 5,
+      "pageEnd": 6,
+      "topic": "limit_ratio_test_factorial",
+      "topicKh": "លំហាត់ទី៤: លីមីតដោយប្រើ uₙ₊₁/uₙ — uₙ = n³/2ⁿ, vₙ = 2ⁿ/n!",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៤: យើងមាន uₙ = n³/2ⁿ, vₙ = 2ⁿ/n! ជាមួយ n! = n·(n−1)·…·2·1 ។\n\nក. គណនា lim(uₙ₊₁/uₙ) = lim[(n+1)³/2^(n+1)]·[2ⁿ/n³] = lim[(1+1/n)³/2] = 1/2 < 1 ។ ដូចនេះ lim uₙ = 0 ។\n\nlim(vₙ₊₁/vₙ) = lim[2^(n+1)/(n+1)!]·[n!/2ⁿ] = lim 2/(n+1) = 0 < 1 ។ ដូចនេះ lim vₙ = 0 ។\n\nខ. គណនា lim(2ⁿ + n³)/(n! + n³) ។ ដោយ lim(2ⁿ/n!) = 0 ហើយ (2ⁿ+n³)/(n!+n³) → 0 ។",
+      "normalizedText": "Exercise 4: uₙ = n³/2ⁿ and vₙ = 2ⁿ/n!. (a) By ratio test uₙ₊₁/uₙ → 1/2 < 1, so uₙ → 0; vₙ₊₁/vₙ = 2/(n+1) → 0, so vₙ → 0. (b) lim(2ⁿ+n³)/(n!+n³) = 0 since n! dominates.",
+      "problem": {
+        "textKh": "យើងមាន uₙ = n³/2ⁿ, vₙ = 2ⁿ/n! ។ ក. គណនា lim(uₙ₊₁/uₙ) ។ ខ. គណនា lim(2ⁿ+n³)/(n!+n³) ។",
+        "text": "Given uₙ = n³/2ⁿ and vₙ = 2ⁿ/n!. a. Find lim(uₙ₊₁/uₙ) and lim(vₙ₊₁/vₙ). b. Find lim(2ⁿ+n³)/(n!+n³).",
+        "latex": "u_n=\\frac{n^3}{2^n},\\;v_n=\\frac{2^n}{n!}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. lim(uₙ₊₁/uₙ) = lim[(n+1)³·2ⁿ]/[2^(n+1)·n³] = lim(1+1/n)³/2 = 1/2 < 1 → lim uₙ = 0",
+          "text": "Ratio test: limit of ratio is 1/2 < 1, so uₙ → 0.",
+          "latex": "\\frac{u_{n+1}}{u_n}=\\frac{(n+1)^3}{2^{n+1}}\\cdot\\frac{2^n}{n^3}=\\frac{(1+1/n)^3}{2}\\to\\frac{1}{2}",
+          "explanation": "When ratio limit < 1, the sequence converges to 0."
+        },
+        {
+          "textKh": "lim(vₙ₊₁/vₙ) = lim 2/(n+1) = 0 < 1 → lim vₙ = 0",
+          "text": "For vₙ = 2ⁿ/n!, ratio 2/(n+1) → 0 < 1.",
+          "latex": "\\frac{v_{n+1}}{v_n}=\\frac{2^{n+1}}{(n+1)!}\\cdot\\frac{n!}{2^n}=\\frac{2}{n+1}\\to 0",
+          "explanation": "Factorial grows faster than exponential."
+        },
+        {
+          "textKh": "ខ. lim(2ⁿ+n³)/(n!+n³) → 0 — n! dominates both 2ⁿ and n³",
+          "text": "n! grows much faster than both 2ⁿ and n³.",
+          "latex": "\\lim_{n\\to\\infty}\\frac{2^n+n^3}{n!+n^3}=0",
+          "explanation": "n! grows much faster than both 2ⁿ and n³."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "lim uₙ = 0, lim vₙ = 0, lim(2ⁿ+n³)/(n!+n³) = 0",
+        "text": "All three limits equal 0.",
+        "latex": "\\lim u_n=0,\\quad\\lim v_n=0,\\quad\\lim\\frac{2^n+n^3}{n!+n^3}=0"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{u_{n+1}}{u_n}\\to L<1\\implies\\lim u_n=0",
+          "meaning": "បើ lim(uₙ₊₁/uₙ) < 1 ដូចនេះ lim uₙ = 0",
+          "confidence": 0.97
+        },
+        {
+          "latex": "\\lim_{n\\to\\infty}\\frac{2^n}{n!}=0",
+          "meaning": "n! ធំជាងលំដាប់អ្វី",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "n!", "factorial", "2ⁿ", "ratio test", "lim", "sequence", "lim_ratio", "ស្វ៊ីតរួម"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p005-c002",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 5,
+      "pageEnd": 7,
+      "topic": "recursive_sequence_limit",
+      "topicKh": "លំហាត់ទី៥: លីមីតស្វ៊ីតកំណត់ដោយ recurrence (ក, ខ, គ)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៥: គណនាលីមីតនៃស្វ៊ីត (aₙ) ដែលស្គាល់ដូច្នេះ:\n\nក. a₁ = 2, aₙ₊₁ = (1/2)aₙ + 3 ។ ដំណោះស្រាយ c: c = (1/2)c + 3 → c = 6 ។ (aₙ − 6) = (1/2)^(n−1)(a₁ − 6) ។ ដូចនេះ lim aₙ = 6 ។\n\nខ. a₁ = 3, aₙ₊₁ = 2aₙ + 5 ។ c = 2c + 5 → c = −5 ។ q = 2 > 1 ។ aₙ → +∞ ។\n\nគ. a₁ = 1, aₙ₊₁ = (1/3)aₙ + 4/3 ។ c = (1/3)c + 4/3 → c = 2 ។ (aₙ − 2) → 0 ។ ដូចនេះ lim aₙ = 2 ។",
+      "normalizedText": "Exercise 5: Limits of recurrence-defined sequences. (a) a₁=2, aₙ₊₁=(1/2)aₙ+3: fixed point c=6, ratio 1/2, limit = 6. (b) a₁=3, aₙ₊₁=2aₙ+5: ratio 2>1, diverges. (c) a₁=1, aₙ₊₁=(1/3)aₙ+4/3: fixed point c=2, ratio 1/3, limit = 2.",
+      "problem": {
+        "textKh": "ក. a₁=2, aₙ₊₁=(1/2)aₙ+3 | ខ. a₁=3, aₙ₊₁=2aₙ+5 | គ. a₁=1, aₙ₊₁=(1/3)aₙ+4/3",
+        "text": "Find limit of recursively defined sequences: a. a_{n+1}=(1/2)a_n+3, b. a_{n+1}=2a_n+5, c. a_{n+1}=(1/3)a_n+4/3",
+        "latex": "a_{n+1}=\\tfrac{1}{2}a_n+3,\\quad a_{n+1}=2a_n+5,\\quad a_{n+1}=\\tfrac{1}{3}a_n+\\tfrac{4}{3}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. រកចំណុចថេរ c: c = c/2 + 3 → c = 6 ។ bₙ = aₙ − 6 ជាស្វ៊ីតធរណីមាត្រ q = 1/2",
+          "text": "Find fixed point c=6, then bₙ = aₙ−6 is geometric with ratio 1/2.",
+          "latex": "a_{n+1}-6=\\frac{1}{2}(a_n-6),\\quad b_n=b_1\\left(\\frac{1}{2}\\right)^{n-1}\\to 0",
+          "explanation": "|q|=1/2 < 1 so bₙ → 0 and aₙ → 6."
+        },
+        {
+          "textKh": "ខ. c = 2c + 5 → c = −5 ។ bₙ = aₙ + 5 ជាស្វ៊ីតធរណីមាត្រ q = 2 > 1 → +∞",
+          "text": "Fixed point c = −5, ratio q = 2 > 1, sequence diverges.",
+          "latex": "a_{n+1}+5=2(a_n+5),\\quad b_n=8\\cdot 2^{n-1}\\to+\\infty",
+          "explanation": "Common ratio > 1, so geometric sequence grows without bound."
+        },
+        {
+          "textKh": "គ. c = c/3 + 4/3 → c = 2 ។ bₙ = aₙ − 2 ជាស្វ៊ីតធរណីមាត្រ q = 1/3 → 0",
+          "text": "Fixed point c=2, ratio 1/3, so aₙ → 2.",
+          "latex": "a_{n+1}-2=\\frac{1}{3}(a_n-2),\\quad\\lim_{n\\to\\infty}a_n=2",
+          "explanation": "|q|=1/3 < 1, geometric part vanishes."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. lim aₙ = 6, ខ. lim aₙ = +∞ (ស្វ៊ីតរីក), គ. lim aₙ = 2",
+        "text": "a. limit = 6, b. diverges to +∞, c. limit = 2",
+        "latex": "\\lim a_n=6,\\quad\\lim a_n=+\\infty,\\quad\\lim a_n=2"
+      },
+      "formulas": [
+        {
+          "latex": "a_{n+1}=qa_n+b\\implies c=\\frac{b}{1-q}\\text{ (fixed point)}",
+          "meaning": "ចំណុចថេរនៃ recurrence affine",
+          "confidence": 0.97
+        },
+        {
+          "latex": "|q|<1\\implies\\lim(a_n-c)=0\\implies\\lim a_n=c",
+          "meaning": "បើ |q| < 1 ស្វ៊ីតរួមមកចំណុចថេរ",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "recurrence", "recursive_sequence", "fixed_point", "geometric_sequence",
+        "ស្វ៊ីតធរណីមាត្រ", "ចំណុចថេរ", "lim", "limit"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p007-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 7,
+      "pageEnd": 9,
+      "topic": "series_convergence_divergence",
+      "topicKh": "លំហាត់ទី៦: ស៊េរីរួម ឬស៊េរីរីក",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៦: ពិនិត្យស៊េរីខាងក្រោមថាតើជាស៊េរីរួម ឬរីក?\n\nក. Σ 3(3/2)ⁿ — ស៊េរីធរណីមាត្រ ផលធៀប |3/2| > 1 ។ ជាស៊េរីរីក។\n\nខ. Σ 1000·(1.055)ⁿ — ស៊េរីធរណីមាត្រ ផលធៀប 1.055 > 1 ។ ជាស៊េរីរីក។\n\nគ. Σ n²/(2n+1)³ — ស៊េរីទ្រូក Sₙ → 1/2 ។ ជាស៊េរីរួម។\n\nឃ. Σ (2n+1)/2^(n+1) — Sₙ → finite ។ ជាស៊េរីរួម។\n\nង. Σ 2(3/4)ⁿ — ស៊េរីធរណីមាត្រ ផលធៀប 3/4 < 1 ។ ជាស៊េរីរួម ផលបូក = 2/(1−3/4) = 8 ។",
+      "normalizedText": "Exercise 6: (a) Σ3(3/2)^n: ratio 3/2>1, divergent. (b) Σ1000(1.055)^n: ratio 1.055>1, divergent. (c) Σn²/(2n+1)³: convergent. (d) Σ(2n+1)/2^(n+1): convergent. (e) Σ2(3/4)^n: ratio 3/4<1, convergent, sum=8.",
+      "problem": {
+        "textKh": "ពិនិត្យស៊េរីខាងក្រោម: ក. Σ3(3/2)ⁿ, ខ. Σ1000(1.055)ⁿ, គ. Σn²/(2n+1)³, ឃ. Σ(2n+1)/2^(n+1), ង. Σ2(3/4)ⁿ",
+        "text": "Check convergence: a. Σ3(3/2)^n, b. Σ1000(1.055)^n, c. Σn²/(2n+1)³, e. Σ2(3/4)^n",
+        "latex": "\\sum_{n=0}^\\infty 3\\left(\\frac{3}{2}\\right)^n,\\quad\\sum_{n=0}^\\infty 1000(1.055)^n,\\quad\\sum_{n=1}^\\infty\\frac{n^2}{(2n+1)^3},\\quad\\sum_{n=0}^\\infty 2\\left(\\frac{3}{4}\\right)^n"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. ស៊េរីធរណីមាត្រ q = 3/2 > 1 → ស៊េរីរីក",
+          "text": "Geometric series with ratio 3/2 > 1: divergent.",
+          "latex": "q=\\frac{3}{2}>1\\implies\\text{divergent}",
+          "explanation": "A geometric series converges only if |q| < 1."
+        },
+        {
+          "textKh": "ង. ស៊េរីធរណីមាត្រ ជាមួយ a₁ = 2, q = 3/4 < 1 ។ ផលបូក = 2/(1−3/4) = 8",
+          "text": "Geometric series a₁=2, q=3/4: sum = a₁/(1−q) = 8.",
+          "latex": "S=\\frac{2}{1-\\frac{3}{4}}=8",
+          "explanation": "Standard infinite geometric series formula."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. ស៊េរីរីក, ខ. ស៊េរីរីក, គ. ស៊េរីរួម, ឃ. ស៊េរីរួម, ង. ស៊េរីរួម (ផលបូក = 8)",
+        "text": "a. divergent, b. divergent, c. convergent, d. convergent, e. convergent (sum = 8)",
+        "latex": "S=8"
+      },
+      "formulas": [
+        {
+          "latex": "|q|<1\\implies\\sum_{n=0}^\\infty aq^n=\\frac{a}{1-q}",
+          "meaning": "ផលបូកស៊េរីធរណីមាត្រអនន្ត",
+          "confidence": 0.98
+        },
+        {
+          "latex": "|q|\\ge 1\\implies\\text{series diverges}",
+          "meaning": "ស៊េរីធរណីមាត្ររីក",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "ស៊េរីរួម", "ស៊េរីរីក", "geometric_series", "convergent_series", "ratio",
+        "ផលធៀបរួម", "infinite_series"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p009-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 9,
+      "pageEnd": 11,
+      "topic": "infinite_series_sum",
+      "topicKh": "លំហាត់ទី៧: រកផលបូកស៊េរីរួម",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៧: រកផលបូកស៊េរីរួម:\n\nក. 1 + 0.1 + 0.01 + … = Σ(1/10)ⁿ ជាស៊េរីធរណីមាត្រ a₁=1, q=1/10 ។ ផលបូក = 1/(1−1/10) = 10/9 ។\n\nខ. Σ 2/(4n²−1) = Σ[1/(2n−1) − 1/(2n+1)] ។ ស៊េរីទ្រូក Sₙ = 1 − 1/(2n+1) → 1 ។\n\nគ. Σ 1/[(2n−1)(2n+1)] = (1/2)Σ[1/(2n−1) − 1/(2n+1)] → 1/2 ។\n\nឃ. Σ (2·cos(π/3))ⁿ — cos(π/3) = 1/2 ។ ស៊េរីធរណីមាត្រ a₁=2, q=1/2 ។ ផលបូក = 2/(1−1/2) = 4 ។",
+      "normalizedText": "Exercise 7: Find sums. (a) Geometric Σ(1/10)ⁿ: sum=10/9. (b) Telescoping Σ2/(4n²-1)=1. (c) Telescoping Σ1/[(2n-1)(2n+1)]=1/2. (d) Σ2·(cos(π/3))ⁿ = geometric q=1/2, sum=4.",
+      "problem": {
+        "textKh": "ក. 1+0.1+0.01+… ខ. Σ2/(4n²−1) គ. Σ1/[(2n−1)(2n+1)] ឃ. Σ2·(cos(π/3))ⁿ",
+        "text": "Find sums: a. 1+0.1+0.01+..., b. Σ 2/(4n²-1), c. Σ 1/[(2n-1)(2n+1)], d. Σ 2(cos(π/3))ⁿ",
+        "latex": "1+0.1+0.01+\\cdots,\\quad\\sum_{n=1}^\\infty\\frac{2}{4n^2-1},\\quad\\sum_{n=1}^\\infty\\frac{1}{(2n-1)(2n+1)},\\quad\\sum_{n=0}^\\infty 2\\left(\\cos\\frac{\\pi}{3}\\right)^n"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក. Σ(1/10)ⁿ ជាស៊េរីធរណីមាត្រ a₁=1, q=1/10 ។ S = 1/(1−1/10) = 10/9",
+          "text": "Geometric series with first term 1 and ratio 1/10.",
+          "latex": "\\sum_{n=0}^\\infty\\left(\\frac{1}{10}\\right)^n=\\frac{1}{1-\\frac{1}{10}}=\\frac{10}{9}",
+          "explanation": "Standard geometric series formula."
+        },
+        {
+          "textKh": "ខ. ពហុបទ partial fractions: 2/(4n²−1) = 1/(2n−1) − 1/(2n+1) ។ ស៊េរីទ្រូក: Sₙ = 1 − 1/(2n+1) → 1",
+          "text": "Partial fractions decompose to telescoping; Sₙ = 1 − 1/(2n+1) → 1.",
+          "latex": "\\frac{2}{4n^2-1}=\\frac{1}{2n-1}-\\frac{1}{2n+1},\\quad S_n=1-\\frac{1}{2n+1}\\to 1",
+          "explanation": "Telescoping series: most terms cancel in pairs."
+        },
+        {
+          "textKh": "ឃ. cos(π/3) = 1/2 ។ ស៊េរីធរណីមាត្រ a₁ = 2, q = 1/2 ។ ផលបូក = 2/(1−1/2) = 4",
+          "text": "cos(π/3) = 1/2, so series is geometric with ratio 1/2, sum = 4.",
+          "latex": "\\sum_{n=0}^\\infty 2\\left(\\frac{1}{2}\\right)^n=\\frac{2}{1-\\frac{1}{2}}=4",
+          "explanation": "Recognise trig value, then apply geometric series formula."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក. 10/9, ខ. 1, គ. 1/2, ឃ. 4",
+        "text": "a. 10/9, b. 1, c. 1/2, d. 4",
+        "latex": "\\frac{10}{9},\\quad 1,\\quad\\frac{1}{2},\\quad 4"
+      },
+      "formulas": [
+        {
+          "latex": "\\sum_{n=0}^\\infty ar^n=\\frac{a}{1-r},\\;|r|<1",
+          "meaning": "ផលបូកស៊េរីធរណីមាត្រអនន្ត",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\frac{2}{4n^2-1}=\\frac{1}{2n-1}-\\frac{1}{2n+1}",
+          "meaning": "ចែកពហុបទ partial fractions → ស៊េរីទ្រូក",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "ស៊េរីរួម", "ផលបូក", "geometric_series", "telescoping_series", "partial_fractions",
+        "cos", "ស៊េរីទ្រូក", "infinite_series_sum"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p011-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 11,
+      "pageEnd": 14,
+      "topic": "riemann_sum_area",
+      "topicKh": "លំហាត់ទី៨-៩: គណនាផ្ទៃតាមការប្រៀបធៀបផ្ទៃចតុកោណ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី៨: គណនាផ្ទៃក្រឡាខណ្ឌដោយរបង f(x) = x² + 5 លើ [0, 2] ។\n\nចែកចន្លោះ [0, 2] ជា 5 ចន្លោះ: Δx = 2/5 ។\n\nS₅ (ខាងស្ដាំ) = Σᵢ₌₁⁵ f(i·2/5)·(2/5) = (2/5)Σᵢ₌₁⁵ [(2i/5)² + 5] ≈ 8.08\nS'₅ (ខាងឆ្វេង) ≈ 6.48\n\nដូចនេះ ផ្ទៃព្រំ: 6.48 ≤ S ≤ 8.08 ។\n\nលំហាត់ទី៩: ផ្ទៃ f(y) = y² ចំពោះ y ∈ [0,1] ។\nSₙ = Σᵢ₌₁ⁿ f(i/n)·(1/n) = (1/n³)·n(n+1)(2n+1)/6 → 1/3",
+      "normalizedText": "Exercise 8: Estimate area under f(x)=x²+5 on [0,2] using 5 rectangles: lower ≈ 6.48, upper ≈ 8.08. Exercise 9: Exact area under f(y)=y² on [0,1] as Riemann sum limit = 1/3.",
+      "problem": {
+        "textKh": "គណនា (ប្រៀបធៀប) ផ្ទៃ f(x)=x²+5 លើ [0,2] (លំ.8) និងផ្ទៃ f(y)=y² លើ [0,1] (លំ.9)",
+        "text": "Ex8: Estimate area under f(x)=x²+5 on [0,2] with 5 rectangles. Ex9: Find exact area under f(y)=y² on [0,1] as limit of Riemann sums.",
+        "latex": "f(x)=x^2+5,\\;x\\in[0,2];\\quad f(y)=y^2,\\;y\\in[0,1]"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "លំ.៨: Δx = 2/5, S₅ = (2/5)Σᵢ₌₁⁵[(2i/5)²+5] ≈ 8.08",
+          "text": "Right Riemann sum with 5 subintervals.",
+          "latex": "S_5=\\frac{2}{5}\\sum_{i=1}^{5}\\left[\\left(\\frac{2i}{5}\\right)^2+5\\right]\\approx 8.08",
+          "explanation": "Evaluate f at right endpoints of each subinterval."
+        },
+        {
+          "textKh": "លំ.៩: Sₙ = (1/n³)·n(n+1)(2n+1)/6 → 1/3",
+          "text": "Riemann sum using Σk² = n(n+1)(2n+1)/6.",
+          "latex": "S_n=\\frac{1}{n^3}\\cdot\\frac{n(n+1)(2n+1)}{6}\\to\\frac{1}{3}",
+          "explanation": "Use sum of squares formula then take limit n→∞."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "លំ.៨: 6.48 ≤ S ≤ 8.08 ។ លំ.៩: ផ្ទៃ = 1/3",
+        "text": "Ex8: Area between 6.48 and 8.08. Ex9: Exact area = 1/3.",
+        "latex": "6.48\\le S\\le 8.08;\\quad S=\\frac{1}{3}"
+      },
+      "formulas": [
+        {
+          "latex": "S_n=\\sum_{i=1}^n f(x_i)\\Delta x",
+          "meaning": "ផលបូក Riemann",
+          "confidence": 0.97
+        },
+        {
+          "latex": "\\sum_{k=1}^n k^2=\\frac{n(n+1)(2n+1)}{6}",
+          "meaning": "ផលបូកការ៉េ",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\int_0^1 y^2\\,dy=\\frac{1}{3}",
+          "meaning": "ផ្ទៃក្រោមខ្សែកោង y² លើ [0,1]",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "Riemann sum", "ផ្ទៃ", "ចតុកោណ", "area_under_curve", "limit",
+        "ស៊ុម Riemann", "sum_of_squares"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p014-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 14,
+      "pageEnd": 15,
+      "topic": "product_limit_squeeze",
+      "topicKh": "លំហាត់ទី១០-១១: លីមីតផ្នែក ដោយប្រើ squeeze theorem",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១០: បាល់ធ្លាក់ចុះពីកម្ពស់ 6m ។ កម្ពស់ bounce នីមួយៗ = (2/3) × កម្ពស់មុន ។ ចម្ងាយសរុប S = Σ 6·(2/3)ⁿ = 6/(1−2/3) = 18m ។\n\nលំហាត់ទី១១ (ក): lim Π(1 − 1/k²) ពី k=2 ដល់ n ។ (1−1/k²) = [(k−1)(k+1)]/k² ។ ផ្ដាច់ Π = (n+1)/(2n) → 1/2 ។\n\nលំហាត់ទី១១ (ខ): lim Σ n/(n⁴+k) ។ ប្រើ squeeze: n²/(n⁴+n) ≤ Sₙ ≤ n²/(n⁴+1) ។ ទាំងពីរ → 1 ។",
+      "normalizedText": "Ex10: Bouncing ball h=6m, ratio 2/3, total distance=18m. Ex11a: Telescoping product lim Π(1−1/k²) = 1/2. Ex11b: lim Σ n/(n⁴+k) = 1 by squeeze theorem.",
+      "problem": {
+        "textKh": "លំ.10: ស្ដែត ដំបូង 6m bounce (2/3) ។ លំ.11ក: lim Π(1−1/k²) ។ លំ.11ខ: lim Σ n/(n⁴+k)",
+        "text": "Ex10: Bouncing ball total distance. Ex11a: lim product(1-1/k²). Ex11b: lim sum n/(n⁴+k).",
+        "latex": "\\lim_{n\\to\\infty}\\prod_{k=2}^n\\left(1-\\frac{1}{k^2}\\right),\\quad\\lim_{n\\to\\infty}\\sum_{k=1}^n\\frac{n}{n^4+k}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "លំ.10: ចម្ងាយសរុប S = Σ 6(2/3)ⁿ = 6/(1−2/3) = 18m",
+          "text": "Geometric series: total bounce distance = 18m.",
+          "latex": "S=\\sum_{k=0}^\\infty 6\\left(\\frac{2}{3}\\right)^k=\\frac{6}{1-\\frac{2}{3}}=18",
+          "explanation": "Sum of infinite geometric series with a=6, r=2/3."
+        },
+        {
+          "textKh": "លំ.11ក: (1−1/k²) = (k−1)(k+1)/k² → ផ្ដាច់ Π = (1·(n+1))/(2·n) → 1/2",
+          "text": "Telescoping product collapses to (n+1)/(2n) → 1/2.",
+          "latex": "\\prod_{k=2}^n\\left(1-\\frac{1}{k^2}\\right)=\\frac{n+1}{2n}\\to\\frac{1}{2}",
+          "explanation": "Many factors cancel leaving only boundary terms."
+        },
+        {
+          "textKh": "លំ.11ខ: n²/(n⁴+n) ≤ Sₙ ≤ n²/(n⁴+1) ។ ទាំងពីរ → 1 → Sₙ → 1",
+          "text": "Squeeze: bound Sₙ between two expressions both converging to 1.",
+          "latex": "\\frac{n^2}{n^4+n}\\le S_n\\le\\frac{n^2}{n^4+1},\\quad\\lim S_n=1",
+          "explanation": "Upper and lower bounds converge to same limit by squeeze theorem."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "លំ.10: 18m ។ លំ.11ក: 1/2 ។ លំ.11ខ: 1",
+        "text": "Ex10: 18m. Ex11a: 1/2. Ex11b: 1.",
+        "latex": "18\\text{m},\\quad\\frac{1}{2},\\quad 1"
+      },
+      "formulas": [
+        {
+          "latex": "\\prod_{k=2}^n\\left(1-\\frac{1}{k^2}\\right)=\\frac{n+1}{2n}\\to\\frac{1}{2}",
+          "meaning": "ផ្ដាច់ Product",
+          "confidence": 0.95
+        },
+        {
+          "latex": "\\frac{n^2}{n^4+n}\\le\\sum_{k=1}^n\\frac{n}{n^4+k}\\le\\frac{n^2}{n^4+1}",
+          "meaning": "Squeeze theorem ចំពោះ ផលបូក",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "squeeze_theorem", "bouncing_ball", "geometric_series", "telescoping_product",
+        "product_limit", "ផ្ដាច់", "ស្វ៊ីតផ្ដាច់"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p016-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 16,
+      "pageEnd": 17,
+      "topic": "limit_by_cases_q",
+      "topicKh": "លំហាត់ទី១២-១៣: លីមីតស្វ៊ីត aₙ = 1/(2+qⁿ) ចំពោះ q ផ្សេងៗ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១២: គណនា lim [(q−1)(q²+q)·…] ដែល q = 1/√2 ។\nដោយ (q−1)(q²+q) = q³−1 ។ ផ្ដាច់ → (q³ⁿ−1)/(1+q+q²) ។ ចំពោះ q = 1/√2: q³ < 1 → q³ⁿ → 0 ។ lim = −1/(1+q+q²) ។\n\nលំហាត់ទី១៣: aₙ = 1/(2+qⁿ) ។ សិក្សាលីមីត aₙ ចំពោះ n → ∞:\n- q > 1: qⁿ → +∞ → lim aₙ = 0\n- q = 1: qⁿ = 1 → lim aₙ = 1/3\n- |q| < 1: qⁿ → 0 → lim aₙ = 1/2\n- q < −1: |qⁿ| → ∞ → lim aₙ = 0",
+      "normalizedText": "Ex12: Telescoping product with q=1/√2, limit = -1/(1+q+q²). Ex13: aₙ = 1/(2+qⁿ) — limit depends on q: 0 if q>1, 1/3 if q=1, 1/2 if |q|<1, 0 if q<−1.",
+      "problem": {
+        "textKh": "លំ.13: aₙ = 1/(2+qⁿ) ។ រកលីមីត aₙ នៅ n → ∞ ចំពោះ q > 1, q = 1, |q| < 1, q < −1",
+        "text": "Ex13: Find lim aₙ where aₙ = 1/(2+qⁿ) for different values of q.",
+        "latex": "a_n=\\frac{1}{2+q^n}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ករណី q > 1: qⁿ → +∞ → 2+qⁿ → +∞ → aₙ → 0",
+          "text": "When q > 1, qⁿ → ∞, so aₙ → 0.",
+          "latex": "q>1:\\;q^n\\to+\\infty,\\;\\lim a_n=0",
+          "explanation": "Denominator grows without bound."
+        },
+        {
+          "textKh": "ករណី q = 1: qⁿ = 1 → aₙ = 1/3",
+          "text": "When q = 1, qⁿ = 1 always, so aₙ = 1/3.",
+          "latex": "q=1:\\;\\lim a_n=\\frac{1}{3}",
+          "explanation": "Constant sequence."
+        },
+        {
+          "textKh": "ករណី |q| < 1: qⁿ → 0 → aₙ → 1/2",
+          "text": "When |q| < 1, qⁿ → 0, so aₙ → 1/2.",
+          "latex": "|q|<1:\\;q^n\\to 0,\\;\\lim a_n=\\frac{1}{2}",
+          "explanation": "Geometric decay of qⁿ leaves only the 2 in denominator."
+        },
+        {
+          "textKh": "ករណី q < −1: |qⁿ| → ∞ → aₙ → 0 (ជាមួយសញ្ញាឆ្លាស់)",
+          "text": "When q < -1, |qⁿ| → ∞ with alternating sign, so aₙ → 0.",
+          "latex": "q<-1:\\;|q^n|\\to+\\infty,\\;\\lim a_n=0",
+          "explanation": "Denominator dominates despite alternating sign."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "q>1: 0 | q=1: 1/3 | |q|<1: 1/2 | q<−1: 0",
+        "text": "q>1: 0; q=1: 1/3; |q|<1: 1/2; q<-1: 0",
+        "latex": "\\lim a_n=\\begin{cases}0&q>1\\\\1/3&q=1\\\\1/2&|q|<1\\\\0&q<-1\\end{cases}"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{n\\to\\infty}q^n=\\begin{cases}+\\infty&q>1\\\\1&q=1\\\\0&|q|<1\\end{cases}",
+          "meaning": "លីមីតនៃ qⁿ",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "q^n", "limit_by_cases", "geometric_ratio", "sequence_limit", "aₙ",
+        "ករណីចែក", "lim"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p018-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 18,
+      "pageEnd": 19,
+      "topic": "telescoping_series_partial_sum",
+      "topicKh": "លំហាត់ទី១៤: ស៊េរីទ្រូក — partial fractions ហើយ lim Sₙ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១៤: Sₙ = Σ[p=0 to n] 2/[(2p+1)(2p+3)] ។\n\nក. ចែក partial fractions: 2/[(2p+1)(2p+3)] = 1/(2p+1) − 1/(2p+3) ។\nSₙ = 1 − 1/(2n+3) = (2n+2)/(2n+3) ។\n\nខ. lim Sₙ = lim(2n+2)/(2n+3) = 1 ។",
+      "normalizedText": "Exercise 14: Sₙ = Σ 2/[(2p+1)(2p+3)]. Partial fractions: 1/(2p+1) − 1/(2p+3). Telescoping gives Sₙ = (2n+2)/(2n+3) → 1.",
+      "problem": {
+        "textKh": "Sₙ = Σ[p=0 ដល់ n] 2/[(2p+1)(2p+3)] ។ ក. គណនា Sₙ ។ ខ. គណនា lim Sₙ",
+        "text": "Sₙ = Σ_{p=0}^{n} 2/[(2p+1)(2p+3)]. a. Find Sₙ as a function of n. b. Find lim Sₙ.",
+        "latex": "S_n=\\sum_{p=0}^n\\frac{2}{(2p+1)(2p+3)}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចែក partial fractions: 2/[(2p+1)(2p+3)] = 1/(2p+1) − 1/(2p+3)",
+          "text": "Decompose into partial fractions.",
+          "latex": "\\frac{2}{(2p+1)(2p+3)}=\\frac{1}{2p+1}-\\frac{1}{2p+3}",
+          "explanation": "Linear denominators: set up and solve for coefficients."
+        },
+        {
+          "textKh": "Sₙ ជាស៊េរីទ្រូក: = 1 − 1/(2n+3) = (2n+2)/(2n+3)",
+          "text": "Telescoping sum: all middle terms cancel.",
+          "latex": "S_n=1-\\frac{1}{2n+3}=\\frac{2n+2}{2n+3}",
+          "explanation": "Adjacent terms cancel in pairs leaving only first and last."
+        },
+        {
+          "textKh": "lim Sₙ = lim(2n+2)/(2n+3) = 1",
+          "text": "Limit of (2n+2)/(2n+3) as n → ∞ is 1.",
+          "latex": "\\lim_{n\\to\\infty}S_n=\\lim_{n\\to\\infty}\\frac{2n+2}{2n+3}=1",
+          "explanation": "Ratio of leading terms: 2/2 = 1."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "Sₙ = (2n+2)/(2n+3) ហើយ lim Sₙ = 1",
+        "text": "Sₙ = (2n+2)/(2n+3) and the series sum is 1.",
+        "latex": "S_n=\\frac{2n+2}{2n+3},\\quad\\lim_{n\\to\\infty}S_n=1"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{2}{(2p+1)(2p+3)}=\\frac{1}{2p+1}-\\frac{1}{2p+3}",
+          "meaning": "ចែក partial fractions",
+          "confidence": 0.98
+        },
+        {
+          "latex": "\\sum_{p=0}^\\infty\\frac{2}{(2p+1)(2p+3)}=1",
+          "meaning": "ផលបូកស៊េរីទ្រូក",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "telescoping_series", "partial_fractions", "ស៊េរីទ្រូក", "ចែក", "lim Sₙ",
+        "infinite_series_sum"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p019-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 19,
+      "pageEnd": 20,
+      "topic": "series_convergence_test",
+      "topicKh": "លំហាត់ទី១៥-១៦: ស៊េរីរួម ឬរីក ជាមួយ r², tan, n/(2n+5)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១៥: Σ r²/(r²+1)ⁿ ជាស៊េរីធរណីមាត្រ a₁=r², q=1/(r²+1) ។ ចំពោះ r≠0: |q|=1/(r²+1) < 1 → ស៊េរីរួម ។ ចំពោះ r=0: Σ0 = 0 → ស៊េរីរួម ។ ដូចនេះ ស៊េរីរួម ចំពោះ r ទាំងអស់ ។\n\nលំហាត់ទី១៦:\nក. Σ(2+cos(π/3))ⁿ = Σ(5/2)ⁿ — q=5/2 > 1 → ស៊េរីរីក ។\nខ. Σ(tan(π/4))ⁿ = Σ1ⁿ — q=1 → ស៊េរីរីក ។\nគ. Σ n/(2n+5) — lim aₙ = 1/2 ≠ 0 → ស៊េរីរីក ។\nឃ. Σ (5−1)/4ⁿ — ស៊េរីធរណីមាត្រ q=1/4 < 1 → ស៊េរីរួម ។",
+      "normalizedText": "Ex15: Σ r²/(r²+1)^n — q=1/(r²+1)<1 for all r, always convergent. Ex16: (a) Σ(5/2)^n diverges. (b) Σ(tan π/4)^n = Σ1 diverges. (c) Σ n/(2n+5) diverges (general term → 1/2). (d) Σ(5−1)/4^n converges (q=1/4).",
+      "problem": {
+        "textKh": "លំ.15: Σ r²/(r²+1)ⁿ ។ លំ.16: ក.Σ(2+cos π/3)ⁿ ខ.Σ(tan π/4)ⁿ គ.Σ n/(2n+5) ឃ.Σ(5−1)/4ⁿ",
+        "text": "Ex15: Show Σ r²/(r²+1)^n converges for all r. Ex16: determine convergence of four series.",
+        "latex": "\\sum_{n=1}^\\infty\\frac{r^2}{(r^2+1)^n}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "លំ.15: q = 1/(r²+1) ។ ចំពោះ r ≠ 0: r² > 0 → r²+1 > 1 → q < 1 → ស៊េរីរួម",
+          "text": "For r ≠ 0: r²+1 > 1 so q = 1/(r²+1) < 1, series converges.",
+          "latex": "r\\ne 0:\\;0<q=\\frac{1}{r^2+1}<1\\implies\\text{convergent}",
+          "explanation": "Geometric series converges when |q| < 1."
+        },
+        {
+          "textKh": "លំ.16គ: lim n/(2n+5) = 1/2 ≠ 0 → ស៊េរីរីក",
+          "text": "General term does not go to 0, so series diverges.",
+          "latex": "\\lim_{n\\to\\infty}\\frac{n}{2n+5}=\\frac{1}{2}\\ne 0\\implies\\text{divergent}",
+          "explanation": "Necessary condition for convergence: general term must → 0."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "លំ.15: ស៊េរីរួម ចំពោះ r ទាំងអស់ ។ លំ.16: ក.រីក ខ.រីក គ.រីក ឃ.រួម",
+        "text": "Ex15: always convergent. Ex16: a. divergent, b. divergent, c. divergent, d. convergent.",
+        "latex": "\\text{Ex15 converges}\\;\\forall r"
+      },
+      "formulas": [
+        {
+          "latex": "\\sum a_n\\text{ converges}\\implies\\lim a_n=0",
+          "meaning": "លក្ខខណ្ឌចាំបាច់: aₙ → 0",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": [
+        "series_convergence_test", "ស៊េរីរួម", "ស៊េរីរីក", "general_term_test",
+        "geometric_series", "tan", "cos", "convergent", "divergent"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p020-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 20,
+      "pageEnd": 21,
+      "topic": "geometric_series_triangle_area",
+      "topicKh": "លំហាត់ទី១៧: ផ្ទៃត្រីកោណ — ស៊េរីធរណីមាត្រ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១៧: ត្រីកោណ ABC ផ្ទៃ = 6 ។ A'B'C' ជួបចំនុចកណ្ដាលនៃជ្រុង ABC ។\n\nS(A'B'C') = S(ABC)/4 = 6/4 ។\nSₙ = 6/4^(n−1) ។\nS = Σ Sₙ = ស៊េរីធរណីមាត្រ a₁=6, q=1/4 → S = 6/(1−1/4) = 8 ។\n\nដូចនេះ ផ្ទៃបូករួម = 8 ឯកតាផ្ទៃ ។",
+      "normalizedText": "Exercise 17: Triangle ABC area=6. Midpoint triangles each have 1/4 the area. Total area = geometric series a₁=6, q=1/4: S = 6/(1−1/4) = 8.",
+      "problem": {
+        "textKh": "ត្រីកោណ ABC ផ្ទៃ = 6 ។ A', B', C' ជាចំណុចកណ្ដាលជ្រុង ABC ។ រកផ្ទៃ S = S₁ + S₂ + …",
+        "text": "Triangle ABC area = 6. A'B'C' formed by midpoints. Find sum S = S₁+S₂+…",
+        "latex": "S_{ABC}=6,\\quad S_{A'B'C'}=\\frac{S_{ABC}}{4}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចំពោះ A'B'C' ជាចំណុចកណ្ដាល: ផ្ទៃ = 1/4 × ផ្ទៃ ABC",
+          "text": "Midpoint triangle has area = 1/4 of original.",
+          "latex": "S_{n+1}=\\frac{1}{4}S_n,\\quad S_1=6,\\;S_n=\\frac{6}{4^{n-1}}",
+          "explanation": "Connecting midpoints creates 4 similar triangles of equal area."
+        },
+        {
+          "textKh": "S = ស៊េរីធរណីមាត្រ a₁=6, q=1/4 → S = 6/(1−1/4) = 8",
+          "text": "Infinite geometric series with ratio 1/4.",
+          "latex": "S=\\sum_{n=1}^\\infty\\frac{6}{4^{n-1}}=\\frac{6}{1-\\frac{1}{4}}=8",
+          "explanation": "Sum formula for convergent geometric series."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "S = 8 ឯកតាផ្ទៃ",
+        "text": "Total area S = 8 square units.",
+        "latex": "S=8"
+      },
+      "formulas": [
+        {
+          "latex": "S=\\frac{a_1}{1-q}=\\frac{6}{1-\\frac{1}{4}}=8",
+          "meaning": "ផ្ទៃបូកស៊េរីធរណីមាត្រ",
+          "confidence": 0.97
+        }
+      ],
+      "keywords": [
+        "geometric_series", "triangle_area", "midpoint", "infinite_series_sum",
+        "ត្រីកោណ", "ផ្ទៃ", "ស៊េរីរួម"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-baseline-p021-c001",
+      "sourceId": "math-12-chapter1-baseline",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 21,
+      "pageEnd": 22,
+      "topic": "coordinate_limit_geometric_series",
+      "topicKh": "លំហាត់ទី១៨: កូអរដោណេចំណុច P ចុងក្រោយ — ស៊េរីដ្ថេរ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "លំហាត់ទី១៨: ចំណុច P ចាប់ផ្ដើមពី O(0,0) ទៅ P₁ (x-axis 1 unit) រួច rotate 1/2 unit ឡើង (y-axis) ។\n\nx₂ₙ₊₁ = 1 − 1/4 + 1/16 − … = Σ(−1/4)ⁿ → 1/(1+1/4) = 4/5\ny₂ₙ = 1/2 − 1/8 + … = Σ (1/2)(−1/4)ⁿ → (1/2)/(1+1/4) = 2/5\n\nដូចនេះ ចំណុច P ចុងក្រោយ = (4/5, 2/5) ។",
+      "normalizedText": "Exercise 18: Point P spirals from (1,0) rotating perpendicular at half-distance each step. x → 4/5 (geometric series q=−1/4). y → 2/5. Final position P = (4/5, 2/5).",
+      "problem": {
+        "textKh": "ចំណុច P ផ្លាស់ទីចាប់ X=1 rotate ⊥ ដោយ 1/2 × ចំងាយ ។ រកកូអរដោណេ P ចុងក្រោយ ។",
+        "text": "Starting at P₁=(1,0), P rotates perpendicular by 1/2 the distance each time. Find final coordinate.",
+        "latex": "x_{2n+1}=\\sum_{k=0}^n\\left(-\\frac{1}{4}\\right)^k,\\quad y_{2n}=\\frac{1}{2}\\sum_{k=0}^{n-1}\\left(-\\frac{1}{4}\\right)^k"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ស្វ៊ីត x: x = 1 − 1/4 + 1/16 − … ជាស៊េរីធរណីមាត្រ q = −1/4",
+          "text": "x-coordinates form geometric series with ratio −1/4.",
+          "latex": "\\lim x_{2n+1}=\\frac{1}{1-(-\\frac{1}{4})}=\\frac{4}{5}",
+          "explanation": "Sum of alternating geometric series."
+        },
+        {
+          "textKh": "ស្វ៊ីត y: y = 1/2 − 1/8 + … ជាស៊េរីធរណីមាត្រ a₁=1/2, q=−1/4",
+          "text": "y-coordinates form geometric series with first term 1/2 and ratio −1/4.",
+          "latex": "\\lim y_{2n}=\\frac{\\frac{1}{2}}{1+\\frac{1}{4}}=\\frac{2}{5}",
+          "explanation": "Same ratio −1/4 but different first term."
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "P ចុងក្រោយ = (4/5, 2/5)",
+        "text": "Final position of P is (4/5, 2/5).",
+        "latex": "P=\\left(\\frac{4}{5},\\frac{2}{5}\\right)"
+      },
+      "formulas": [
+        {
+          "latex": "\\sum_{n=0}^\\infty\\left(-\\frac{1}{4}\\right)^n=\\frac{1}{1+\\frac{1}{4}}=\\frac{4}{5}",
+          "meaning": "ស៊េរីធរណីមាត្រ q=−1/4",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": [
+        "geometric_series", "alternating_series", "coordinate_limit", "infinite_series_sum",
+        "rotate", "spiral", "final_position"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

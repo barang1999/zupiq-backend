@@ -145,9 +145,17 @@ function normalizeTextBlockContent(content: string): string {
     // Once split into render blocks, they become lonely visible "*" lines.
     .replace(/(^|\n)\s*[*-]\s*$/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
-    // Ensure numbered items (e.g. 1., 2., 3. or Khmer numbers ១., ២., ៣.) start on a new line for clean lists
-    .replace(/(?<!\n|^)(?<!\*)\s*(\b\d+|[\u17E0-\u17E9])\.(?!\d)\s*/g, "\n$1. ")
-    .replace(/\*\*[ \t]*\n[ \t]*(?=(?:\d+|[\u17E0-\u17E9])\.(?!\d))/g, "**")
+    // Ensure bullet points (e.g. "- item" or "* item") preceded by punctuation start on a new line
+    .replace(/([។៕.!?៖:])\s*([*-]\s+)/g, "$1\n\n$2")
+    // Ensure section titles with bold or plain numbered markers (e.g. **1. ...**, **១. ...**, 1., ១.) start on a clean new line with double newline
+    .replace(/(?:\r?\n)*\s*(\*{1,2}\s*(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d)[ \t]*)/g, (match, p1, offset) => {
+      return offset === 0 ? p1 : `\n\n${p1}`;
+    })
+    .replace(/(?:\r?\n)*\s*((?<!\*|\b(?:v|p|fig|eq|step|no|ch|ex|al)\b)(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d)[ \t]*)/gi, (match, p1, offset) => {
+      return offset === 0 ? p1 : `\n\n${p1}`;
+    })
+    .replace(/([។៕.!?»”\)])\s*(\*\*[^\n*]+?\*\*)/g, "$1\n\n$2")
+    .replace(/([៖:])\s*(\*{1,2}(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d))/g, "$1\n\n$2")
     // Keep test/example cues on their own line after a bold condition label:
     // `**សម្រាប់ $x>2$:** ឧទាហរណ៍...` should not read as one continuous claim.
     .replace(/([៖:]\*\*)[ \t]+(?=(?:ឧទាហរណ៍|Example\b|For example\b))/gi, "$1\n")

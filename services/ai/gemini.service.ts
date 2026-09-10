@@ -4363,6 +4363,98 @@ export function extractLineEquationClaims(text: string): Array<{ m: number; b: n
 // an oblique-asymptote solution typically states "y = ax+b" there even more
 // directly than in the derivation prose, and finalAnswer costs nothing
 // extra to include since every call site already has it in hand.
+// A real observed case: the AI's own diagram plotted the right curve and
+// even a horizontal asymptote guide, but never added the tangent line the
+// solution explicitly derives (e.g. "(L): y = 2x - 1", the tangent at a
+// computed point) even though the construction notes list it right next
+// to feature points the diagram DID include. This is the same
+// completeness gap inferConstructedFunctionGraphForExplicitGraphRequest's
+// backstop already guards against for diagrams IT builds (via
+// extractLineEquationClaims/extractFeaturePointClaims) — but that backstop
+// only ever runs when there's no usable diagram yet, so an AI-generated
+// diagram that's otherwise fine never gets this treatment. Runs here
+// instead, unconditionally, on every surviving function-graph block
+// regardless of where it came from.
+function enrichFunctionGraphBlockWithDerivedLines(block: RenderBlock, source: string): RenderBlock {
+  if (block.type !== "diagram" || block.diagramType !== "function-graph") return block;
+  const spec = block.spec as Record<string, unknown> | undefined;
+  const functions = Array.isArray(spec?.functions) ? spec!.functions as Array<Record<string, unknown>> : [];
+  const primaryFn = functions[0];
+  const latex = typeof primaryFn?.latex === "string" ? primaryFn.latex : "";
+  if (!latex) return block;
+
+  const existingLinear = functions
+    .filter((fn) => fn?.kind === "linear" && fn.params && typeof fn.params === "object")
+    .map((fn) => fn.params as Record<string, unknown>)
+    .map((p) => ({ m: typeof p.m === "number" ? p.m : Number.NaN, b: typeof p.b === "number" ? p.b : Number.NaN }))
+    .filter((p) => Number.isFinite(p.m) && Number.isFinite(p.b));
+
+  const derivedLines = extractLineEquationClaims(source)
+    // extractLineEquationClaims derives m/b by sampling three x-values and
+    // solving numerically — clean floating-point noise before it ends up
+    // baked into a displayed latex label.
+    .map((claim) => ({ m: Math.round(claim.m * 1e6) / 1e6, b: Math.round(claim.b * 1e6) / 1e6 }))
+    .filter((claim, idx, arr) => arr.findIndex((c) =>
+      Math.abs(c.m - claim.m) < 1e-6 && Math.abs(c.b - claim.b) < 1e-6
+    ) === idx);
+
+  const newLines = derivedLines
+    .filter((line) => !existingLinear.some((existing) =>
+      Math.abs(existing.m - line.m) < 1e-3 && Math.abs(existing.b - line.b) < 1e-3
+    ))
+    .slice(0, Math.max(0, 3 - existingLinear.length));
+
+  const lineColors = ["red", "orange", "green"];
+  const usedColors = new Set(functions.map((fn) => fn?.color).filter((c): c is string => typeof c === "string"));
+  const pickColor = (): string => {
+    const available = lineColors.find((c) => !usedColors.has(c));
+    const color = available ?? lineColors[usedColors.size % lineColors.length];
+    usedColors.add(color);
+    return color;
+  };
+  const newLineFunctions = newLines.map((line) => ({
+    kind: "linear" as const,
+    latex: `y=${line.m}x${line.b >= 0 ? "+" : ""}${line.b}`,
+    params: { m: line.m, b: line.b },
+    points: [] as unknown[],
+    color: pickColor(),
+  }));
+
+  const existingFeaturePoints = Array.isArray(spec?.featurePoints)
+    ? spec!.featurePoints as Array<{ point?: [number, number] }>
+    : [];
+  const allLinesForFeaturePoints = [...existingLinear, ...derivedLines];
+  // A real observed case: the AI's own diagram already had a feature point
+  // for the max at a *rounded* "(e, 1.7)" ≈ [2.72, 1.74] (matching the
+  // problem's own "គេយក e = 2.7" rounding instruction), while this
+  // function's freshly-evaluated point for the same claim comes out at the
+  // precise [2.718281828459045, 1.7357588823428847] — off by ~0.002-0.004,
+  // comfortably outside a naive exact-match tolerance, so the "already
+  // present" check missed it and a visibly near-duplicate point got added
+  // right next to the original. Use the same generous, magnitude-scaled
+  // tolerance the rest of this file uses for "is this claim actually about
+  // the same point/value" comparisons.
+  const samePoint = (a: [number, number], b: [number, number]) =>
+    Math.abs(a[0] - b[0]) <= Math.max(0.05, Math.abs(b[0]) * 0.02)
+    && Math.abs(a[1] - b[1]) <= Math.max(0.05, Math.abs(b[1]) * 0.02);
+  const newFeaturePoints = extractFeaturePointClaims(source, latex, allLinesForFeaturePoints)
+    .filter((p) => !existingFeaturePoints.some((existing) =>
+      Array.isArray(existing.point) && samePoint(existing.point, p.point)
+    ))
+    .map((p) => ({ ...p, color: "primary" }));
+
+  if (!newLineFunctions.length && !newFeaturePoints.length) return block;
+
+  return {
+    ...block,
+    spec: {
+      ...spec,
+      functions: [...functions, ...newLineFunctions],
+      featurePoints: [...existingFeaturePoints, ...newFeaturePoints],
+    },
+  };
+}
+
 export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], solutionText: string, finalAnswer?: string): RenderBlock[] {
   if (!blocks.length || !solutionText) return blocks;
   // Real observed case: an oblique-asymptote problem ("y = \sqrt{4x^2+x+5}")
@@ -4445,7 +4537,7 @@ export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], soluti
     }
 
     return true;
-  });
+  }).map((block) => enrichFunctionGraphBlockWithDerivedLines(block, `${solutionText}\n${finalAnswer ?? ""}`));
 }
 
 // Extracts "\lim_{x \to A} EXPR = TARGET" from a problem statement — the
@@ -5251,6 +5343,8 @@ Requirements:
   - NEVER write LaTeX commands such as \\binom, \\frac, \\sqrt, \\times, \\begin directly in prose without $ or $$ delimiters.
 - Use KaTeX-compatible LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2, \\binom{n}{k}
 - For multi-line derivations use: $$\\begin{aligned} ... \\end{aligned}$$
+- For a monotonicity/variation table (តារាងអថេរភាព) or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
+  $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
 - Do NOT repeat or restate the problem. Begin directly with the solution.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - No internal reasoning or self-corrections. Output only the final polished derivation.
@@ -5322,7 +5416,7 @@ Rules:
 2. Do NOT create a step-by-step explanation tree.
 3. solutionText should look like a clean, professional, A+ student-written solution.
 4. solutionText should be mostly equations and short labels. Avoid explanatory sentences.
-5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$".
+5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$". For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"): "$$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$".
 6. finalAnswer must be the final answer only.
 7. explanationStatus must be "not_generated" and explanation must be null.
 8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
@@ -5485,6 +5579,8 @@ Solution format:
 - Clean student-written style, mostly equations with short labels.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - For multi-line derivations: $$\\begin{aligned} ... \\end{aligned}$$
+- For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
+  $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
 - Use exact LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - No internal reasoning, no self-corrections. Output only the final polished derivation.
 
@@ -5572,6 +5668,8 @@ Rules for solutionText:
 - Mostly equations and short labels, minimal explanatory prose.
 - CRITICAL: Do NOT use "Step 1:", "Step 2:", or numbered step headers. Focus on a natural mathematical flow.
 - For multi-line math, use one display block: $$\\begin{aligned} ... \\end{aligned}$$
+- For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
+  $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
 - Use exact KaTeX LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
 - finalAnswer must be the final answer only.

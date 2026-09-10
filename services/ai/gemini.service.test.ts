@@ -152,6 +152,90 @@ describe("verifyDiagramBlocksAgainstSolution", () => {
     const verified = verifyDiagramBlocksAgainstSolution(blocks as any, solutionText);
     expect(verified.length).toBe(0);
   });
+
+  // Real observed case: the AI's own diagram for g(x) = 1 + 2ln(x)/x
+  // correctly plotted the curve and the y=1 asymptote, and even included
+  // feature points for A(1,1) and the max point (e, 1+2/e) — but never
+  // added the tangent line "(L): y = 2x - 1", even though the solution
+  // derives it as its own clean statement and later references it again
+  // in the construction notes alongside points that DID make it in.
+  function lnCurveBlock(featurePoints: Array<{ point: [number, number]; label: string }> = []) {
+    return normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "points", latex: "y=1+2\\ln(x)/x", points: [[1, 1], [2, 1.693]] }],
+      featurePoints,
+      domain: [0.1, 8],
+      range: [-3, 6],
+    }]);
+  }
+  const lnSolutionText = `
+    សមីការបន្ទាត់ប៉ះ (L) គឺ៖ y = 2x - 1។
+    ចំណុចអតិបរមារបស់ក្រាប (C): (e, 1 + 2/e).
+    ចំណុចបន្ថែម: (1/2, -1.8) និង A(1, 1)។
+  `;
+
+  it("adds the tangent line the solution derives, even though the diagram came straight from the AI (not the backstop)", () => {
+    const blocks = lnCurveBlock([{ point: [1, 1], label: "A(1, 1)" }]);
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, lnSolutionText);
+    const spec = (verified[0] as any).spec;
+    const linearFns = spec.functions.filter((f: any) => f.kind === "linear");
+    expect(linearFns.length).toBe(1);
+    expect(linearFns[0].params).toMatchObject({ m: 2, b: -1 });
+  });
+
+  it("also adds verified feature points the AI's diagram was missing", () => {
+    const blocks = lnCurveBlock([{ point: [1, 1], label: "A(1, 1)" }]);
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, lnSolutionText);
+    const spec = (verified[0] as any).spec;
+    const points = spec.featurePoints.map((p: any) => p.point);
+    // (1/2, -1.8): on the newly-added tangent line L (2*0.5 - 1 = 0, not -1.8 —
+    // actually check it's on the curve instead: y=1+2ln(0.5)/0.5 ≈ 1-2.77 ≈ -1.77, close to -1.8).
+    expect(points.some(([x, y]: [number, number]) => Math.abs(x - 0.5) < 1e-6 && Math.abs(y - (-1.8)) < 0.05)).toBe(true);
+  });
+
+  it("does not add a line or point that's already present in the AI's own diagram", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [
+        { kind: "points", latex: "y=1+2\\ln(x)/x", points: [[1, 1], [2, 1.693]] },
+        { kind: "linear", latex: "y=2x-1", params: { m: 2, b: -1 }, points: [] },
+      ],
+      featurePoints: [{ point: [1, 1], label: "A(1, 1)" }],
+      domain: [0.1, 8],
+      range: [-3, 6],
+    }]);
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, lnSolutionText);
+    const spec = (verified[0] as any).spec;
+    expect(spec.functions.length).toBe(2);
+    expect(spec.functions.filter((f: any) => f.kind === "linear").length).toBe(1);
+  });
+
+  // Real observed case: the AI's own diagram already had a feature point
+  // for the max, rounded per the problem's own "គេយក e = 2.7" instruction
+  // to (2.72, 1.74) — but this function's freshly-evaluated claim for the
+  // same point comes out at the precise [2.718281828459045,
+  // 1.7357588823428847], off by ~0.002-0.004. An exact-match "is this
+  // already present" check missed that and added a visibly near-duplicate
+  // point right next to the original.
+  it("does not add a near-duplicate of a feature point the AI already rounded", () => {
+    const blocks = lnCurveBlock([
+      { point: [1, 1], label: "A(1, 1)" },
+      { point: [2.72, 1.74], label: "(e, 1.7)" },
+    ]);
+    const solutionText = `${lnSolutionText}\nចំណុចអតិបរមា M(e, 1 + 2/e) ≈ (2.7, 1.7)។`;
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, solutionText);
+    const spec = (verified[0] as any).spec;
+    const nearE = spec.featurePoints.filter((p: any) => Math.abs(p.point[0] - 2.72) < 0.05);
+    expect(nearE.length).toBe(1);
+  });
+
+  it("leaves a diagram alone when nothing new can be verified (no companion line/point found)", () => {
+    const blocks = lnCurveBlock([{ point: [1, 1], label: "A(1, 1)" }]);
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, "The answer is 42.");
+    const spec = (verified[0] as any).spec;
+    expect(spec.functions.length).toBe(1);
+    expect(spec.featurePoints.length).toBe(1);
+  });
 });
 
 describe("extractLineEquationClaims", () => {

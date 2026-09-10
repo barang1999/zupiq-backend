@@ -1,6 +1,7 @@
 import { segmentMathContent, hasMathDelimiters } from "./math-segmenter.js";
 import { normalizeDiagramBlock, type DiagramRenderBlock } from "./diagram-blocks.js";
 import { renderMathSvg, shouldRenderMathSvg } from "./mathjax-svg.js";
+import { extractTableChunks, containsTableChunk, unescapeCellPipes, type TableAlignment } from "./table-blocks.js";
 
 export type RenderBlock =
   | {
@@ -18,12 +19,45 @@ export type RenderBlock =
       renderEngine?: "mathjax-svg";
       svgHtml?: string;
     }
+  | {
+      type: "table";
+      alignments: TableAlignment[];
+      // headers[col] / rows[r][col] are themselves fully segmented render
+      // blocks (text/math), so a cell's own math renders through the exact
+      // same pipeline as top-level content — just scoped to that one cell,
+      // and never passed through the paragraph-shaped prose regexes in
+      // normalizeTextBlockContent (bullets/headings/section markers are
+      // meaningless inside a single cell, and are exactly what caused
+      // table/prose cross-contamination when cells were plain text substrings).
+      headers: RenderBlock[][];
+      rows: RenderBlock[][][];
+    }
   | DiagramRenderBlock;
 
 const LATEX_COMMAND_REGEX = /\\[a-zA-Z]+/;
 const DELIMITED_MATH_REGEX = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/;
 
 export function buildRenderBlocks(content: string, options: { defaultDisplay?: boolean; lang?: string } = {}): RenderBlock[] {
+  const raw = `${content ?? ""}`;
+  if (!raw.trim()) return [];
+
+  // Extract any markdown table region(s) as their own structural chunks
+  // BEFORE any math-token splitting or prose normalization runs, so a table's
+  // rows/cells can never be merged into surrounding prose (or vice versa) by
+  // a later regex pass. Gate on containsTableChunk so content with no table
+  // at all falls straight through to the exact pre-existing behavior below —
+  // zero behavior change for the overwhelmingly common non-table case.
+  const chunks = extractTableChunks(raw);
+  if (containsTableChunk(chunks)) {
+    return compactTextBlocks(
+      chunks.flatMap((chunk) => (chunk.kind === "table" ? [buildTableBlock(chunk)] : buildProseRenderBlocks(chunk.text, options)))
+    );
+  }
+
+  return buildProseRenderBlocks(raw, options);
+}
+
+function buildProseRenderBlocks(content: string, options: { defaultDisplay?: boolean; lang?: string } = {}): RenderBlock[] {
   const raw = `${content ?? ""}`;
   if (!raw.trim()) return [];
 
@@ -50,6 +84,38 @@ export function buildRenderBlocks(content: string, options: { defaultDisplay?: b
     .split(/\n{2,}/)
     .map((part) => buildTextBlock(part.trim(), options.lang))
     .filter((block) => block.content);
+}
+
+function buildTableBlock(chunk: { headerCells: string[]; alignments: TableAlignment[]; rowCells: string[][] }): Extract<RenderBlock, { type: "table" }> {
+  const headers = chunk.headerCells.map((cell) => segmentTableCell(cell));
+  const rows = chunk.rowCells.map((row) => chunk.headerCells.map((_, colIndex) => segmentTableCell(row[colIndex] ?? "")));
+  return { type: "table", alignments: chunk.alignments, headers, rows };
+}
+
+// Segments one table cell's raw text into render blocks, reusing the exact
+// same math tokenizer as top-level content — but deliberately skipping
+// normalizeTextBlockContent's paragraph-shaped repairs (bullets, section
+// headings, the "\ " separator rule). A cell is never a paragraph; running
+// those regexes on cell content is exactly what let a table's own structure
+// get reshaped by rules meant for sentences.
+function segmentTableCell(cellRaw: string): RenderBlock[] {
+  const unescaped = unescapeCellPipes(`${cellRaw ?? ""}`);
+  if (!unescaped.trim()) return [];
+
+  const segments = segmentMathContent(unescaped);
+  if (segments.length === 0) {
+    return unescaped.trim() ? [{ type: "text", content: unescaped.trim() }] : [];
+  }
+
+  return compactTextBlocks(
+    segments
+      .map((segment): RenderBlock | null => {
+        if (segment.type === "math") return buildMathBlock(segment.content, false);
+        const trimmed = segment.content.replace(/[ \t]+/g, " ").trim();
+        return trimmed ? { type: "text", content: trimmed } : null;
+      })
+      .filter((block): block is RenderBlock => block !== null)
+  );
 }
 
 export function buildMathBlocks(content: string, options: { defaultDisplay?: boolean } = {}): RenderBlock[] {
@@ -95,6 +161,24 @@ export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
       if (block?.type === "diagram" || block?.diagramType) {
         const diagram = normalizeDiagramBlock(block);
         return diagram ? [diagram] : [];
+      }
+
+      // A "table" block here was already built by our own buildRenderBlocks
+      // on a previous pass (the AI never emits this shape directly) — e.g. a
+      // cached/re-served session whose solutionBlocks were attached once
+      // already. Without this case it fell through to the catch-all `return
+      // []` below and silently vanished on every subsequent serve — the
+      // table rendered on first generation, then disappeared entirely after
+      // a reload. Pass it through structurally validated rather than
+      // dropped; its cells are already fully-segmented RenderBlock[] from
+      // that earlier pass, so there's nothing left to re-derive.
+      if (block?.type === "table") {
+        return [{
+          type: "table",
+          alignments: Array.isArray(block.alignments) ? block.alignments : [],
+          headers: Array.isArray(block.headers) ? block.headers : [],
+          rows: Array.isArray(block.rows) ? block.rows : [],
+        }];
       }
 
       return [];

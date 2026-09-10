@@ -6,8 +6,9 @@
 // regressed on the next change with nothing to catch it. This file is that
 // catch. See DIAGRAM_STRUCTURE_JSON_GUIDE.md for the full narrative behind
 // each fix.
-import { describe, expect, it } from "vitest";
-import { evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks } from "./diagram-blocks.js";
+import { describe, expect, it, vi } from "vitest";
+import { evaluateLatexAt, evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks } from "./diagram-blocks.js";
+import { logger } from "./logger.js";
 
 function firstFunction(blocks: ReturnType<typeof normalizeDiagramBlocks>) {
   const spec = blocks[0]?.spec as Record<string, unknown> | undefined;
@@ -324,6 +325,44 @@ describe("dropped-unparseable guard (implicit relations in both x and y)", () =>
     expect((blocks[0]?.spec as Record<string, unknown>).functions).toEqual([
       expect.objectContaining({ kind: "linear", domain: [0, 3] }),
     ]);
+  });
+
+  it("drops a closed-form kind claimed for a genuinely symbolic/parametric latex", () => {
+    // Real observed case: a problem discussing y=(ax^2+bx+c)/(px^2+qx+r)
+    // in the abstract — no concrete a,b,c,p,q,r given anywhere, the whole
+    // problem is a case analysis over them — got diagrammed as
+    // kind:"quadratic", params:{a:1,b:0,c:0}: plain y=x^2, treating the
+    // numerator's own symbolic "a" as the literal number 1 and dropping
+    // the denominator (and the asymptotes it produces, which is what the
+    // problem is actually about) entirely. No leftover "=" survives after
+    // stripping the "y=" prefix, so this needed its own guard rather than
+    // the implicit-relation one above.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-2, 3], domain: [-1, 1],
+        functions: [{ kind: "quadratic", latex: "y = \\frac{ax^2+bx+c}{px^2+qx+r}", params: { a: 1, b: 0, c: 0 }, points: [] }],
+        featurePoints: [{ color: "primary", label: "(0, 0)", point: [0, 0], closed: true }],
+      },
+    }]);
+    expect(blocks.length).toBe(0);
+  });
+
+  it("does not misfire on a genuine e^x-style expression with a single non-x letter", () => {
+    // `e` is excluded from the symbolic-letter count so a real exponential
+    // isn't mistaken for a stray parametric coefficient. This still fails
+    // to parse today (the grammar has no bare-`e` constant), but that's a
+    // separate, pre-existing "left untouched" outcome — it must not be
+    // newly swept up by this guard.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-5, 5], domain: [-2, 2],
+        functions: [{ kind: "exponential", latex: "y = e^x", params: { a: 1, b: 2.718281828 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    expect(blocks.length).toBe(1);
   });
 });
 
@@ -991,5 +1030,216 @@ describe("stale xTicks/yTicks after a genuine kind correction", () => {
     }]);
     const fn = firstFunction(blocks)!;
     expect(fn).not.toHaveProperty("_wasReclassifiedFromClosedForm");
+  });
+});
+
+describe("sign-table landmark-shorthand expansion", () => {
+  function signTableRows(blocks: ReturnType<typeof normalizeDiagramBlocks>) {
+    const spec = blocks[0]?.spec as Record<string, unknown> | undefined;
+    return spec?.rows as Array<{ label: string; cells: string[] }> | undefined;
+  }
+
+  it("still expands the original single-critical-point shorthand (3 cells -> 5 cells)", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["-∞", "2", "+∞"] },
+        { label: "f'(x)", cells: ["+", "0", "-"] },
+      ],
+    }]);
+    expect(signTableRows(blocks)).toEqual([
+      { label: "x", cells: ["-∞", "", "2", "", "+∞"] },
+      { label: "f'(x)", cells: ["", "+", "0", "-", ""] },
+    ]);
+  });
+
+  it("expands a three-critical-point shorthand (5 cells -> 9 cells), the shape a fixed narrow N=1 check missed", () => {
+    // Real observed case: x=-2 and x=0 are ordinary critical points, x=-1
+    // is a vertical asymptote (the "||" undefined marker) sitting between
+    // them. The AI supplied the x row as just the 5 landmark values (no
+    // spacer cells) and the sign row as the already-correctly-alternating
+    // 7-cell sequence — the old code only recognized this shape when both
+    // rows were exactly 3 cells, so a 5-vs-7 mismatch fell through
+    // untouched, leaving the two rows misaligned under shared columns.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["-∞", "-2", "-1", "0", "+∞"] },
+        { label: "y'", cells: ["+", "0", "-", "||", "-", "0", "+"] },
+      ],
+    }]);
+    expect(signTableRows(blocks)).toEqual([
+      { label: "x", cells: ["-∞", "", "-2", "", "-1", "", "0", "", "+∞"] },
+      { label: "y'", cells: ["", "+", "0", "-", "||", "-", "0", "+", ""] },
+    ]);
+  });
+
+  it("does not misfire on a row pair whose lengths don't match the 2N+1 relationship", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["-∞", "-2", "-1", "0", "+∞"] },
+        { label: "y'", cells: ["+", "0", "-"] }, // 3, not 2*3+1=7 — genuinely inconsistent input
+      ],
+    }]);
+    expect(signTableRows(blocks)).toEqual([
+      { label: "x", cells: ["-∞", "-2", "-1", "0", "+∞"] },
+      { label: "y'", cells: ["+", "0", "-"] },
+    ]);
+  });
+
+  it("leaves an already-well-formed table (rows already the same length) alone", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["-∞", "", "-1", "", "1", "", "+∞"] },
+        { label: "f'(x)", cells: ["", "+", "0", "-", "0", "+", ""] },
+      ],
+    }]);
+    expect(signTableRows(blocks)).toEqual([
+      { label: "x", cells: ["-∞", "", "-1", "", "1", "", "+∞"] },
+      { label: "f'(x)", cells: ["", "+", "0", "-", "0", "+", ""] },
+    ]);
+  });
+});
+
+describe("Euler's number ('e') support in the general expression engine", () => {
+  it("evaluates e^{-2x} at x=0 as 1 (this used to accidentally work — Math.pow(NaN, 0) is 1)", () => {
+    expect(evaluateLatexAt("y=e^{-2x}", 0)).toBeCloseTo(1, 6);
+  });
+
+  it("evaluates e^{-2x} at a nonzero x correctly instead of returning null", () => {
+    // Real observed case: with "e" tokenized as an unbound bare-letter variable
+    // (no dedicated Euler's-number AST node), "e^{-2x}" evaluated to
+    // Math.pow(NaN, exponent), which is only finite (and only by a JS
+    // quirk) when the exponent happens to be exactly 0 — every other x
+    // returned null, making a perfectly evaluable exponential function look
+    // completely unplottable.
+    expect(evaluateLatexAt("y=e^{-2x}", 1)).toBeCloseTo(Math.exp(-2), 6);
+    expect(evaluateLatexAt("y=e^{-2x}", -1)).toBeCloseTo(Math.exp(2), 6);
+  });
+
+  it("evaluates a product-with-exponential function across several x (not just x=0)", () => {
+    // "f(x) = (x + 1)(e^{-2x} + 1)" — a real observed case that a
+    // function-graph diagram needed to plot.
+    const latex = "y=(x + 1)(e^{-2x} + 1)";
+    expect(evaluateLatexAt(latex, 0)).toBeCloseTo(2, 6);
+    expect(evaluateLatexAt(latex, 1)).toBeCloseTo(2 * (Math.exp(-2) + 1), 6);
+    expect(evaluateLatexAt(latex, -1)).toBeCloseTo(0, 6);
+  });
+
+  it("still treats a genuinely unbound single-letter variable (not 'e') as NaN/null", () => {
+    expect(evaluateLatexAt("y=k^{-2x}", 1)).toBeNull();
+  });
+});
+
+describe("function latex is not truncated mid-expression before parsing", () => {
+  // Real observed case: normalizeFunctionGraphSpec used to cap a function's
+  // own `latex` at 80 characters before doing anything else with it. A
+  // legitimate multi-term expression with a couple of
+  // \left(\frac{...}{...}\right) groups easily exceeds that (this one is
+  // ~94 chars) — the cap chopped it off mid-"\frac", so it failed to parse
+  // at all, and the "can't verify this function's shape" branch dropped it
+  // outright. The bug wasn't the AI or the general expression engine; it
+  // was silent truncation before either ever got a chance to run.
+  it("keeps a long-but-legitimate compound expression intact and plots it, rather than silently dropping the function", () => {
+    const latex = "y=x + 1 + \\left(\\frac{x}{e^x}\\right)\\left(\\frac{1}{e^x}\\right) + \\left(\\frac{1}{e^x}\\right)^2";
+    expect(latex.length).toBeGreaterThan(80); // pins down that this is exercising the >80-char case
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "points", latex, points: [] }],
+      domain: [-2.4, 6],
+      range: [-208, 43],
+    }]);
+    expect(blocks.length).toBe(1);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(Array.isArray(fn.points)).toBe(true);
+    expect((fn.points as unknown[]).length).toBeGreaterThan(10);
+  });
+});
+
+describe("dropped functions/blocks are logged loudly, not silently swallowed", () => {
+  // Every one of the bugs this file's other describe blocks document (a
+  // missing Euler's-e binding, an 80-char truncation, an asymptote
+  // heuristic mistaking exponential growth for a pole, ...) looked
+  // identical from the outside: a diagram the user expected just never
+  // showed up, and finding the actual cause meant re-deriving from scratch
+  // which of several possible drop points fired. These tests pin down that
+  // every drop point actually emits a structured, greppable log line
+  // instead of just `return null`, so the next one is a log lookup, not a
+  // fresh investigation.
+  it("logs when a function is dropped for an empty-latex placeholder", () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "quadratic", latex: "", params: { a: 1, b: 0, c: 0 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[diagram:dropped-function] empty-latex-placeholder"),
+      expect.objectContaining({ kind: "quadratic" }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("logs when a function is dropped for containing \\lim in its own latex", () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "cubic", latex: "\\lim_{x\\to0}\\frac{x^3-x\\sin x}{x-\\sin^2x}", params: { a: 1, b: 0, c: 0, d: 0 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[diagram:dropped-function] lim-expression-as-latex"),
+      expect.anything(),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("logs when the whole block is dropped (critical warning, e.g. its only function got dropped)", () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "quadratic", latex: "", params: { a: 1, b: 0, c: 0 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    expect(blocks).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[diagram:dropped-block] empty-function-graph"),
+      expect.objectContaining({ diagramType: "function-graph" }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("includes the latex length in the payload when an oversized/unparseable latex is dropped — the exact signal that would have surfaced the 80-char truncation bug immediately", () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "quadratic", latex: "y=4xy=x^2+y^2", params: { a: 1, b: 0, c: 0 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[diagram:dropped-function] unparseable-latex"),
+      expect.objectContaining({ latexLength: expect.any(Number), hasEquals: true }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not log anything when nothing was dropped", () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "linear", latex: "y=x+1", params: { m: 1, b: 1 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    expect(blocks.length).toBe(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

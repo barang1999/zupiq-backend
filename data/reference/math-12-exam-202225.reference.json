@@ -1,0 +1,1127 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-202225",
+    "title": "Grade 12 Math Final Exam 2022-2025 (Advanced Science Stream) with Full Solutions",
+    "titleKh": "វិញ្ញាសាចំខាន ភណិតវិទ្យា ថ្នាក់វិញ្ញាសាសម្រស់ ឆ្នាំសិក្សា ២០២២-២០២៥",
+    "author": "អប់រំអ៊ីយ វិទ្យ ពុំ",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "exam",
+    "topics": [
+      "limits",
+      "continuity",
+      "complex_numbers",
+      "integration",
+      "differential_equations",
+      "function_analysis",
+      "vectors_3d",
+      "analytic_geometry_3d",
+      "partial_fractions"
+    ],
+    "metadata": {
+      "pageCount": 9,
+      "originalFile": "1788919918064-a431c7b2-ab3a-4c12-a883-5c99e8526b7d_4.jpg to _12.jpg",
+      "rawExtractionFile": "native image read"
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["worked_example", "formula_rule", "problem_solution"],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": ["យើងមានៈ", "នាំអោយ", "តាមរូបមន្ត", "តាមទំនាក់ទំនង", "ដូចនេះ", "ចម្លើយ"],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["concept_explanation"],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": ["មានន័យថា", "លុះត្រាតែ", "សម្គាល់ៈ", "ឧទាហរណ៍", "ដូចនេះ"],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-202225-p001-c001",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "limits_continuity",
+      "topicKh": "ដែនកំណត់ និងភាពជាប់ប្រាក់",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ប្រទាន f អនុគមន៍កំណត់ដោយ f(x) = x - 2 + e/(ln x) បើ x > 0 និង x ≠ 1 ហើយ f(0) = m ។ គណនា lim_{x→0+} f(x) ។ ជ្រើសរើស m ឱ្យ f ជាអនុគមន៍ជាប់ប្រាក់ x = 0 ។\nដោះស្រាយ: lim_{x→0+} f(x) = lim_{x→0+} (x - 2 + e/ln x) = 0 - 2 + 0 = -2 ។ ដូចេ្នះ lim_{x→0+} f(x) = -2 ។ ដើម្បី f ជាប់ប្រាក់ x = 0: f(0) = lim_{x→0+} f(x) ⟺ m = -2 ។",
+      "normalizedText": "Piecewise function f(x) = x - 2 + e/ln(x) for x>0, x≠1; f(0)=m. Find the right-hand limit at 0 and the value of m for continuity. Solution: the limit equals -2 (since e/ln(x)→0 as x→0+), so m = -2.",
+      "problem": {
+        "textKh": "f អនុគមន៍កំណត់ដោយ f(x) = { x - 2 + e/(ln x) បើ x > 0, x ≠ 1 ; f(0) = m }។ គណនា lim_{x→0+} f(x) ។ ជ្រើសរើស m ឱ្យ f ជាប់ប្រាក់ x = 0 ។",
+        "text": "Given f(x) = x - 2 + e/ln(x) for x>0, x≠1, and f(0)=m. Find lim_{x→0+} f(x) and determine m for continuity at x=0.",
+        "latex": "f(x) = \\begin{cases} x - 2 + \\dfrac{e}{\\ln x} & x > 0,\\ x \\neq 1 \\\\ m & x = 0 \\end{cases}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនាដែនកំណត់:",
+          "text": "Compute the limit:",
+          "latex": "\\lim_{x \\to 0^+} f(x) = \\lim_{x \\to 0^+} \\left(x - 2 + \\frac{e}{\\ln x}\\right) = 0 - 2 + 0 = -2",
+          "explanationKh": "ពេល x → 0⁺ នោះ ln x → -∞ ដូចេ្នះ e/ln x → 0",
+          "explanation": "As x→0⁺, ln x→-∞ so e/ln x→0"
+        },
+        {
+          "textKh": "លក្ខខណ្ឌជាប់ប្រាក់: f(0) = lim_{x→0+} f(x)",
+          "text": "Continuity condition: f(0) = lim_{x→0+} f(x)",
+          "latex": "m = -2",
+          "explanationKh": "f ជាប់ប្រាក់ x = 0 ⟺ f(0) = ដែនកំណត់",
+          "explanation": "f is continuous at x=0 iff f(0) equals the one-sided limit"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ lim_{x→0+} f(x) = -2 និង m = -2",
+        "text": "lim_{x→0+} f(x) = -2 and m = -2",
+        "latex": "\\lim_{x \\to 0^+} f(x) = -2 \\quad;\\quad m = -2"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x \\to 0^+} \\frac{e}{\\ln x} = 0",
+          "meaning": "e/ln(x)→0 since ln x→-∞",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": ["ដែនកំណត់", "ភាពជាប់ប្រាក់", "limit", "continuity", "piecewise", "lim"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c002",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "complex_numbers",
+      "topicKh": "ចំនួនកុំផ្លិច",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា A = (1+i)(2-i) ។\nដោះស្រាយ: A = (1+i)(2-i) = 2 - i + 2i - i² = 2 + i - (-1) = 3 + i ។",
+      "normalizedText": "Compute A = (1+i)(2-i). Expand using i²=-1 to get A = 3+i.",
+      "problem": {
+        "textKh": "គណនា A = (1+i)(2-i)",
+        "text": "Compute A = (1+i)(2-i)",
+        "latex": "A = (1+i)(2-i)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ពង្រីកជំនួស i² = -1:",
+          "text": "Expand and substitute i² = -1:",
+          "latex": "A = 2 - i + 2i - i^2 = 2 + i - (-1) = 3 + i",
+          "explanationKh": "i² = -1 ដូចេ្នះ -i² = 1",
+          "explanation": "i² = -1, so -i² = +1"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ A = 3 + i",
+        "text": "A = 3 + i",
+        "latex": "A = 3 + i"
+      },
+      "formulas": [
+        {"latex": "i^2 = -1", "meaning": "ទំនាក់ទំនងជាមូលដ្ឋាននៃចំនួនស្មុគស្មាញ", "confidence": 1.0}
+      ],
+      "keywords": ["ចំនួនកុំផ្លិច", "i²", "complex numbers", "multiplication"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c003",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "limits",
+      "topicKh": "ដែនកំណត់ (0/0 ប្រភេទ)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា B = lim_{x→0} (2 - √(x+4))/x ។ ទម្រង់ 0/0 ។ គុណនឹងឃ្លានបំបូក: (2-√(x+4))(2+√(x+4)) = 4-(x+4) = -x ។ ដូចេ្នះ B = lim_{x→0} -x / [x(2+√(x+4))] = -1/(2+2) = -1/4 ។",
+      "normalizedText": "Limit B = lim_{x→0} (2-sqrt(x+4))/x is 0/0 form. Rationalize by multiplying conjugate: numerator becomes -x, so B = -1/4.",
+      "problem": {
+        "textKh": "គណនា B = lim_{x→0} (2 - √(x+4))/x",
+        "text": "Compute B = lim_{x→0} (2 - sqrt(x+4))/x",
+        "latex": "B = \\lim_{x \\to 0} \\frac{2 - \\sqrt{x+4}}{x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ទម្រង់ 0/0 ។ គុណនឹងប្រឆាំង:",
+          "text": "Indeterminate 0/0 form. Multiply by conjugate:",
+          "latex": "B = \\lim_{x \\to 0} \\frac{(2-\\sqrt{x+4})(2+\\sqrt{x+4})}{x(2+\\sqrt{x+4})} = \\lim_{x \\to 0} \\frac{4-(x+4)}{x(2+\\sqrt{x+4})}",
+          "explanationKh": "គុណអ្នកចុងនិងអ្នករាបនឹង (2+√(x+4))",
+          "explanation": "Multiply numerator and denominator by the conjugate"
+        },
+        {
+          "textKh": "សម្រួលរួច:",
+          "text": "Simplify:",
+          "latex": "= \\lim_{x \\to 0} \\frac{-x}{x(2+\\sqrt{x+4})} = \\lim_{x \\to 0} \\frac{-1}{2+\\sqrt{x+4}} = \\frac{-1}{2+2} = -\\frac{1}{4}",
+          "explanationKh": "លុប x ហើយជំនួស x=0",
+          "explanation": "Cancel x and substitute x=0"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ B = -1/4",
+        "text": "B = -1/4",
+        "latex": "B = -\\frac{1}{4}"
+      },
+      "formulas": [
+        {
+          "latex": "(a-b)(a+b) = a^2 - b^2",
+          "meaning": "ក្បួនបំបូក ប្រឆាំង — rationalization trick",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ដែនកំណត់", "0/0", "rationalize", "conjugate", "limit", "square root"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c004",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "logarithm_exponential",
+      "topicKh": "លោការីត និងអ៊ិចស្ប៉ូណង់ស្យែល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា C = ln(e^(x-2)) + e^(ln 2) ។\nដោះស្រាយ: ln(e^(x-2)) = x-2 ។ e^(ln 2) = 2 ។ ដូចេ្នះ C = (x-2) + 2 = x ។",
+      "normalizedText": "Simplify C = ln(e^(x-2)) + e^(ln 2) using inverse function properties. ln(e^u)=u and e^(ln a)=a, so C = (x-2)+2 = x.",
+      "problem": {
+        "textKh": "គណនា C = ln(e^(x-2)) + e^(ln 2)",
+        "text": "Simplify C = ln(e^(x-2)) + e^(ln 2)",
+        "latex": "C = \\ln e^{x-2} + e^{\\ln 2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើគុណសម្បត្តិ ln(e^u) = u និង e^(ln a) = a:",
+          "text": "Apply inverse properties: ln(e^u)=u and e^(ln a)=a:",
+          "latex": "C = (x-2) + 2 = x",
+          "explanationKh": "ln និង exp ជាអនុគមន៍ច្រាស់គ្នា",
+          "explanation": "ln and exp are inverse functions of each other"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ C = x",
+        "text": "C = x",
+        "latex": "C = x"
+      },
+      "formulas": [
+        {"latex": "\\ln(e^u) = u", "meaning": "ផ្ទុយគ្នា ln និង exp", "confidence": 1.0},
+        {"latex": "e^{\\ln a} = a", "meaning": "ផ្ទុយគ្នា exp និង ln", "confidence": 1.0}
+      ],
+      "keywords": ["លោការីត", "exponential", "inverse", "ln", "log"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c005",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "integration",
+      "topicKh": "អាំងតេហ្គ្រាលអនិយ័ត",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា D = ∫(2x + cos x)dx ។\nដោះស្រាយ: D = x² + sin x + C ; C ∈ ℝ ។",
+      "normalizedText": "Indefinite integral D = integral of (2x + cos x) dx. Integrate term by term: D = x² + sin x + C.",
+      "problem": {
+        "textKh": "គណនា D = ∫(2x + cos x)dx",
+        "text": "Compute D = integral of (2x + cos x) dx",
+        "latex": "D = \\int (2x + \\cos x)\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដាក់អាំងតេហ្គ្រាលម្តងមួយៗ:",
+          "text": "Integrate term by term:",
+          "latex": "D = \\frac{2x^2}{2} + \\sin x + C = x^2 + \\sin x + C",
+          "explanationKh": "∫2x dx = x², ∫cos x dx = sin x",
+          "explanation": "∫2x dx = x², ∫cos x dx = sin x"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ D = x² + sin x + C ; C ∈ ℝ",
+        "text": "D = x² + sin x + C, C ∈ ℝ",
+        "latex": "D = x^2 + \\sin x + C,\\quad C \\in \\mathbb{R}"
+      },
+      "formulas": [
+        {"latex": "\\int x^n\\,dx = \\frac{x^{n+1}}{n+1} + C", "meaning": "រូបមន្តអាំងតេហ្គ្រាល power rule", "confidence": 1.0},
+        {"latex": "\\int \\cos x\\,dx = \\sin x + C", "meaning": "អាំងតេហ្គ្រាល cosine", "confidence": 1.0}
+      ],
+      "keywords": ["អាំងតេហ្គ្រាល", "antiderivative", "integration", "indefinite integral", "cos", "sin"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c006",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "complex_numbers_trigonometric_form",
+      "topicKh": "ទ្រង់ទ្រាយត្រីកោណនៃចំនួនកុំផ្លិច — De Moivre",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "តោៗ z = 1 - i√3 ។ ចូរបង្ហាញ z^2002 ជ្រុបទ្រង់ត្រីកោណ ។\nដោះស្រាយ: |z| = √(1+3) = 2 ។ z = 2(cos(5π/3) + i sin(5π/3)) ។\nz^2002 = 2^2002 (cos(2002×5π/3) + i sin(2002×5π/3)) ។\n2002×5π/3 = 10010π/3 = 3336π + 2π/3 ។\nដូចេ្នះ z^2002 = 2^2002 (cos(2π/3) + i sin(2π/3)) ។",
+      "normalizedText": "Given z = 1 - i√3, find z^2002 in trigonometric form. |z|=2, argument=5π/3. Apply De Moivre: z^2002 = 2^2002 (cos(2π/3)+i sin(2π/3)) after reducing angle mod 2π.",
+      "problem": {
+        "textKh": "តោៗ z = 1 - i√3 ។ ចូរបង្ហាញ z^2002 ជ្រុបទ្រង់ត្រីកោណ",
+        "text": "Let z = 1 - i√3. Express z^2002 in trigonometric form.",
+        "latex": "z = 1 - i\\sqrt{3}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនាម៉ូឌុលនិងអាំងហ្គ្វ:",
+          "text": "Find modulus and argument:",
+          "latex": "|z| = \\sqrt{1^2 + (\\sqrt{3})^2} = 2,\\quad \\arg(z) = \\frac{5\\pi}{3}",
+          "explanationKh": "z = 2(cos(5π/3) + i sin(5π/3))",
+          "explanation": "z in trig form with modulus 2 and angle 5π/3"
+        },
+        {
+          "textKh": "ប្រើទ្រឹស្ដី De Moivre:",
+          "text": "Apply De Moivre's theorem:",
+          "latex": "z^{2002} = 2^{2002}\\!\\left(\\cos\\frac{2002 \\times 5\\pi}{3} + i\\sin\\frac{2002 \\times 5\\pi}{3}\\right)",
+          "explanationKh": "(r(cosθ + i sinθ))^n = r^n(cos nθ + i sin nθ)",
+          "explanation": "De Moivre: raise modulus to power n and multiply angle by n"
+        },
+        {
+          "textKh": "សម្រួលមុំ: 10010π/3 = 3336π + 2π/3",
+          "text": "Reduce angle: 10010π/3 = 3336π + 2π/3 (since 3336 is even, cos and sin unchanged):",
+          "latex": "z^{2002} = 2^{2002}\\!\\left(\\cos\\frac{2\\pi}{3} + i\\sin\\frac{2\\pi}{3}\\right)",
+          "explanationKh": "3336π ជាជម្រើស 2π ។ នៅសេសសំខាន់ 2π/3",
+          "explanation": "3336π = 1668 × 2π, so the angle reduces to 2π/3"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ z^2002 = 2^2002 (cos(2π/3) + i sin(2π/3))",
+        "text": "z^2002 = 2^2002 (cos(2π/3) + i sin(2π/3))",
+        "latex": "z^{2002} = 2^{2002}\\!\\left(\\cos\\frac{2\\pi}{3} + i\\sin\\frac{2\\pi}{3}\\right)"
+      },
+      "formulas": [
+        {
+          "latex": "\\left[r(\\cos\\theta + i\\sin\\theta)\\right]^n = r^n\\!(\\cos n\\theta + i\\sin n\\theta)",
+          "meaning": "ទ្រឹស្ដី De Moivre",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ចំនួនកុំផ្លិច", "De Moivre", "ទ្រង់ទ្រាយត្រីកោណ", "complex power", "modulus", "argument", "trigonometric form"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c007",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "complex_numbers_algebra",
+      "topicKh": "ចំនួនកុំផ្លិច — ការគណនាផ្នែកពិត ផ្នែកស្មុគស្មាញ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "តោៗ u = x + iy ; z₁ = a + ib ។ គណនា x, y ជាអនុគមន៍ a និង b ដោយ u = z₁² + iz₁ - ½ ។\nដោះស្រាយ: x + iy = (a+ib)² + i(a+ib) - ½ = a² + 2abi - b² + ai - b - ½ = (a² - b² - b - ½) + (2ab + a)i ។\nសព្ទ: x = a² - b² - b - ½ ; y = a + 2ab ។",
+      "normalizedText": "Given u = x+iy, z1 = a+ib, and u = z1² + iz1 - 1/2. Expand and separate real/imaginary parts. Result: x = a² - b² - b - 1/2, y = a + 2ab.",
+      "problem": {
+        "textKh": "u = x + iy ; z₁ = a + ib ។ គណនា x, y ជាអនុគមន៍ a, b ។ u = z₁² + iz₁ - ½",
+        "text": "u = x+iy, z1 = a+ib, u = z1² + iz1 - 1/2. Find x, y as functions of a, b.",
+        "latex": "u = z_1^2 + iz_1 - \\frac{1}{2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ពង្រីក z₁² = (a+ib)² = a² + 2abi + i²b² = a² - b² + 2abi:",
+          "text": "Expand z1² = (a+ib)² = a² - b² + 2abi:",
+          "latex": "x + iy = a^2 - b^2 + 2abi + i(a+ib) - \\frac{1}{2}",
+          "explanationKh": "i(a+ib) = ai + i²b = ai - b",
+          "explanation": "i(a+ib) = ai - b"
+        },
+        {
+          "textKh": "បង្រួមផ្នែកពិត និងស្មុគស្មាញ:",
+          "text": "Group real and imaginary parts:",
+          "latex": "x + iy = \\left(a^2 - b^2 - b - \\frac{1}{2}\\right) + (2ab + a)i",
+          "explanationKh": "ផ្នែកពិត: a²-b²-b-½ ; ផ្នែកស្មុគស្មាញ: 2ab+a",
+          "explanation": "Real part: a²-b²-b-1/2; imaginary part: 2ab+a"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ x = a² - b² - b - ½ ; y = a + 2ab",
+        "text": "x = a² - b² - b - 1/2, y = a + 2ab",
+        "latex": "x = a^2 - b^2 - b - \\frac{1}{2} \\;\\;;\\;\\; y = a + 2ab"
+      },
+      "formulas": [
+        {"latex": "(a+ib)^2 = a^2 - b^2 + 2abi", "meaning": "ការេចំនួនកុំផ្លិច", "confidence": 1.0}
+      ],
+      "keywords": ["ចំនួនកុំផ្លិច", "real part", "imaginary part", "complex algebra"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c008",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "partial_fractions",
+      "topicKh": "ការបំបែកប្រភាគ — partial fraction",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "កំណត់ α និង β ដែល 1/(1+e^x) = α + βe^x/(1+e^x) ។\nដោះស្រាយ: 1/(1+e^x) = [α(1+e^x) + βe^x]/(1+e^x) ⟹ 1 = α + (α+β)e^x ។\nប្រៀបធៀបស: α=1 ; α+β=0 ⟹ β=-1 ។",
+      "normalizedText": "Find α, β such that 1/(1+e^x) = α + βe^x/(1+e^x). Multiply out and match coefficients: α=1, β=-1.",
+      "problem": {
+        "textKh": "កំណត់ α, β ដែលបំពេញ 1/(1+e^x) = α + βe^x/(1+e^x)",
+        "text": "Find α, β such that 1/(1+e^x) = α + βe^x/(1+e^x)",
+        "latex": "\\frac{1}{1+e^x} = \\alpha + \\frac{\\beta e^x}{1+e^x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ធ្វើឱ្យអ្នករាបដូចគ្នាហើយប្រៀបធៀបអ្នកចុង:",
+          "text": "Bring to common denominator and compare numerators:",
+          "latex": "1 = \\alpha(1+e^x) + \\beta e^x = \\alpha + (\\alpha+\\beta)e^x",
+          "explanationKh": "ប្រៀបធៀបស x⁰ និង e^x",
+          "explanation": "Match constant term and coefficient of e^x"
+        },
+        {
+          "textKh": "ដូចេ្នះ: α=1 ; α+β=0 ⟹ β=-1",
+          "text": "Therefore: α=1 and α+β=0 so β=-1",
+          "latex": "\\alpha = 1 \\;\\;;\\;\\; \\beta = -1",
+          "explanationKh": "ប្រព័ន្ធសមីការ 2 ជាមួយ 2 មិនស្គាល់",
+          "explanation": "System of 2 equations in 2 unknowns"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ α = 1 ; β = -1",
+        "text": "α = 1, β = -1",
+        "latex": "\\alpha = 1 \\;\\;;\\;\\; \\beta = -1"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{1}{1+e^x} = 1 - \\frac{e^x}{1+e^x}",
+          "meaning": "ការបំបែកប្រភាគ — ប្រើក្នុងអាំងតេហ្គ្រាល",
+          "confidence": 0.98
+        }
+      ],
+      "keywords": ["partial fraction", "decomposition", "coefficients", "e^x", "ការបំបែក"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c009",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "integration_definite",
+      "topicKh": "អាំងតេហ្គ្រាលកំណត់ — ផ្ទៃក្រឡា",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនាផ្ទៃក្រឡាតំបន់ជ្រើសសម្តៅ f(x) = 1/(1+e^x) ក្នុង [0,1] ។\nដោះស្រាយ: S = ∫₀¹ 1/(1+e^x) dx = ∫₀¹ (1 - e^x/(1+e^x)) dx = [x]₀¹ - [ln|1+e^x|]₀¹ = 1 - [ln(1+e) - ln 2] = 1 + ln 2 - ln(1+e) ។",
+      "normalizedText": "Compute the area under f(x)=1/(1+e^x) on [0,1]. Use partial fraction: 1/(1+e^x) = 1 - e^x/(1+e^x). Integral of e^x/(1+e^x) is ln(1+e^x). Result: S = 1 + ln2 - ln(1+e).",
+      "problem": {
+        "textKh": "គណនាផ្ទៃក្រឡា S = ∫₀¹ 1/(1+e^x) dx",
+        "text": "Compute S = integral from 0 to 1 of 1/(1+e^x) dx",
+        "latex": "S = \\int_0^1 \\frac{1}{1+e^x}\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើការបំបែក 1/(1+e^x) = 1 - e^x/(1+e^x):",
+          "text": "Use decomposition 1/(1+e^x) = 1 - e^x/(1+e^x):",
+          "latex": "S = \\int_0^1 \\left(1 - \\frac{e^x}{1+e^x}\\right)dx = \\Big[x\\Big]_0^1 - \\int_0^1 \\frac{(1+e^x)'}{1+e^x}\\,dx",
+          "explanationKh": "e^x = (1+e^x)' ដូចេ្នះ ∫e^x/(1+e^x)dx = ln|1+e^x|",
+          "explanation": "Since (1+e^x)' = e^x, integral of e^x/(1+e^x) = ln(1+e^x)"
+        },
+        {
+          "textKh": "ជំនួសដែនកំណត់:",
+          "text": "Evaluate at bounds:",
+          "latex": "S = 1 - \\Big[\\ln(1+e^x)\\Big]_0^1 = 1 - \\ln(1+e) + \\ln 2",
+          "explanationKh": "ln(1+e^1) - ln(1+e^0) = ln(1+e) - ln 2",
+          "explanation": "Evaluate: ln(1+e) - ln(1+1) = ln(1+e) - ln 2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ S = 1 + ln 2 - ln(1+e) ឯកតាជ្រុង",
+        "text": "S = 1 + ln 2 - ln(1+e) square units",
+        "latex": "S = 1 + \\ln 2 - \\ln(1+e)"
+      },
+      "formulas": [
+        {
+          "latex": "\\int \\frac{f'(x)}{f(x)}\\,dx = \\ln|f(x)| + C",
+          "meaning": "រូបមន្ត logarithmic integration",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["អាំងតេហ្គ្រាល", "definite integral", "area", "ln", "e^x", "ផ្ទៃក្រឡា"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p001-c010",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "differential_equations",
+      "topicKh": "សមីការឌីផេរ៉ង់ស្យែល ត្រឹមលំដាប់ ២",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ដោះស្រាយសមីការ 2y'' - 3y' + y = 0 ។\nដោះស្រាយ: សមីការមូលដ្ឋាន 2r² - 3r + 1 = 0 ។ a+b+c = 2-3+1 = 0 ដូចេ្នះ r₁=1 ។ r₂ = c/a = 1/2 ។ ចម្លើយទូទៅ: y = Ae^x + Be^(x/2) ; A,B ∈ ℝ ។",
+      "normalizedText": "Solve 2y''-3y'+y=0. Characteristic equation 2r²-3r+1=0. Since a+b+c=0, r1=1 is a root; r2=c/a=1/2. General solution: y = Ae^x + Be^(x/2).",
+      "problem": {
+        "textKh": "ដោះស្រាយសមីការឌីផេរ៉ង់ស្យែល 2y'' - 3y' + y = 0",
+        "text": "Solve the ODE 2y'' - 3y' + y = 0",
+        "latex": "2y'' - 3y' + y = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "បង្កើតសមីការមូលដ្ឋាន:",
+          "text": "Write characteristic equation:",
+          "latex": "2r^2 - 3r + 1 = 0",
+          "explanationKh": "ជំនួស y = e^(rx): y'=re^(rx), y''=r²e^(rx)",
+          "explanation": "Substitute y = e^(rx) to get the characteristic equation"
+        },
+        {
+          "textKh": "a+b+c = 2-3+1 = 0 ដូចេ្នះ r₁=1 ។ r₂ = c/a = 1/2:",
+          "text": "Since a+b+c=0, r1=1. By Vieta's: r2 = c/a = 1/2:",
+          "latex": "r_1 = 1 \\;\\;;\\;\\; r_2 = \\frac{1}{2}",
+          "explanationKh": "ប្រើក្បួន a+b+c=0 ⟹ r=1 គឺជាឫស",
+          "explanation": "When sum of coefficients = 0, r=1 is always a root; product of roots = c/a = 1/2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយទូទៅ: y = Ae^x + Be^(x/2) ; A,B ∈ ℝ",
+        "text": "General solution: y = Ae^x + Be^(x/2), A,B ∈ ℝ",
+        "latex": "y = Ae^x + Be^{\\frac{x}{2}},\\quad A,B \\in \\mathbb{R}"
+      },
+      "formulas": [
+        {
+          "latex": "ar^2 + br + c = 0",
+          "meaning": "សមីការមូលដ្ឋាន (characteristic equation)",
+          "confidence": 1.0
+        },
+        {
+          "latex": "a + b + c = 0 \\Rightarrow r_1 = 1,\\; r_2 = \\frac{c}{a}",
+          "meaning": "ក្បួនកាត់ — ប្រសិនបើ a+b+c=0",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ODE", "differential equation", "characteristic equation", "សមីការឌីផេរ៉ង់ស្យែល", "second order"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c001",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 6,
+      "topic": "differential_equations_particular_solution",
+      "topicKh": "ចម្លើយពិសេស ODE ជាមួយលក្ខខណ្ឌតាង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "កំណត់ g(x) ចម្លើយ ODE (E): 2y''-3y'+y=0 ដែល g(0)=0 ហើយ g'(0)=-1/2 (បន្ទ)ជ្រួស d: y=-½x ជ្រាបorigins O(0,0)) ។\nដោះស្រាយ: g(x) = Ae^x + Be^(x/2) ។ g'(x) = Ae^x + ½Be^(x/2) ។\ng(0)=0: A+B=0 ...(2) ។ g'(0)=-½: A+½B=-½ ⟹ 2A+B=-1 ...(1) ។\n(1)-(2): A=-1 ⟹ B=1 ។ g(x) = -e^x + e^(x/2) ។",
+      "normalizedText": "Find particular solution g(x) of 2y''-3y'+y=0 where the tangent at x=0 is y=-x/2 through O(0,0), meaning g(0)=0 and g'(0)=-1/2. Solve system: A=-1, B=1. So g(x) = -e^x + e^(x/2).",
+      "problem": {
+        "textKh": "កំណត់ g(x) ចម្លើយ (E) ដែលបន្ទ) d: y=-½x ជ្រើសសម្ដៅ O(0,0) គឺ g'(0)=-½ និង g(0)=0",
+        "text": "Find g(x) a solution of 2y''-3y'+y=0 whose tangent at x=0 is y = -x/2 through O(0,0): g(0)=0, g'(0)=-1/2",
+        "latex": "g'(0) = -\\frac{1}{2},\\quad g(0) = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "g(x) = Ae^x + Be^(x/2) ។ g'(x) = Ae^x + ½Be^(x/2) ។ ជំនួស x=0:",
+          "text": "g(x) = Ae^x + Be^(x/2), g'(x) = Ae^x + B/2·e^(x/2). Substitute x=0:",
+          "latex": "\\begin{cases} A + B = 0 & (g(0)=0) \\\\ A + \\tfrac{1}{2}B = -\\tfrac{1}{2} & (g'(0)=-\\tfrac{1}{2}) \\end{cases}",
+          "explanationKh": "លក្ខខណ្ឌ g(0)=0 និង g'(0)=-½",
+          "explanation": "Initial conditions give 2 equations in A and B"
+        },
+        {
+          "textKh": "ដោះស្រាយ: (1)-(2): A = -1 ; B = 1",
+          "text": "Solve: subtract equations to get A = -1, then B = 1",
+          "latex": "A = -1,\\quad B = 1",
+          "explanationKh": "2A+B=-1 ដក A+B=0 ⟹ A=-1",
+          "explanation": "Subtract to eliminate B"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ g(x) = -e^x + e^(x/2)",
+        "text": "g(x) = -e^x + e^(x/2)",
+        "latex": "g(x) = -e^x + e^{\\frac{x}{2}}"
+      },
+      "formulas": [],
+      "keywords": ["ODE", "initial conditions", "particular solution", "ចម្លើយពិសេស", "tangent"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c002",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "function_analysis_inequality",
+      "topicKh": "ការសិក្សាអនុគមន៍ — ការបញ្ជាក់ inequality",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "h(x) = e^(2x) - 2x - 1 ។ មានតារាងអថេរភាព: h'(x) = 2e^(2x) - 2 ។ h'(x) = 0 ⟺ x = 0 ។ h(0) = 0 ។ h(x) ≥ 0 ∀x ∈ ℝ ⟹ e^(2x) - 2x - 1 ≥ 0 ⟺ e^(2x) ≥ 2x + 1 ។",
+      "normalizedText": "Function h(x)=e^(2x)-2x-1. Derivative h'(x)=2e^(2x)-2. h'(x)=0 at x=0 (minimum). h(0)=0 so h(x)≥0 for all x, proving the inequality e^(2x) ≥ 2x+1.",
+      "problem": {
+        "textKh": "h(x) = e^(2x) - 2x - 1 ។ មានតារាងអថេរភាព ។ បញ្ជាក់ e^(2x) ≥ 2x + 1 ∀x ∈ ℝ",
+        "text": "Given h(x) = e^(2x) - 2x - 1. Study variation and prove e^(2x) ≥ 2x+1 for all real x.",
+        "latex": "h(x) = e^{2x} - 2x - 1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "h'(x) = 2e^(2x) - 2 ។ h'(x) = 0 ⟺ e^(2x) = 1 ⟺ x = 0:",
+          "text": "h'(x) = 2e^(2x) - 2. h'(x)=0 iff x=0:",
+          "latex": "h'(x) = 2e^{2x} - 2 = 0 \\Leftrightarrow x = 0",
+          "explanationKh": "h'(x) < 0 ∀x<0 ; h'(x) > 0 ∀x>0 ⟹ x=0 ជាអប្បបរមា",
+          "explanation": "h' changes sign: decreasing then increasing, so x=0 is a global minimum"
+        },
+        {
+          "textKh": "h(0) = e⁰ - 0 - 1 = 0 ។ ម្inimu global = 0:",
+          "text": "h(0) = 1 - 0 - 1 = 0. Global minimum value is 0:",
+          "latex": "h(0) = 0 \\Rightarrow h(x) \\geq 0 \\quad \\forall x \\in \\mathbb{R}",
+          "explanationKh": "ដូចេ្នះ e^(2x) - 2x - 1 ≥ 0",
+          "explanation": "Since minimum is 0, h(x) ≥ 0 everywhere"
+        },
+        {
+          "textKh": "ដូចេ្នះ e^(2x) ≥ 2x + 1 ∀x ∈ ℝ :",
+          "text": "Rearranging h(x) ≥ 0 gives the inequality:",
+          "latex": "e^{2x} \\geq 2x + 1 \\quad \\forall x \\in \\mathbb{R}",
+          "explanationKh": "ការបញ្ជាក់គ្រប់ចប់",
+          "explanation": "Proof complete"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ e^(2x) ≥ 2x + 1 ∀x ∈ ℝ (ឯណា h(x) ≥ 0)",
+        "text": "e^(2x) ≥ 2x+1 for all real x, since h(x) ≥ 0 with minimum h(0)=0",
+        "latex": "e^{2x} \\geq 2x+1 \\quad \\forall x \\in \\mathbb{R}"
+      },
+      "formulas": [
+        {
+          "latex": "e^{2x} \\geq 2x+1",
+          "meaning": "inequalité fondamentale — exponential dominates linear",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["function analysis", "variation table", "inequality", "minimum", "e^x", "ការបញ្ជាក់"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c003",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis_complete",
+      "topicKh": "ការសិក្សាអនុគមន៍ — f'(x), ដែនកំណត់, តារាងអថេរភាព",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = (x+1)(e^(-2x)+1) ។\n(ក) f'(x): f'(x) = (e^(-2x)+1) + (x+1)(-2e^(-2x)) = e^(-2x)+1-2(x+1)e^(-2x) = (e^(2x)-2x-1)/e^(2x) = h(x)/e^(2x) ។\nf'(0) = (1-0-1)/1 = 0 ។ f'(x) មានសញ្ញានៃ h(x) ∀x≠0 ។\n(ខ) f(0) = (0+1)(e⁰+1) = 2 ។ lim_{x→-∞} f(x) = -∞ ។ lim_{x→+∞} f(x) = +∞ ។\nតារាង: f'(x)≥0 ∀x, f'(0)=0, f កើន ្ ។",
+      "normalizedText": "f(x)=(x+1)(e^(-2x)+1). Derivative: f'(x) = (e^(2x)-2x-1)/e^(2x) = h(x)/e^(2x), so f'(x) has same sign as h(x). f'(0)=0. f(0)=2. Limits: -∞ and +∞. f is strictly increasing (f'≥0, f'(0)=0 isolated point).",
+      "problem": {
+        "textKh": "f(x) = (x+1)(e^(-2x)+1) ។ គណនា f'(x), f'(0); ដែនកំណត់ x→±∞; តារាង",
+        "text": "f(x) = (x+1)(e^(-2x)+1). Find f'(x), f'(0), limits at ±∞, and draw variation table.",
+        "latex": "f(x) = (x+1)(e^{-2x}+1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដេរីវេ ដោយច្បាប់ (uv)' = u'v + uv':",
+          "text": "Differentiate using product rule:",
+          "latex": "f'(x) = (e^{-2x}+1) + (x+1)(-2e^{-2x}) = e^{-2x}+1-2e^{-2x}-2xe^{-2x}",
+          "explanationKh": "(x+1)' = 1 ; (e^(-2x)+1)' = -2e^(-2x)",
+          "explanation": "(x+1)'=1 and (e^(-2x)+1)'=-2e^(-2x)"
+        },
+        {
+          "textKh": "បង្រួម:",
+          "text": "Simplify:",
+          "latex": "f'(x) = -e^{-2x}(1+2x) + 1 = \\frac{e^{2x} - 2x - 1}{e^{2x}} = \\frac{h(x)}{e^{2x}}",
+          "explanationKh": "ដូចេ្នះ f'(x) មានសញ្ញានៃ h(x) ∀x≠0",
+          "explanation": "f'(x) has same sign as h(x), which is ≥ 0 with equality only at x=0"
+        },
+        {
+          "textKh": "f'(0) = h(0)/e⁰ = 0/1 = 0 ។ f(0) = (1)(1+1) = 2 :",
+          "text": "f'(0) = 0, f(0) = 2:",
+          "latex": "f'(0) = 0 \\;\\;;\\;\\; f(0) = 2",
+          "explanationKh": "h(0)=0 ⟹ f'(0)=0",
+          "explanation": "h(0)=0 so f'(0)=0 (inflection-like point)"
+        },
+        {
+          "textKh": "ដែនកំណត់:",
+          "text": "Limits:",
+          "latex": "\\lim_{x \\to -\\infty} f(x) = -\\infty \\;\\;;\\;\\; \\lim_{x \\to +\\infty} f(x) = +\\infty",
+          "explanationKh": "lim_{x→-∞}(x+1)=-∞ ; e^(-2x)→+∞ ⟹ f→-∞. lim_{x→+∞}(x+1)=+∞ ; e^(-2x)→0 ⟹ f→+∞",
+          "explanation": "As x→-∞: (x+1)→-∞ and (e^(-2x)+1)→+∞ giving -∞; as x→+∞: (x+1)→+∞ and (e^(-2x)+1)→1 giving +∞"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f'(x) = h(x)/e^(2x) ; f'(0)=0 ; f(0)=2 ; lim=-∞ ; lim=+∞ ; f កើនគ្រប់ x",
+        "text": "f'(x) = h(x)/e^(2x), f'(0)=0, f(0)=2; f is increasing on ℝ (since h(x)≥0)",
+        "latex": "f'(x) = \\frac{h(x)}{e^{2x}} \\geq 0 \\quad \\forall x \\in \\mathbb{R}"
+      },
+      "formulas": [
+        {"latex": "(uv)' = u'v + uv'", "meaning": "ច្បាប់ដេរីវេ product rule", "confidence": 1.0}
+      ],
+      "keywords": ["function analysis", "derivative", "limits", "variation table", "ការសិក្សា", "f'(x)"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c004",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis_asymptote_tangent",
+      "topicKh": "អសមតី, ទីតាំងដូចគ្នា, ចំណុចប៉ះ M",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x)=(x+1)(e^(-2x)+1) ។\n(ក) បង្ហាញ f(x) = x+1+(x/e^x)(1/e^x)+(1/e^x)² ។ f(x) = (x+1)(e^(-2x)+1) = (x+1) + (x+1)e^(-2x) = x+1 + xe^(-2x)+e^(-2x) = x+1+(x/e^x)(1/e^x)+(1/e^x)² ។\n(ខ) D: y=x+1 ជាអសមតីកោសរបស់ C ពេល x→+∞: lim[f(x)-(x+1)] = lim[(x/e^x)(1/e^x)+(1/e^x)²] = 0 ។\n(គ) ទីតាំង C vs D: f(x)-y = (x+1)/e^(2x) ។ x=-1: f=y ⟹ C∩D ។ x>-1: f>y ⟹ C នៅលើ D ។ x<-1: f<y ⟹ C នៅក្រោម D ។\n(ឃ) ចំណុច M(x₀,y₀): f'(x₀)=1 ⟺ h(x₀)/e^(2x₀)=1 ⟺ e^(2x₀)-2x₀-1=e^(2x₀) ⟹ x₀=-½ ។ y₀=f(-½)=½(e+1) ។ M(-½, (e+1)/2) ។ ∆: y=x+1+e/2 ។",
+      "normalizedText": "Study of f(x)=(x+1)(e^(-2x)+1). (a) Algebraic rewrite. (b) Oblique asymptote D: y=x+1 as x→+∞. (c) Relative position of C and D: intersect at x=-1, C above D for x>-1. (d) Point M where tangent to C is parallel to D (slope 1): x0=-1/2, M=(-1/2,(e+1)/2), tangent y=x+1+e/2.",
+      "problem": {
+        "textKh": "f(x)=(x+1)(e^(-2x)+1) ។ (ក) បង្ហាញទ្រង់ទ្រាយ (ខ) D ជាអសមតី (គ) ទីតាំង C vs D (ឃ) ចំណុច M",
+        "text": "For f(x)=(x+1)(e^(-2x)+1): show algebraic form, find asymptote D, relative position of C and D, and tangent point M parallel to D.",
+        "latex": "f(x) = (x+1)(e^{-2x}+1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ទ្រង់ទ្រាយ:",
+          "text": "Algebraic form:",
+          "latex": "f(x) = x+1 + \\frac{x}{e^x}\\cdot\\frac{1}{e^x} + \\left(\\frac{1}{e^x}\\right)^2",
+          "explanationKh": "(x+1)e^(-2x) = xe^(-2x)+e^(-2x) = (x/e^x)(1/e^x)+(1/e^x)²",
+          "explanation": "Distribute (x+1)e^(-2x) and rewrite each term"
+        },
+        {
+          "textKh": "D ជាអសមតី: lim_{x→+∞} [f(x)-(x+1)] = 0:",
+          "text": "D is oblique asymptote: f(x)-(x+1) → 0 as x→+∞:",
+          "latex": "\\lim_{x \\to +\\infty} [f(x)-(x+1)] = \\lim_{x \\to +\\infty}\\left[\\frac{x}{e^x}\\cdot\\frac{1}{e^x} + \\frac{1}{e^{2x}}\\right] = 0",
+          "explanationKh": "x/e^x → 0 ពេល x→+∞",
+          "explanation": "x/e^x → 0 as x→+∞ (exponential dominates)"
+        },
+        {
+          "textKh": "ទីតាំង: f(x)-(x+1) = (x+1)/e^(2x):",
+          "text": "Relative position: f(x)-y = (x+1)e^(-2x):",
+          "latex": "f(x)-y = (x+1)e^{-2x} \\begin{cases} = 0 & x = -1 \\\\ > 0 & x > -1 \\\\ < 0 & x < -1 \\end{cases}",
+          "explanationKh": "e^(-2x)>0 ∀x ។ x+1 ប្រែសញ្ញា នៅ x=-1",
+          "explanation": "e^(-2x) > 0 always; (x+1) changes sign at x=-1"
+        },
+        {
+          "textKh": "ចំណុច M: f'(x₀)=1 ⟹ h(x₀)=e^(2x₀) ⟹ e^(2x₀)-2x₀-1=e^(2x₀) ⟹ x₀=-½:",
+          "text": "Point M: f'(x0)=1, so h(x0)=e^(2x0), giving e^(2x0)-2x0-1=e^(2x0) ⟹ -2x0-1=0 ⟹ x0=-1/2:",
+          "latex": "x_0 = -\\frac{1}{2},\\quad y_0 = f\\!\\left(-\\tfrac{1}{2}\\right) = \\frac{1}{2}(e+1)",
+          "explanationKh": "∆: y = f'(x₀)(x-x₀)+f(x₀) = x + ½ + (e+1)/2 = x + 1 + e/2",
+          "explanation": "Tangent at x0=-1/2 with slope 1: y = x+1+e/2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "D: y=x+1 ជាអសមតី ; C∩D នៅ x=-1 ; M(-½, (e+1)/2) ; ∆: y=x+1+e/2",
+        "text": "Asymptote D: y=x+1; C meets D at x=-1; tangent point M(-1/2,(e+1)/2); tangent Δ: y=x+1+e/2",
+        "latex": "M\\!\\left(-\\frac{1}{2},\\, \\frac{e+1}{2}\\right) \\;\\;;\\;\\; \\Delta: y = x+1+\\frac{e}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x \\to +\\infty} x e^{-x} = 0",
+          "meaning": "e^x dominates polynomial — used for asymptote proof",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["asymptote", "relative position", "tangent", "function analysis", "ការសិក្សា", "oblique asymptote"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c005",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "vectors_3d_line",
+      "topicKh": "ត្រង់ D ក្នុងអវកាស — ទ្រង់ទ្រាយប៉ារ៉ាម៉ែត្រ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ក្នុង (O,i⃗,j⃗,k⃗) ។ (D) ជ្រាបឆ្លងកាត់ O(0,0,0) ហើយមានទិសដៅ u⃗(1,1,1) ។\nដូចេ្នះ (D): x=t, y=t, z=t, t∈ℝ ។",
+      "normalizedText": "In 3D coordinate system, line D passes through origin O(0,0,0) with direction vector u(1,1,1). Parametric equations: x=t, y=t, z=t.",
+      "problem": {
+        "textKh": "ស្វែងរកសមីការប៉ារ៉ាម៉ែត្រ (D) ជ្រាប O(0,0,0) ។ (D) មានទិសដៅ u⃗(1,1,1)",
+        "text": "Find parametric equations of line D through O(0,0,0) with direction vector (1,1,1)",
+        "latex": "(D):\\; \\vec{u}(1,1,1),\\; \\text{through } O(0,0,0)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ស្រង់ x₀=0, y₀=0, z₀=0 ; a=1, b=1, c=1:",
+          "text": "Point (0,0,0) and direction (1,1,1):",
+          "latex": "(D):\\; x = 0+t,\\; y = 0+t,\\; z = 0+t,\\; t\\in\\mathbb{R}",
+          "explanationKh": "ទ្រង់ទ្រាយ (D): x=x₀+at, y=y₀+bt, z=z₀+ct",
+          "explanation": "Parametric line formula with (x0,y0,z0)=O and direction (a,b,c)=(1,1,1)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ (D): x=t, y=t, z=t, t∈ℝ",
+        "text": "(D): x=t, y=t, z=t, t∈ℝ",
+        "latex": "(D):\\; \\begin{cases} x = t \\\\ y = t \\\\ z = t \\end{cases},\\quad t\\in\\mathbb{R}"
+      },
+      "formulas": [
+        {
+          "latex": "(D):\\; \\begin{cases} x = x_0+at \\\\ y = y_0+bt \\\\ z = z_0+ct \\end{cases}",
+          "meaning": "ទ្រង់ទ្រាយប៉ារ៉ាម៉ែត្រត្រង់ក្នុងអវកាស",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ត្រង់", "line in 3D", "parametric", "direction vector", "វ៉ិចទ័រ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c006",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "vectors_3d_cross_product",
+      "topicKh": "ផលគុណខ្វែង AB⃗ × AC⃗",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(3,0,1), B(2,4,0), C(0,3,3) ។ AB⃗=(-1,4,-1), AC⃗=(-3,3,2) ។\nAB⃗×AC⃗ = det|i j k; -1 4 -1; -3 3 2| = (8+3)i - (-2-3)j + (-3+12)k = 11i⃗+5j⃗+9k⃗ ។\nAB⃗×AC⃗ ≠ 0 ⟹ A, B, C មិនត្រង់ ។",
+      "normalizedText": "A(3,0,1), B(2,4,0), C(0,3,3). Compute AB×AC using 3x3 determinant. Result: 11i+5j+9k. Non-zero so A,B,C non-collinear.",
+      "problem": {
+        "textKh": "A(3,0,1); B(2,4,0); C(0,3,3) ។ គណនា AB⃗×AC⃗",
+        "text": "A(3,0,1), B(2,4,0), C(0,3,3). Compute cross product AB×AC.",
+        "latex": "\\overrightarrow{AB} \\times \\overrightarrow{AC}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "AB⃗ = B-A = (-1,4,-1) ; AC⃗ = C-A = (-3,3,2):",
+          "text": "Compute vectors: AB = (-1,4,-1), AC = (-3,3,2):",
+          "latex": "\\overrightarrow{AB}(-1,4,-1) \\;\\;;\\;\\; \\overrightarrow{AC}(-3,3,2)",
+          "explanationKh": "AB⃗ = B - A ; AC⃗ = C - A",
+          "explanation": "Subtract coordinates: AB = B-A, AC = C-A"
+        },
+        {
+          "textKh": "ផលគុណខ្វែង:",
+          "text": "Cross product via determinant:",
+          "latex": "\\overrightarrow{AB}\\times\\overrightarrow{AC} = \\begin{vmatrix} \\vec{i} & \\vec{j} & \\vec{k} \\\\ -1 & 4 & -1 \\\\ -3 & 3 & 2 \\end{vmatrix} = (8+3)\\vec{i} - (-2-3)\\vec{j} + (-3+12)\\vec{k}",
+          "explanationKh": "isi: (4×2-(-1)×3)=11; j: -((-1)×2-(-1)×(-3))=5; k: ((-1)×3-4×(-3))=9",
+          "explanation": "Expand along top row using 2×2 cofactors"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ AB⃗×AC⃗ = 11i⃗ + 5j⃗ + 9k⃗ ; A,B,C មិនត្រង់",
+        "text": "AB×AC = 11i + 5j + 9k; A, B, C are non-collinear",
+        "latex": "\\overrightarrow{AB}\\times\\overrightarrow{AC} = 11\\vec{i} + 5\\vec{j} + 9\\vec{k}"
+      },
+      "formulas": [
+        {
+          "latex": "\\vec{u}\\times\\vec{v} = \\begin{vmatrix} \\vec{i} & \\vec{j} & \\vec{k} \\\\ u_1 & u_2 & u_3 \\\\ v_1 & v_2 & v_3 \\end{vmatrix}",
+          "meaning": "រូបមន្តផលគុណខ្វែង (cross product)",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["cross product", "ផលគុណខ្វែង", "3D vectors", "determinant", "non-collinear"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c007",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "analytic_geometry_3d_plane_area",
+      "topicKh": "សមីការយន្តហោះ (ABC) និងផ្ទៃក្រឡា △ABC",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(3,0,1), B(2,4,0), C(0,3,3) ។ n⃗ = AB⃗×AC⃗ = (11,5,9) ។\nសមីការ (ABC): 11(x-3)+5(y-0)+9(z-1)=0 ⟹ 11x+5y+9z-42=0 ។\nផ្ទៃក្រឡា△ABC = ½|AB⃗×AC⃗| = ½√(121+25+81) = √227/2 ។",
+      "normalizedText": "Find equation of plane (ABC) and area of triangle ABC. Normal vector n=(11,5,9). Plane: 11x+5y+9z-42=0. Area = sqrt(227)/2.",
+      "problem": {
+        "textKh": "A(3,0,1), B(2,4,0), C(0,3,3) ។ រកសមីការ (ABC) និងផ្ទៃក្រឡា △ABC",
+        "text": "Find equation of plane (ABC) and area of triangle ABC with A(3,0,1), B(2,4,0), C(0,3,3).",
+        "latex": "A(3,0,1);\\ B(2,4,0);\\ C(0,3,3)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "n⃗ = AB⃗×AC⃗ = (11,5,9) ជាវ៉ិចទ័រធម្មតា:",
+          "text": "Normal vector n = AB×AC = (11,5,9):",
+          "latex": "\\vec{n} = 11\\vec{i} + 5\\vec{j} + 9\\vec{k}",
+          "explanationKh": "ផលគុណខ្វែង ⊥ ជ្រូងយន្តហោះ",
+          "explanation": "Cross product is perpendicular to the plane"
+        },
+        {
+          "textKh": "សមីការ (ABC) ជ្រាបចំណុច A(3,0,1):",
+          "text": "Plane through A(3,0,1) with normal (11,5,9):",
+          "latex": "11(x-3)+5(y-0)+9(z-1) = 0 \\Rightarrow 11x+5y+9z-42 = 0",
+          "explanationKh": "a(x-x₀)+b(y-y₀)+c(z-z₀)=0",
+          "explanation": "Standard plane equation form"
+        },
+        {
+          "textKh": "ផ្ទៃក្រឡា △ABC:",
+          "text": "Area of triangle ABC:",
+          "latex": "S_{\\triangle ABC} = \\frac{1}{2}\\left|\\overrightarrow{AB}\\times\\overrightarrow{AC}\\right| = \\frac{1}{2}\\sqrt{11^2+5^2+9^2} = \\frac{\\sqrt{227}}{2}",
+          "explanationKh": "√(121+25+81) = √227",
+          "explanation": "Area = half the magnitude of cross product"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "សមីការ (ABC): 11x+5y+9z-42=0 ។ S△ABC = √227/2",
+        "text": "Plane (ABC): 11x+5y+9z-42=0; Area of △ABC = sqrt(227)/2",
+        "latex": "(ABC):\\ 11x+5y+9z-42=0 \\;\\;;\\;\\; S_{\\triangle ABC} = \\frac{\\sqrt{227}}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "a(x-x_0)+b(y-y_0)+c(z-z_0)=0",
+          "meaning": "សមីការយន្តហោះ — plane through point with normal (a,b,c)",
+          "confidence": 1.0
+        },
+        {
+          "latex": "S_{\\triangle} = \\frac{1}{2}|\\vec{u}\\times\\vec{v}|",
+          "meaning": "ផ្ទៃក្រឡាត្រីកោណតាមផលគុណខ្វែង",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["plane equation", "យន្តហោះ", "area", "triangle", "cross product", "normal vector", "ផ្ទៃក្រឡា"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-p002-c008",
+      "sourceId": "math-12-exam-202225",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "analytic_geometry_3d_intersection",
+      "topicKh": "ចំណុចប្រសព្វ ត្រង់ D និងយន្តហោះ (ABC)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "D: x=t, y=t, z=t ។ (ABC): 11x+5y+9z-42=0 ។\nD∩(ABC): 11t+5t+9t=42 ⟹ 25t=42 ⟹ t=42/25 ⟹ x=y=z=42/25 ។",
+      "normalizedText": "Intersection of line D (x=y=z=t) with plane 11x+5y+9z-42=0. Substitute parametric into plane: 25t=42, t=42/25. Intersection point: (42/25, 42/25, 42/25).",
+      "problem": {
+        "textKh": "ស្វែងរកចំណុចប្រសព្វ D∩(ABC) ។ (D): x=t,y=t,z=t ; (ABC): 11x+5y+9z-42=0",
+        "text": "Find intersection of line D: x=y=z=t with plane 11x+5y+9z-42=0.",
+        "latex": "(D)\\cap(ABC)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ជំនួស x=y=z=t ទៅក្នុងសមីការយន្តហោះ:",
+          "text": "Substitute x=y=z=t into the plane equation:",
+          "latex": "11t + 5t + 9t - 42 = 0 \\Rightarrow 25t = 42 \\Rightarrow t = \\frac{42}{25}",
+          "explanationKh": "ស្វែងរក t ។ ចំណុចប្រសព្វ = (42/25, 42/25, 42/25)",
+          "explanation": "Solve for parameter t then substitute back"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចំណុចប្រសព្វ D∩(ABC) = (42/25, 42/25, 42/25)",
+        "text": "Intersection point: (42/25, 42/25, 42/25)",
+        "latex": "D \\cap (ABC) = \\left(\\frac{42}{25},\\, \\frac{42}{25},\\, \\frac{42}{25}\\right)"
+      },
+      "formulas": [],
+      "keywords": ["intersection", "ប្រសព្វ", "line", "plane", "3D geometry", "parametric"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

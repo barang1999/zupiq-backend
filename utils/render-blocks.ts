@@ -160,8 +160,13 @@ function normalizeTextBlockContent(content: string): string {
     // `**សម្រាប់ $x>2$:** ឧទាហរណ៍...` should not read as one continuous claim.
     .replace(/([៖:]\*\*)[ \t]+(?=(?:ឧទាហរណ៍|Example\b|For example\b))/gi, "$1\n")
     // Replace LaTeX thin-space separators (` \ ` or `\ `) used between math expression segments
-    // with a comma+space — prevents adjacent segments from running together without any separator.
-    .replace(/[ \t]*\\[ \t]*/g, "\n");
+    // with a newline — prevents adjacent segments from running together without any separator.
+    // The backslash must NOT be followed by a letter: a bare separator backslash is always
+    // followed by whitespace/end-of-string, never by a command name. Without this guard, a real
+    // LaTeX macro that leaked into a text block as raw syntax (e.g. "\infty" from a prose span
+    // isProseMisclassifiedAsMath demoted from math) gets its backslash eaten and replaced with a
+    // newline, corrupting "[0, +\infty)" into "[0, +\ninfty)" — a real observed case.
+    .replace(/[ \t]*\\(?![a-zA-Z])[ \t]*/g, "\n");
 
   if (!raw.trim()) return "";
 

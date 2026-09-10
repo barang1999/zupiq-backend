@@ -1,4 +1,25 @@
 import { createHash } from "node:crypto";
+import { logger } from "./logger.js";
+
+// Every place in this file that decides to drop a function or a whole
+// diagram block goes through here instead of a bare `return null`/silent
+// filter. Every one of the bugs found in this file so far (Euler's `e` not
+// bound, a bare-\ge shorthand, an 80-char latex truncation, an
+// asymptote-detection heuristic mistaking a steep exponential for a pole)
+// looked identical from the outside — a diagram the user expected simply
+// never showed up — and finding the actual cause each time meant re-deriving
+// from scratch which of a dozen possible drop points fired and why. A single
+// structured, greppable log line at each drop point turns "the diagram is
+// missing, go debug it" into "grep the logs for diagram:dropped-*, read the
+// reason and payload" — the same fix as adding a stack trace to a caught
+// exception instead of swallowing it.
+function logDroppedFunction(reason: string, details: Record<string, unknown>): void {
+  logger.warn(`[diagram:dropped-function] ${reason}`, details);
+}
+
+function logDroppedBlock(reason: string, details: Record<string, unknown>): void {
+  logger.warn(`[diagram:dropped-block] ${reason}`, details);
+}
 
 export type DiagramType =
   | "geometry"
@@ -351,27 +372,51 @@ function normalizeSignTableSpec(input: Record<string, unknown>, warnings: string
     })
     .filter((row) => row && (row.label || row.cells.length)) as { label: string; cells: string[] }[];
 
-  // Automatically expand 3-column shorthand tables to 5-column interval tables
-  if (
-    normalizedRows.length === 2 &&
-    normalizedRows[0].cells.length === 3 &&
-    normalizedRows[1].cells.length === 3
-  ) {
+  // Automatically expand a "landmarks only" shorthand table (x row lists
+  // just -∞, each critical/undefined point, +∞ — no spacer cells between
+  // them; sign row already correctly alternates interval-sign/at-value/
+  // interval-sign/...) into a properly column-aligned table. This used to
+  // only handle exactly one interior landmark (x row length 3, sign row
+  // length 3 — e.g. "-∞, c, +∞" / "sign, 0, sign") and hard-coded the
+  // 5-column expansion for that single case. A real observed case broke
+  // it: a table with *three* interior landmarks (two critical points and
+  // one vertical-asymptote/undefined point in between — x row
+  // "-∞,-2,-1,0,+∞" (5 cells), sign row "+,0,-,||,-,0,+" (7 cells,
+  // already correctly alternating: interval,at,interval,at,interval,at,
+  // interval)) fell through this exactly-3-cells check untouched, leaving
+  // the two rows with mismatched lengths (5 vs 7) — nothing to align them
+  // under shared columns. The relationship generalizes cleanly for any
+  // number N of interior landmarks: the sign row is exactly 2N+1 cells
+  // (N "at" values interleaved with N+1 "interval" signs), and the x row
+  // needs exactly one blank spacer inserted between every pair of
+  // adjacent landmarks to land its values under the sign row's "at"
+  // cells, growing it from N+2 to 2N+3 cells — matching the sign row's
+  // 2N+1 plus one leading and one trailing blank for the two infinities.
+  if (normalizedRows.length === 2) {
     const r0 = normalizedRows[0].cells;
     const r1 = normalizedRows[1].cells;
-    const hasMinusInf = r0[0].includes("-∞") || r0[0].includes("-\\infty");
-    const hasPlusInf = r0[2].includes("+∞") || r0[2].includes("+\\infty") || r0[2].includes("∞");
-    const hasZero = r1[1] === "0";
-    if (hasMinusInf && hasPlusInf && hasZero) {
-      normalizedRows[0].cells = [r0[0], "", r0[1], "", r0[2]];
-      normalizedRows[1].cells = ["", r1[0], "0", r1[2], ""];
+    const interiorCount = r0.length - 2; // landmarks between -∞ and +∞
+    const hasMinusInf = interiorCount >= 1 && (r0[0].includes("-∞") || r0[0].includes("-\\infty"));
+    const hasPlusInf = interiorCount >= 1 && (r0[r0.length - 1].includes("+∞") || r0[r0.length - 1].includes("+\\infty") || r0[r0.length - 1].includes("∞"));
+    if (hasMinusInf && hasPlusInf && r1.length === 2 * interiorCount + 1) {
+      const expandedX: string[] = [r0[0]];
+      for (let i = 1; i < r0.length; i++) {
+        expandedX.push("", r0[i]);
+      }
+      normalizedRows[0].cells = expandedX;
+      normalizedRows[1].cells = ["", ...r1, ""];
     }
   }
 
-  // Slice columns to limit size
+  // Slice columns to limit size. Bumped from 8 to 15 — the landmark-expansion
+  // above grows a table with N interior landmarks to 2N+3 columns, so even
+  // a modest 3-critical-point table (a common shape once a vertical
+  // asymptote sits between two extrema) needs 9, and the old cap of 8 would
+  // have silently truncated it right back to a mismatched, misaligned row
+  // pair after the expansion had just fixed that.
   normalizedRows = normalizedRows.map(row => ({
     label: row.label,
-    cells: row.cells.slice(0, 8)
+    cells: row.cells.slice(0, 15)
   }));
 
   if (!normalizedRows.length) warnings.push("empty-sign-table");
@@ -1439,7 +1484,20 @@ function parseMathExpr(tokens: string[]): MathAstNode | null {
 function evalMathAst(node: MathAstNode, bindings: Record<string, number>): number {
   switch (node.type) {
     case "num": return node.value;
-    case "var": return bindings[node.name] ?? Number.NaN;
+    // "e" is tokenized as a bare single-letter var node like any other
+    // letter (the grammar has no dedicated Euler's-number AST node — see
+    // astHasUnboundSymbol/hasMultipleSymbolicVariables above, which already
+    // both special-case "e" as non-symbolic for exactly this reason). Left
+    // unbound, "e^{-2x}" silently evaluated to NaN raised to a power — which
+    // JS's Math.pow(NaN, exp) only accidentally returns a finite number for
+    // exp===0, so a curve like "(x+1)(e^{-2x}+1)" sampled correctly at x=0
+    // but returned null everywhere else, making the general expression
+    // engine appear unable to plot any transcendental function using `e`
+    // (a real observed case — see diagram-blocks.test.ts). Bind it to
+    // Math.E here, the same way "pi" gets Math.PI below, so every caller
+    // (evaluateLatexAt, evaluateLatexWithBindings, sampleExpressionFromLatex)
+    // gets a working constant without needing its own bindings object touched.
+    case "var": return node.name === "e" ? Math.E : (bindings[node.name] ?? Number.NaN);
     case "pi": return Math.PI;
     case "neg": return -evalMathAst(node.arg, bindings);
     case "add": return evalMathAst(node.left, bindings) + evalMathAst(node.right, bindings);
@@ -1484,6 +1542,39 @@ function containsVarNamed(node: MathAstNode, name: string): boolean {
   }
 }
 
+// The tokenizer deliberately accepts any bare Latin letter as a variable
+// (added for the "solve for constant" checker, which binds a second named
+// variable alongside x — see checkConstantSolvingFinalAnswer in
+// gemini.service.ts). That's exactly why a genuinely parametric latex like
+// "\frac{ax^2+bx+c}{px^2+qx+r}" *parses successfully* here instead of
+// failing outright — it produces a real AST, just one referencing a, b, c,
+// p, q, r as unbound variables alongside x. Evaluating that AST with only
+// `x` bound doesn't throw; every other variable node evaluates to NaN
+// (evalMathAst's documented "incomplete binding set fails safe" behavior),
+// and NaN propagates through the surrounding arithmetic — so every sample
+// point silently comes back non-finite, indistinguishable at a glance from
+// "this x happens to sit on an asymptote". This walks the AST directly to
+// tell the two apart: true means the expression can never be evaluated to
+// a real curve no matter what x is tried, because it depends on a constant
+// that was never given a value — a structurally different kind of
+// unverifiable than a numeric expression the tokenizer merely doesn't
+// support yet. `e` is excluded so a genuine `e^x` (parsed as a bare `var`
+// node named "e", same as any other letter — the grammar has no special
+// Euler's-number constant) isn't mistaken for an unbound symbolic
+// coefficient.
+function astHasUnboundSymbol(node: MathAstNode): boolean {
+  switch (node.type) {
+    case "var": return node.name !== "x" && node.name !== "e";
+    case "neg": case "sqrt": return astHasUnboundSymbol(node.arg);
+    case "add": case "sub": case "mul": case "div":
+      return astHasUnboundSymbol(node.left) || astHasUnboundSymbol(node.right);
+    case "pow": return astHasUnboundSymbol(node.base) || astHasUnboundSymbol(node.exp);
+    case "func": return astHasUnboundSymbol(node.arg);
+    case "log": return astHasUnboundSymbol(node.arg);
+    default: return false;
+  }
+}
+
 // Strips a leading "y="/"f(x)="-style prefix and normalizes whitespace/
 // \left\right — the common first step before tokenizing any latex expression
 // in this file.
@@ -1492,6 +1583,37 @@ function stripLatexPrefix(latex: string): string {
     .replace(/\\left|\\right/g, "")
     .replace(/\s+/g, "")
     .replace(/^(?:[a-zA-Z]\([a-zA-Z]\)=|[a-zA-Z]=)/, "");
+}
+
+// Detects a latex expression that's genuinely *parametric* — several
+// distinct undetermined coefficients (a, b, c, p, q, r, ...) standing in
+// for unknown constants, rather than a concrete numeric function this
+// engine simply doesn't parse yet. A real observed case: a problem
+// discussing y=(ax^2+bx+c)/(px^2+qx+r) in the abstract (no concrete
+// a,b,c,p,q,r given anywhere — the whole problem is a case analysis over
+// them) got diagrammed as kind:"quadratic", params:{a:1,b:0,c:0} — i.e.
+// plain y=x^2, treating the numerator's own symbolic "a" as if it were
+// the literal number 1 and dropping the denominator (and its role in the
+// asymptotes the problem is actually about) entirely. The latex isn't
+// empty and has no leftover "=", so neither the empty-latex guard nor the
+// bare-"=" guard below catches it. This is unverifiable in a structurally
+// different way than a merely-unsupported grammar shape (a numeric
+// expression in the single unknown `x` that the tokenizer doesn't yet
+// handle) — no finite set of params can ever be "the" answer for a
+// function whose own coefficients are themselves unknowns. `e` is
+// excluded so a genuine `e^x` isn't mistaken for a stray symbolic letter;
+// two or more distinct remaining letters is the signal, not just one, to
+// stay conservative against single-letter edge cases.
+function hasMultipleSymbolicVariables(latex: string): boolean {
+  const compact = stripLatexPrefix(latex)
+    .replace(/\\[a-zA-Z]+/g, " ") // strip latex commands (\frac, \sqrt, \sin, \pi, \quad, ...)
+    .replace(/[0-9]/g, " ");
+  const letters = new Set(
+    (compact.match(/[a-zA-Z]/g) || [])
+      .map((ch: string) => ch.toLowerCase())
+      .filter((ch: string) => ch !== "x" && ch !== "e")
+  );
+  return letters.size >= 2;
 }
 
 // Parses a latex expression into the general MathAstNode grammar (numbers,
@@ -1749,7 +1871,21 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       const originalKind = kind;
 
       let params = item.params && typeof item.params === "object" ? item.params : undefined;
-      const latex = String(item.latex || item.label || "").slice(0, 80);
+      // Bound against a truly pathological/garbage value (e.g. the AI dumping
+      // unrelated prose into this field) without cutting off a legitimate
+      // compound expression mid-token. The old cap here was 80 — short enough
+      // that an ordinary multi-term function definition with a couple of
+      // \left(\frac{...}{...}\right) groups (e.g. a real observed case,
+      // "x + 1 + \left(\frac{x}{e^x}\right)\left(\frac{1}{e^x}\right) +
+      // \left(\frac{1}{e^x}\right)^2", ~90 chars) got silently chopped off
+      // mid-\frac. The truncated fragment then failed to parse at all
+      // (parseMathExpressionFromLatex returned null), which this function's
+      // own logic correctly treats the same as "this AI's shape is
+      // unverifiable" and drops the function outright — an entirely
+      // self-inflicted parse failure on a perfectly valid expression, with
+      // no signal anywhere that truncation (not the AI, not the general
+      // expression engine) was the actual cause.
+      const latex = String(item.latex || item.label || "").slice(0, 500);
 
       // A function's `latex` should be a bare function definition (`y=...`,
       // `f(x)=...`, or just the expression) — never a full `\lim_{x\to a}...`
@@ -1764,6 +1900,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       if (/\\lim/.test(latex)) {
         warnings.push("dropped-lim-expression-as-latex");
         if (functions.length === 1) warnings.push("empty-function-graph");
+        logDroppedFunction("lim-expression-as-latex", { kind: originalKind, latex });
         return null;
       }
 
@@ -1935,6 +2072,27 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
             ? [asFiniteNumber(input.domain[0], -10), asFiniteNumber(input.domain[1], 10)]
             : [-10, 10];
         const ast = parseMathExpressionFromLatex(latex);
+        if (ast && astHasUnboundSymbol(ast)) {
+          // The tokenizer accepts any bare Latin letter as a variable (see
+          // astHasUnboundSymbol above for why), so a genuinely parametric
+          // latex like "\frac{ax^2+bx+c}{px^2+qx+r}" parses successfully
+          // instead of failing outright — it just references a, b, c, p,
+          // q, r as unbound variables alongside x. Left to the normal
+          // spot-check below, every sample would silently evaluate to NaN
+          // (an unbound variable's binding is missing, and NaN propagates
+          // through the arithmetic) and get treated as "nothing checkable,
+          // leave it alone" — the exact gap that let kind:"quadratic",
+          // params:{a:1,b:0,c:0} (plain y=x², the numerator's own symbolic
+          // "a" silently read as the literal 1, denominator dropped
+          // entirely) survive for this latex. No finite kind/params/points
+          // can ever be "the" answer for a function whose own coefficients
+          // are unknowns, regardless of what was claimed — drop it outright,
+          // the same as an empty or genuinely unparseable latex.
+          warnings.push(`dropped-unparseable-${kind || "unknown"}`);
+          if (functions.length === 1) warnings.push("empty-function-graph");
+          logDroppedFunction("unbound-symbolic-coefficient", { kind: originalKind, latex });
+          return null;
+        }
         if (ast) {
           const isEvaluableClosedForm = kind !== "points" && EVALUATABLE_CLOSED_FORM_KINDS.has(kind) && params && typeof params === "object";
           let shouldResampleFromLatex = true;
@@ -1988,24 +2146,43 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
           }
         } else if (
           kind !== "points" && EVALUATABLE_CLOSED_FORM_KINDS.has(kind) && params && typeof params === "object"
-          && stripLatexPrefix(latex).includes("=")
+          && (stripLatexPrefix(latex).includes("=") || hasMultipleSymbolicVariables(latex))
         ) {
-          // Latex is present but doesn't parse — and, unlike the piecewise
-          // domain-restriction case below (e.g. "y=2x+1 \quad (x \ge 0)",
-          // which also fails to parse but is a bare function once that
-          // trailing annotation is ignored), a leftover "=" after stripping
-          // the ordinary "y="/"f(x)=" prefix means this genuinely isn't a
-          // function of a single variable x at all — it's an implicit
-          // relation. This engine only evaluates y=f(x), so it can't verify
-          // one. A real observed case: an implicit-differentiation problem
-          // for "4xy = x^2 + y^2" (actually a degenerate conic — a pair of
-          // straight lines through the origin, y=(2±√3)x — not any kind of
-          // parabola) got diagrammed as kind:"quadratic" with params for a
-          // completely unrelated y=x²+x, vertex (-0.5,-0.25) — a real
-          // vertex, just for the wrong function entirely. Treat this the
-          // same as empty latex: unverifiable, drop it.
+          // Latex is present but doesn't parse. Two different reasons that
+          // can be true, both unverifiable the same way:
+          //
+          // 1. A leftover "=" after stripping the ordinary "y="/"f(x)="
+          //    prefix — unlike the piecewise domain-restriction case below
+          //    (e.g. "y=2x+1 \quad (x \ge 0)", which also fails to parse
+          //    but is a bare function once that trailing annotation is
+          //    ignored) — means this genuinely isn't a function of a
+          //    single variable x at all, it's an implicit relation. A real
+          //    observed case: an implicit-differentiation problem for
+          //    "4xy = x^2 + y^2" (actually a degenerate conic — a pair of
+          //    straight lines through the origin, y=(2±√3)x, not any kind
+          //    of parabola) got diagrammed as kind:"quadratic" with params
+          //    for a completely unrelated y=x²+x, vertex (-0.5,-0.25) — a
+          //    real vertex, just for the wrong function entirely.
+          // 2. Several distinct undetermined symbolic letters (see
+          //    hasMultipleSymbolicVariables) — a problem discussing
+          //    y=(ax²+bx+c)/(px²+qx+r) in the abstract, with no concrete
+          //    a,b,c,p,q,r given, got diagrammed as kind:"quadratic",
+          //    params:{a:1,b:0,c:0} — plain y=x², silently treating the
+          //    numerator's own symbolic "a" as the literal number 1 and
+          //    dropping the denominator (and the asymptotes it produces,
+          //    which is what the whole problem is actually about) entirely.
+          //
+          // This engine only evaluates a concrete y=f(x); neither shape has
+          // one. Treat both the same as empty latex: unverifiable, drop it.
           warnings.push(`dropped-unparseable-${kind}`);
           if (functions.length === 1) warnings.push("empty-function-graph");
+          logDroppedFunction("unparseable-latex", {
+            kind: originalKind,
+            latex,
+            latexLength: latex.length,
+            hasEquals: stripLatexPrefix(latex).includes("="),
+            hasMultipleSymbolicVariables: hasMultipleSymbolicVariables(latex),
+          });
           return null;
         }
       }
@@ -2137,6 +2314,7 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
         // other real functions are present, leave the empty-graph decision
         // to the normal functions/feature-points check below.
         if (functions.length === 1) warnings.push("empty-function-graph");
+        logDroppedFunction("empty-latex-placeholder", { kind: originalKind, params, pointsCount: points.length });
         return null;
       }
 
@@ -3591,8 +3769,29 @@ const CRITICAL_WARNINGS = new Set([
 export function normalizeDiagramBlocks(blocks: unknown): DiagramRenderBlock[] {
   if (!Array.isArray(blocks)) return [];
   return blocks
-    .map(normalizeDiagramBlock)
-    .filter((block): block is DiagramRenderBlock =>
-      Boolean(block) && !block.warnings?.some((w) => CRITICAL_WARNINGS.has(w))
-    );
+    .map((raw, index) => {
+      const normalized = normalizeDiagramBlock(raw);
+      if (!normalized) {
+        // normalizeDiagramBlock rejected the whole block (unrecognized
+        // diagramType, malformed shape, etc.) before it ever got a chance
+        // to accumulate its own warnings — the raw input is all there is
+        // left to log.
+        const rawDiagramType = raw && typeof raw === "object" ? (raw as Record<string, unknown>).diagramType : undefined;
+        logDroppedBlock("normalizeDiagramBlock-rejected", { index, diagramType: rawDiagramType });
+        return null;
+      }
+      const criticalWarning = normalized.warnings?.find((w) => CRITICAL_WARNINGS.has(w));
+      if (criticalWarning) {
+        // This is the final, block-level checkpoint every function-drop
+        // above eventually funnels into whenever it was the diagram's only
+        // function (each one already pushed its own more specific
+        // "dropped-*"/"empty-function-graph" warning onto this same block —
+        // logged here too, alongside the diagramType, so this single line
+        // is enough to see both *that* a diagram vanished and *why*).
+        logDroppedBlock(criticalWarning, { index, diagramType: normalized.diagramType, warnings: normalized.warnings });
+        return null;
+      }
+      return normalized;
+    })
+    .filter((block): block is DiagramRenderBlock => Boolean(block));
 }

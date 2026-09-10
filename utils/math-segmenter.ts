@@ -28,6 +28,73 @@ function isProseMisclassifiedAsMath(latex: string): boolean {
   return KHMER_RANGE.test(withoutTextCommands);
 }
 
+// When isProseMisclassifiedAsMath demotes a "$...$" span to plain text, the model
+// still sometimes mixed one genuine LaTeX macro into that prose sentence (e.g.
+// "$ចន្លោះ [0, +\infty)$" — Khmer prose with a bare \infty inside). The demoted
+// segment keeps its content as-is (that's the whole point — it's prose, not math,
+// so it must not go through KaTeX), but a raw "\infty" left sitting in a text
+// block reads as literal backslash-command text to the user, and can still trip
+// normalizeTextBlockContent's separate "\ " backslash-separator repair. Convert
+// the handful of macros that commonly leak this way to their plain Unicode form
+// before handing the text off, so nothing LaTeX-shaped survives into a text-only
+// block.
+const READABLE_LATEX_MACROS: Array<[RegExp, string]> = [
+  [/\\infty\b/g, "∞"],
+  [/\\times\b/g, "×"],
+  [/\\div\b/g, "÷"],
+  [/\\pm\b/g, "±"],
+  [/\\mp\b/g, "∓"],
+  // \geq/\leq/\neq must come before their \ge/\le/\ne shorthand siblings even
+  // though \b already prevents "\ge" from cross-matching inside "\geq" (the
+  // "q" right after keeps it a single word) — listing the longer form first
+  // just avoids relying on that subtlety.
+  [/\\leq\b/g, "≤"],
+  [/\\geq\b/g, "≥"],
+  [/\\neq\b/g, "≠"],
+  [/\\ge\b/g, "≥"],
+  [/\\le\b/g, "≤"],
+  [/\\ne\b/g, "≠"],
+  [/\\approx\b/g, "≈"],
+  [/\\equiv\b/g, "≡"],
+  [/\\cdot\b/g, "·"],
+  [/\\to\b/g, "→"],
+  [/\\rightarrow\b/g, "→"],
+  [/\\leftarrow\b/g, "←"],
+  [/\\Rightarrow\b/g, "⇒"],
+  [/\\Leftarrow\b/g, "⇐"],
+  [/\\Leftrightarrow\b/g, "⇔"],
+  [/\\iff\b/g, "⇔"],
+  [/\\implies\b/g, "⇒"],
+  [/\\forall\b/g, "∀"],
+  [/\\exists\b/g, "∃"],
+  [/\\in\b/g, "∈"],
+  [/\\notin\b/g, "∉"],
+  [/\\subset\b/g, "⊂"],
+  [/\\cup\b/g, "∪"],
+  [/\\cap\b/g, "∩"],
+];
+
+// A handful of comparison-operator macros (\ge, \le, \ne) are common enough
+// that the model sometimes drops the leading backslash entirely — writing the
+// bare word "ge"/"le"/"ne" instead of "\ge"/"\le"/"\ne" (a real observed
+// case: "y' ge 0" instead of "y' \ge 0"). There's no backslash left for
+// READABLE_LATEX_MACROS to match, so this only ever runs on content already
+// confirmed to be a demoted "$...$" math span (isProseMisclassifiedAsMath's
+// branch) — that scoping is what keeps it safe: genuine Khmer prose over
+// mathematics essentially never contains the standalone English word "ge",
+// "le", or "ne" flanked by spaces on both sides.
+const BARE_COMPARISON_SHORTHAND_RE = /(?<=\s)(ge|le|ne)(?=\s)/g;
+const BARE_COMPARISON_SHORTHAND_MAP: Record<string, string> = { ge: "≥", le: "≤", ne: "≠" };
+
+function toReadableTextFallback(latex: string): string {
+  let text = latex;
+  for (const [pattern, replacement] of READABLE_LATEX_MACROS) {
+    text = text.replace(pattern, replacement);
+  }
+  text = text.replace(BARE_COMPARISON_SHORTHAND_RE, (word) => BARE_COMPARISON_SHORTHAND_MAP[word]);
+  return text.replace(/[ \t]+/g, " ").trim();
+}
+
 function repairBrokenMathDelimiters(content: string): string {
   return `${content ?? ""}`.replace(
     /(?<!\$)\$([^$\n]+?)\$\$\s+\$\$([^$\n]+?)\$(?!\$)/g,
@@ -89,7 +156,7 @@ export function segmentMathContent(content: string): MathSegment[] {
 
       const trimmedLatex = latex.trim();
       if (isProseMisclassifiedAsMath(trimmedLatex)) {
-        segments.push({ type: 'text', content: trimmedLatex });
+        segments.push({ type: 'text', content: toReadableTextFallback(trimmedLatex) });
         return;
       }
 

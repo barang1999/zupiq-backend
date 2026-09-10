@@ -6,9 +6,10 @@
 // checks a function's params/points against its own latex, never against
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
-import { describe, expect, it } from "vitest";
-import { checkConstantSolvingFinalAnswer, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferInequalityFeasibleRegionBlocks, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { describe, expect, it, vi } from "vitest";
+import { checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
+import { logger } from "../../utils/logger.js";
 
 describe("extractAnchorClaims", () => {
   it("extracts f(x)=y and f(x)~=y anchors from solution prose", () => {
@@ -20,6 +21,12 @@ describe("extractAnchorClaims", () => {
 
   it("returns nothing when there are no anchors", () => {
     expect(extractAnchorClaims("The answer is 42.")).toEqual([]);
+  });
+
+  it("restricts to the given function name, ignoring a claim about a different one", () => {
+    const text = "f(0) = 0\n---\ng(0) = 4";
+    expect(extractAnchorClaims(text, "g")).toEqual([{ x: 0, y: 4 }]);
+    expect(extractAnchorClaims(text, "f")).toEqual([{ x: 0, y: 0 }]);
   });
 });
 
@@ -120,6 +127,29 @@ describe("verifyDiagramBlocksAgainstSolution", () => {
   it("does not misfire when finalAnswer is omitted but solutionText alone has the line claims", () => {
     const blocks = asymptoteDiagramBlock({ m: 2, b: 0 }, { m: -2, b: 0 });
     const verified = verifyDiagramBlocksAgainstSolution(blocks as any, asymptoteSolutionText);
+    expect(verified.length).toBe(0);
+  });
+
+  // Real observed case: a two-part problem defines "f(x)=(1-x)e^x-1" and
+  // "g(x)=(2-x)e^x+2-x" in the same solution. A diagram *correctly* plots
+  // g (named "g(x)=..." in its own latex, per findConcreteFunctionLatex
+  // preserving the matched name) — but the solution also states "f(0)=0"
+  // (true for f, not g), and the old anchor extraction pooled every
+  // "f(...)=..." claim in the text regardless of which function it was
+  // about, comparing "f(0)=0" against g(0)=4 and wrongly dropping an
+  // otherwise-correct diagram.
+  it("does not drop a correctly-plotted named function because of an anchor that's actually about a different function in the same solution", () => {
+    const blocks = functionGraphBlock("points", "g(x)=(2 - x)e^x + 2 - x", {});
+    const solutionText = "f(0) = (1 - 0)e^0 - 1 = 0\n---\ng(0) = (2 - 0)e^0 + 2 - 0 = 4";
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, solutionText);
+    expect(verified.length).toBe(1);
+  });
+
+  it("still drops a named function's diagram when it disagrees with that SAME function's own anchor", () => {
+    const blocks = functionGraphBlock("points", "g(x)=(2 - x)e^x + 2 - x", {});
+    // g(0) is actually 4, not 999 — a genuine mismatch on g itself.
+    const solutionText = "f(0) = (1 - 0)e^0 - 1 = 0\n---\ng(0) = 999";
+    const verified = verifyDiagramBlocksAgainstSolution(blocks as any, solutionText);
     expect(verified.length).toBe(0);
   });
 });
@@ -293,5 +323,293 @@ describe("inferInequalityFeasibleRegionBlocks", () => {
     const block = blocks[0];
     expect(block.type).toBe("diagram");
     if (block.type === "diagram") expect(block.diagramType).toBe("geometry");
+  });
+});
+
+describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
+  // Real observed case: "គេឱ្យអនុគមន៍ y = (x²+2(m+1)x+2)/(x+1). ក. ចំពោះ m=0
+  // សិក្សាអថេរភាពនិងសង់ក្រាប C..." — "for m=0, study the variation AND
+  // CONSTRUCT THE GRAPH C" — an explicit request for a graph. The AI
+  // returned only a sign-table, which is a real, non-empty diagram and so
+  // passes the generic "useful" filter untouched, silently never answering
+  // the "construct the graph" half of the question.
+  const problem = "គេឱ្យអនុគមន៍ y = \\frac{x^2 + 2(m+1)x + 2}{x+1} ៖\nក. ចំពោះ m = 0 សិក្សាអថេរភាពនិងសង់ក្រាប C របស់អនុគមន៍ខាងលើ។";
+  const solutionText = "ក. ចំពោះ m = 0\nយើងបានអនុគមន៍ y = \\frac{x^2+2x+2}{x+1}\nដែនកំណត់៖ D = R \\ {-1}";
+  const signTableBlocks = normalizeDiagramBlocks([{
+    diagramType: "sign-table",
+    rows: [
+      { label: "x", cells: ["-∞", "-2", "-1", "0", "+∞"] },
+      { label: "y'", cells: ["+", "0", "-", "||", "-", "0", "+"] },
+    ],
+  }]);
+
+  it("builds a function-graph from the solution's own concrete latex when only a sign-table was returned for an explicit 'construct the graph' request", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, signTableBlocks);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]?.diagramType).toBe("function-graph");
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(fn.latex).toBe("y=\\frac{x^2+2x+2}{x+1}");
+    // Domain should straddle the vertical asymptote at x=-1, not the
+    // problem's own general (unresolved-m) form's meaningless "asymptote"
+    // wherever evaluation happens to first fail.
+    expect(spec.domain).toEqual([-6, 4]);
+  });
+
+  it("does not fire when the problem never asks to construct/sketch/draw the graph", () => {
+    const noGraphRequestProblem = "គេឱ្យអនុគមន៍ y = \\frac{x^2+2x+2}{x+1}។ រកតម្លៃអប្បបរមា។";
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(noGraphRequestProblem, solutionText, signTableBlocks);
+    expect(blocks).toEqual([]);
+  });
+
+  it("never overrides a diagram that isn't a sign-table (e.g. the AI already produced a real function-graph)", () => {
+    const functionGraphBlocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "linear", params: { m: 1, b: 0 }, latex: "y=x" }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, functionGraphBlocks);
+    expect(blocks).toEqual([]);
+  });
+
+  // Real observed case: "f(x) = (x + 1)(e^{-2x} + 1)" — a non-rational
+  // (product-with-exponential) function, with the graph request phrased as
+  // "ច. សង់បន្ទាត់ (D), (Δ) និងក្រាប (C)" ("construct the lines (D), (Δ) and
+  // the graph (C)") — "សង់" and "ក្រាប" separated by the rest of that object
+  // list, not adjacent. Both used to defeat this function entirely: the old
+  // "\frac{...}{...}"-only candidate regex never even found this function's
+  // latex, and the old adjacent-only "សង់ក្រាប" pattern never recognized the
+  // request as asking for a graph in the first place.
+  const exponentialProblem = "$f(x) = (x + 1)(e^{-2x} + 1)$ ចំពោះគ្រប់ចំនួនពិត $x$។\nច. សង់បន្ទាត់ $(D)$, $(\\Delta)$ និងក្រាប $(C)$។";
+  const exponentialSignTable = normalizeDiagramBlocks([{
+    diagramType: "sign-table",
+    rows: [
+      { label: "x", cells: ["-∞", "0", "+∞"] },
+      { label: "f'(x)", cells: ["+", "0", "+"] },
+    ],
+  }]);
+
+  it("recognizes a graph request even when 'construct' and 'graph' are separated by other object names in the same sentence", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
+    expect(blocks.length).toBe(1);
+  });
+
+  it("finds a non-rational function's own latex (a product with an exponential factor, not just \\frac{...}{...}), keeping its own name 'f' rather than rewriting to a bare 'y='", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(fn.latex).toBe("f(x)=(x + 1)(e^{-2x} + 1)");
+  });
+
+  it("does not mistake an exponential's steep-but-finite growth for a vertical asymptote, and narrows the domain to where the curve stays readable", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const [domainMin, domainMax] = spec.domain as [number, number];
+    // The old magnitude-based heuristic mistook the steep left tail for a
+    // pole, centering the domain on [-15,-5] — nowhere near this function's
+    // actual features (the tangent point at x=-1/2, the y-intercept at
+    // x=0). The fixed domain must stay within the sane default window and
+    // must not be centered off in the far-negative tail.
+    expect(domainMin).toBeGreaterThanOrEqual(-6);
+    expect(domainMax).toBeLessThanOrEqual(6);
+    expect(domainMin).toBeLessThan(0);
+    expect(domainMax).toBeGreaterThan(0);
+  });
+
+  it("keeps the auto-computed y-range tight around the curve's actual interesting behavior, not dragged out by one steep tail", () => {
+    // Real observed case: a fixed "|y| < 200" cutoff let a few samples near
+    // this function's steep left tail (magnitude in the hundreds, but
+    // still under 200) survive, producing range [-208, 43] — legible
+    // numbers-wise, but the function's real behavior (the tangent point at
+    // x=-1/2, y≈1.86; the intercept at (0,2)) sits entirely within roughly
+    // -2 to +8, squeezed into a small sliver of a 251-unit-tall chart.
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const [rangeMin, rangeMax] = spec.range as [number, number];
+    expect(rangeMax - rangeMin).toBeLessThan(100);
+    // And the interesting values must actually fall inside that tighter range.
+    expect(rangeMin).toBeLessThanOrEqual(-2);
+    expect(rangeMax).toBeGreaterThanOrEqual(8);
+  });
+
+  // Real observed case: same function, but diagramBlocks came back
+  // completely empty (not even a sign-table) despite the same explicit
+  // graph request — a more severe failure mode than downgrading to a
+  // sign-table, which the guard above used to treat identically to "the AI
+  // already produced a real diagram, leave it alone".
+  it("builds a function-graph even when diagramBlocks is completely empty, not just when it's a sign-table", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", []);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]?.diagramType).toBe("function-graph");
+  });
+
+  // Real observed case: a two-part problem defines "f(x) = (1-x)e^x - 1" in
+  // part 1, then "g(x) = (2-x)e^x + 2 - x" in part 2 — and the graph request
+  // ("ង) សង់ខ្សែតាង (C)") is about g's curve, using "ខ្សែតាង" ("the curve")
+  // instead of "ក្រាប" ("graph") for the same concept, plus never once
+  // writing "y=" or "f(x)=" for g. The solution goes on to *derive* the
+  // oblique asymptote "(D): y = 2 - x" — a trivial line that, being both
+  // later in the text and perfectly evaluable, used to win over the actual
+  // (non-linear) function g when scanning backward for the last usable
+  // candidate.
+  const curveWordProblem = "១) $f(x) = (1-x)e^x - 1$។\n២) សិក្សាអនុគមន៍ $g(x) = (2-x)e^x + 2 - x$\nខ) បង្ហាញថា $(D): y = 2 - x$ ជាអាស៊ីមតូតទ្រេតនៃ $(C)$\nង) សង់ខ្សែតាង $(C)$";
+
+  it("recognizes 'ខ្សែតាង' (\"the curve\") as a graph request, not just 'ក្រាប'", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
+    expect(blocks.length).toBe(1);
+  });
+
+  // Real observed case: a THIRD distinct "ខ្សែ..." synonym for "the curve"
+  // ("ខ្សែជាង", used as "ខ្សែជាង (C) តាងអនុគមន៍ g" and "សង់ខ្សែជាង (C)") —
+  // after ខ្សែតាង and ខ្សែកោង were each individually observed and fixed,
+  // this one surfaced with yet another suffix. Pins down that the fix
+  // generalizes to "ខ្សែ" + any Khmer continuation, not one more hardcoded
+  // literal that the next synonym will just as easily slip past again.
+  const khseJangProblem = "1. $f(x) = (1 - x)e^x - 1$ ។\n2. $g(x) = (2 - x)e^x + 2 - x$ ។\n   ខ) បង្ហាញថាខ្សែជាង $(C)$ តាងអនុគមន៍ $g$ មានបន្ទាត់ $(D) : y = 2 - x$ ជាអាស៊ីមតូតទ្រេត។\n   ង) សង់ខ្សែជាង $(C)$ ក្នុងតម្រុយអ័រតូណរម៉ាល់។";
+  const khseJangSignTable = normalizeDiagramBlocks([{
+    diagramType: "sign-table",
+    rows: [{ label: "x", cells: ["-∞", "0", "+∞"] }, { label: "f'(x)", cells: ["+", "0", "-"] }],
+  }]);
+
+  it("recognizes 'ខ្សែជាង' as a graph request too — the fix generalizes across 'ខ្សែ...' synonyms, not one literal at a time", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(khseJangProblem, "", khseJangSignTable);
+    expect(blocks.length).toBe(1);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(fn.latex).toBe("g(x)=(2 - x)e^x + 2 - x");
+  });
+
+  it("finds a function defined as 'g(x)=...', not just 'f(x)=...' or 'y=...', keeping its own name 'g' rather than rewriting to a bare 'y='", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(fn.latex).toBe("g(x)=(2-x)e^x + 2 - x");
+  });
+
+  it("prefers the actual (non-linear) function over a trivial asymptote/tangent line derived later in the same text", () => {
+    // Pins down the exact bug: without the non-linear preference, scanning
+    // backward for the last evaluable "...=...x..." candidate lands on
+    // "(D): y = 2 - x" (perfectly evaluable, appears after g's own
+    // definition) instead of g(x) itself.
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const fn = (spec.functions as Array<Record<string, unknown>>)[0];
+    expect(fn.latex).not.toBe("y=2 - x");
+    expect(fn.latex).not.toBe("y= 2 - x");
+  });
+
+  it("keeps g(x)'s auto-computed y-range tight, not dragged out to [-181, 40] by the steep right tail past x≈4", () => {
+    // Real observed case (the exact session this pins down): the old fixed
+    // "|y| < 200" cutoff let samples out past x=4 (y down to roughly -150)
+    // through, producing range [-181, 40] — the rendered chart's visible
+    // y-axis window ended up sitting entirely between -60 and -85, showing
+    // nothing but a near-vertical plunge with none of g's actual behavior
+    // (the inflection point (0,4), the asymptote crossing (2,0)) visible.
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const [rangeMin, rangeMax] = spec.range as [number, number];
+    expect(rangeMax - rangeMin).toBeLessThan(100);
+    expect(rangeMin).toBeLessThanOrEqual(0);
+    expect(rangeMax).toBeGreaterThanOrEqual(4);
+  });
+
+  describe("backstop failures/successes are logged, not silently returned as []", () => {
+    it("logs a warning when the problem asks for a graph but no concrete function latex can be found at all", () => {
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const noFunctionProblem = "ច. សង់បន្ទាត់ $(D)$ និងក្រាប $(C)$។"; // asks for a graph, defines no function anywhere
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(noFunctionProblem, "", []);
+      expect(blocks).toEqual([]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[diagram:backstop-failed] no-concrete-function-latex-found"),
+        expect.anything(),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("logs an info line when the backstop successfully synthesizes a diagram", () => {
+      const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", []);
+      expect(blocks.length).toBe(1);
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.stringContaining("[diagram:backstop-succeeded]"),
+        expect.objectContaining({ functionLatex: expect.any(String) }),
+      );
+      infoSpy.mockRestore();
+    });
+
+    it("does not log anything at all for the overwhelming majority of problems that never ask for a graph", () => {
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest("រកតម្លៃ x ។", "", []);
+      expect(blocks).toEqual([]);
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+    });
+  });
+});
+
+describe("checkExtremaValueClaims", () => {
+  // Real observed case: for y=(x²+2x+2)/(x+1), the solution correctly
+  // finds critical points at x=-2 and x=0 (y'=0 there), then states
+  // "y(-2) = -3" — but f(-2) = ((-2)²+2(-2)+2)/(-2+1) = 2/-1 = -2, not -3.
+  // The wrong value then propagates into the variation table and the
+  // graph description's claimed vertex.
+  const problem = "គេឱ្យអនុគមន៍ y = \\frac{x^2 + 2(m+1)x + 2}{x+1}";
+
+  it("catches a claimed function value that doesn't match the function's own latex", () => {
+    const solutionText = "យើងបានអនុគមន៍ y = \\frac{x^2+2x+2}{x+1}\nត្រង់ x=-2 ⟹ y(-2)=-3 (អតិបរមាធៀប)\nត្រង់ x=0 ⟹ y(0)=2 (អប្បបរមាធៀប)";
+    const result = checkExtremaValueClaims(problem, solutionText);
+    expect(result.ok).toBe(false);
+    if (result.ok === false) {
+      expect(result.x).toBe(-2);
+      expect(result.claimedY).toBe(-3);
+      expect(result.actualY).toBeCloseTo(-2, 5);
+    }
+  });
+
+  it("passes when every claimed value actually matches (both y(-2)=-2 and y(0)=2 correct)", () => {
+    const solutionText = "យើងបានអនុគមន៍ y = \\frac{x^2+2x+2}{x+1}\nត្រង់ x=-2 ⟹ y(-2)=-2 (អតិបរមាធៀប)\nត្រង់ x=0 ⟹ y(0)=2 (អប្បបរមាធៀប)";
+    expect(checkExtremaValueClaims(problem, solutionText).ok).toBe(true);
+  });
+
+  it("passes (nothing to check) when no concrete function latex can be found in the text at all", () => {
+    const solutionText = "ត្រង់ x=-2 ⟹ y(-2)=-3 (អតិបរមាធៀប)";
+    expect(checkExtremaValueClaims(problem, solutionText).ok).toBe(true);
+  });
+
+  it("never throws on empty or garbage input", () => {
+    expect(() => checkExtremaValueClaims("", "")).not.toThrow();
+    expect(checkExtremaValueClaims("", "").ok).toBe(true);
+    expect(() => checkExtremaValueClaims("random text", "no function or claims here")).not.toThrow();
+  });
+
+  // Real observed case: a two-part problem defines "f(x)=(1-x)e^x-1" (part
+  // 1) and "g(x)=(2-x)e^x+2-x" (part 2) in the same solution. The solution
+  // correctly states "f(0) = 0" (true for f) and, separately, "g(0) = 4"
+  // (true for g) — but findConcreteFunctionLatex (scanning for the last
+  // non-linear candidate) returned g's latex, and the old hardcoded
+  // "[fy](...)=..." pattern pooled *both* claims together regardless of
+  // which function each was actually about, checking "f(0)=0" against g's
+  // formula (g(0)=4) and flagging a false mismatch.
+  it("does not flag a claim about one function ('f(0)=0') against a different function's own latex ('g', found because it's the non-linear one)", () => {
+    const problem = "១) $f(x) = (1 - x)e^x - 1$។ ២) $g(x) = (2 - x)e^x + 2 - x$។";
+    const solutionText = "f(0) = (1 - 0)e^0 - 1 = 0\n---\ng(0) = (2 - 0)e^0 + 2 - 0 = 4";
+    expect(checkExtremaValueClaims(problem, solutionText).ok).toBe(true);
+  });
+
+  it("still catches a genuine mismatch for the specifically-named function that findConcreteFunctionLatex returns", () => {
+    const problem = "១) $f(x) = (1 - x)e^x - 1$។ ២) $g(x) = (2 - x)e^x + 2 - x$។";
+    // g(1) is actually (2-1)e^1+2-1 = e+1 ≈ 3.72, not 100 — a real mismatch,
+    // still on the function findConcreteFunctionLatex actually returns (g).
+    const solutionText = "f(0) = (1 - 0)e^0 - 1 = 0\n---\ng(1) = 100";
+    const result = checkExtremaValueClaims(problem, solutionText);
+    expect(result.ok).toBe(false);
+    if (result.ok === false) {
+      expect(result.x).toBe(1);
+      expect(result.claimedY).toBe(100);
+    }
   });
 });

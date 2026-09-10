@@ -2,7 +2,7 @@
 // control-character repair in normalizeLatexForRender (exercised here via
 // the exported buildMathBlock, its only entry point).
 import { describe, expect, it } from "vitest";
-import { buildMathBlock } from "./render-blocks.js";
+import { buildMathBlock, buildRenderBlocks } from "./render-blocks.js";
 
 describe("control-character repair (JSON-deserialization artifacts)", () => {
   it("does not invent a bogus command out of an ordinary newline before a new aligned-block line", () => {
@@ -71,5 +71,30 @@ describe("control-character repair (JSON-deserialization artifacts)", () => {
     const result = buildMathBlock(`x = 1${NL}y = 2`, true);
     expect(result.normalizedLatex).not.toContain("\\ny");
     expect(result.normalizedLatex).toBe("x = 1 y = 2");
+  });
+});
+
+describe("normalizeTextBlockContent's '\\ ' separator repair does not eat LaTeX macros", () => {
+  it("does not turn a leaked \\infty inside a text block into a newline + \"infty\"", () => {
+    // Real observed case: a "$...$" span that's mostly Khmer prose gets
+    // demoted to plain text by segmentMathContent (isProseMisclassifiedAsMath),
+    // and that demotion converts the one genuine macro it was mixed with
+    // (\infty) to its Unicode glyph (∞) before this text ever reaches
+    // normalizeTextBlockContent. This pins down the second, independent half
+    // of that fix: even if a raw "\infty" reached this function some other
+    // way, the "\ " thin-space-separator repair below must not mistake the
+    // macro's own backslash for a bare separator and eat it — that bug
+    // corrupted "[0, +\infty)" into "[0, +\ninfty)" (a literal newline
+    // spliced into the middle of the word "infty").
+    const blocks = buildRenderBlocks("ចន្លោះ [0, +\\infty) ជាចន្លោះកើន");
+    const text = blocks.map((b) => (b.type === "text" ? b.content : "")).join("");
+    expect(text).not.toContain("\ninfty");
+    expect(text).toContain("\\infty");
+  });
+
+  it("still converts a genuine bare '\\ ' separator between two flattened segments into a line break", () => {
+    const blocks = buildRenderBlocks("ដំណាក់កាលទី១ \\ ដំណាក់កាលទី២");
+    const text = blocks.map((b) => (b.type === "text" ? b.content : "")).join("");
+    expect(text).toBe("ដំណាក់កាលទី១\nដំណាក់កាលទី២");
   });
 });

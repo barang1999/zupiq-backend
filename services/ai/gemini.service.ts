@@ -805,7 +805,7 @@ Diagram spec examples:
 - geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
 - geometry vector arrows: {"shapes":[{"shape":"arrow","start":[0,0],"end":[3,2],"label":"\\vec{A}"},{"shape":"arrow","start":[3,2],"end":[4,7],"label":"\\vec{B}"},{"shape":"arrow","start":[0,0],"end":[4,7],"label":"\\vec{A}+\\vec{B}","color":"red"}],"options":{"xMin":-1,"xMax":5,"yMin":-1,"yMax":8,"grid":true,"showOrigin":true,"xAxisLabel":"x","yAxisLabel":"y"}}
 - venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
-- function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+- function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":-4,"c":3},"latex":"y=x^2-4x+3"}],"domain":[-2,6],"range":[-2,8]}
 - function-graph line intersection: {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1"},{"kind":"linear","params":{"m":-1,"b":7},"latex":"y=-x+7","color":"red"}],"featurePoints":[{"point":[2,5],"label":"(2,5)"}],"domain":[-2,6],"range":[-2,10]}
 - function-graph piecewise/jump discontinuity (each piece gets its own "domain" — never rely on latex text like "(x>=0)"): {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1","domain":[0,3]},{"kind":"linear","params":{"m":2,"b":-1},"latex":"y=2x-1","domain":[-3,0]}],"featurePoints":[{"point":[0,1],"label":"(0,1)","closed":true},{"point":[0,-1],"label":"(0,-1)","closed":false}],"domain":[-3,3],"range":[-8,8]}
 - function-graph shaded region under curve (first quadrant — domain/range must start at 0): {"functions":[{"kind":"linear","params":{"m":-1,"b":4},"latex":"y=4-x"}],"shadedRegions":[{"from":0,"to":4,"baseline":0,"functionIndex":0,"color":"primary"}],"domain":[0,5],"range":[0,5]}
@@ -2001,6 +2001,293 @@ function parseSimpleRationalInequality(source: string): SimpleRationalInequality
     denominatorLabel: denominator.label,
     operator: match[3] as SimpleRationalInequality["operator"],
   };
+}
+
+// A "variation study" problem that explicitly asks to *construct the
+// graph* (សង់ក្រាប / sketch / draw / plot the graph) needs an actual curve
+// — DIAGRAM SELECTION RULE #2 above already says so — but the model
+// sometimes returns a sign-table instead anyway (a genuine prompt-adherence
+// miss, not something a rule addition alone can guarantee against). A
+// sign-table is still a real, non-empty diagram, so it passes the generic
+// "useful" filter and gets returned as-is, silently answering a different
+// question than the one asked. This is the deterministic backstop: when the
+// only diagram produced is a sign-table but the problem explicitly asked
+// for a graph, try to build one directly from the function's own latex —
+// the general expression engine in diagram-blocks.ts (via
+// normalizeDiagramBlocks' own "kind:points, empty points" resampling path)
+// already knows how to sample an arbitrary rational/polynomial expression,
+// so this only needs to locate the right latex and a sane viewport, not
+// reimplement curve-family detection.
+// Finds the function's own defining latex ("y=...", "f(x)=...") from a
+// problem/solution's combined text, preferring the *last* candidate that
+// actually evaluates to a real number. A problem stated in terms of a
+// letter parameter (e.g. "y = \frac{x^2+2(m+1)x+2}{x+1}") states its
+// general form early and only substitutes a concrete value (e.g. "for
+// m=0") later in the solution — the general form has an unbound variable
+// and won't evaluate at all, so scanning from the end naturally lands on
+// the concrete one instead. Shared by inferConstructedFunctionGraphForExplicitGraphRequest
+// (build a diagram from it) and checkExtremaValueClaims (verify a claimed
+// extremum against it) — one candidate-finder, not two copies.
+//
+// The capture group used to require a literal "\frac{...}{...}" right after
+// the "=", so a non-rational function (e.g. "f(x) = (x + 1)(e^{-2x} + 1)",
+// a product of a linear factor and an exponential — a real observed case)
+// never even became a candidate, regardless of whether the general
+// expression engine below could actually evaluate it. Instead, capture up
+// to the first newline, "$" delimiter, or Khmer script — Khmer is excluded
+// because these problems are written with the function's own latex in
+// Latin/math notation immediately followed by Khmer prose with no other
+// delimiter between them (e.g. "...e^{-2x} + 1)$ ចំពោះគ្រប់ចំនួនពិត..."),
+// so stopping there is what keeps the capture from swallowing trailing
+// prose. Any candidate the general engine still can't parse (an
+// unsupported grammar shape, or the capture ran on past into unrelated
+// text) safely fails both evaluation probes below and gets skipped — same
+// "don't guess" posture as before, just checked against a wider net of
+// candidates.
+//
+// The prefix used to only recognize "y=" or "f(x)=" — a real observed case
+// defines TWO functions in the same problem ("f(x) = ..." in part 1, then
+// "g(x) = (2-x)e^x + 2 - x" in part 2, the one the graph request is
+// actually about), and the second one never matched at all. Generalized to
+// any single-letter function name applied to x.
+//
+// Scanning from the end (to naturally skip an early symbolic/general form
+// in favor of a later concrete substitution) has a second failure mode:
+// once an asymptote or tangent line is *derived* later in the same
+// solution (e.g. "(D): y = 2 - x"), that trivial linear equation becomes
+// the last-occurring, perfectly-evaluable "y=...x..." match — and wins
+// over the actual (non-linear) function the graph request is about, which
+// was only stated once, earlier. A bare line is essentially never the
+// thing being graphed in these problems (asymptotes/tangents are drawn
+// *alongside* the real curve, not instead of it) — prefer the last
+// evaluable candidate that ISN'T simply linear, and only fall back to a
+// linear one if literally nothing else evaluates.
+function isLinearExpression(latex: string): boolean {
+  const ys = [0, 1, 2, 3].map((x) => evaluateLatexAt(latex, x));
+  if (ys.some((y) => y === null)) return false;
+  const [y0, y1, y2, y3] = ys as number[];
+  const step1 = y1 - y0;
+  const step2 = y2 - y1;
+  const step3 = y3 - y2;
+  const tolerance = Math.max(1e-6, Math.abs(step1) * 1e-6);
+  return Math.abs(step2 - step1) < tolerance && Math.abs(step3 - step2) < tolerance;
+}
+
+// Preserves the matched function's own name (e.g. "g" from "g(x)=...")
+// instead of always rewriting to a bare "y=..." — a real observed case
+// defines TWO functions in the same problem ("f(x)=(1-x)e^x-1" then
+// "g(x)=(2-x)e^x+2-x"), and a claim stated as "f(0)=0" got checked against
+// whichever one findConcreteFunctionLatex happened to return, silently
+// mismatching when that was actually g. Keeping the name lets every caller
+// that checks an inline claim (extractFunctionName below, used by both
+// checkExtremaValueClaims and verifyDiagramBlocksAgainstSolution) restrict
+// itself to claims about *this specific* function instead of pooling every
+// "letter(number)=number" claim in the text regardless of which function
+// it was actually about.
+function findConcreteFunctionLatex(source: string): string | null {
+  const candidates = Array.from(source.matchAll(/(?:([a-zA-Z])\(x\)|y)\s*=\s*([^\n$ក-៿]+)/gi))
+    .map((m) => (m[1] ? `${m[1]}(x)=${m[2].trim()}` : `y=${m[2].trim()}`))
+    .filter((candidate) => evaluateLatexAt(candidate, 2) !== null || evaluateLatexAt(candidate, -3) !== null);
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    if (!isLinearExpression(candidates[i])) return candidates[i];
+  }
+  return candidates.length ? candidates[candidates.length - 1] : null;
+}
+
+// Reads the name back off a findConcreteFunctionLatex result: "g" from
+// "g(x)=...", or "y" for the nameless bare-"y=..." form.
+function extractFunctionNameFromLatex(latex: string): string {
+  const match = latex.match(/^\s*([a-zA-Z])\s*\(\s*x\s*\)\s*=/);
+  return match ? match[1] : "y";
+}
+
+// Which function-name letters an inline claim about `functionLatex` should
+// be allowed to use. "y" from extractFunctionNameFromLatex means "no
+// explicit name was found" (the bare "y=..." form) — the original,
+// single-function-problem assumption, where a solution conventionally
+// calls the function either "f" or "y" interchangeably, so both are
+// accepted. A genuinely different, explicit name (e.g. "g") means this
+// function was deliberately distinguished from another one in the same
+// problem — accepting "f" too would defeat the entire point of tracking
+// the name (see findConcreteFunctionLatex's comment for the real case this
+// fixes).
+function acceptedAnchorNames(functionLatex: string): string[] {
+  const name = extractFunctionNameFromLatex(functionLatex);
+  return name === "y" ? ["f", "y"] : [name, "y"];
+}
+
+export function inferConstructedFunctionGraphForExplicitGraphRequest(
+  problem: string,
+  solutionText: string,
+  normalized: ReturnType<typeof normalizeDiagramBlocks>,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  // Never override an actual (non-sign-table) diagram the AI already
+  // produced. But an *empty* diagramBlocks array is not that — it's the
+  // other, more severe failure mode this function needs to also catch: the
+  // model skipping diagram generation entirely despite an explicit graph
+  // request (a real observed case), not just downgrading it to a
+  // sign-table. Only bail out when something other than a sign-table is
+  // already there.
+  if (normalized.length > 0 && normalized.some((b) => b.diagramType !== "sign-table")) return [];
+
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  // "សង់"/"គូស" (construct/draw) and the noun for "graph/curve" used to have
+  // to sit immediately adjacent ("សង់ក្រាប") to count, and that noun was
+  // limited to "ក្រាប"/"ក្រាហ្វ" ("graph"). Two real observed gaps:
+  //  1. A problem asking to construct *multiple* objects together —
+  //     "សង់បន្ទាត់ (D), (Δ) និងក្រាប (C)" ("construct the lines (D), (Δ) and
+  //     the graph (C)") — separates "ក្រាប" from "សង់" by the rest of that
+  //     object list, so the adjacent-only pattern missed it.
+  //  2. A problem using "ខ្សែ..." compounds ("the curve", literally used the
+  //     same way as "ក្រាប" throughout that entire solution —
+  //     "ចំណុចរបត់នៃខ្សែតាង (C)", "សង់ខ្សែតាង (C)", "ខ្សែជាង (C) តាងអនុគមន៍ g",
+  //     "សង់ខ្សែជាង (C)") instead of "ក្រាប" for the same concept. This
+  //     specific gap kept recurring with a *different* suffix each time
+  //     (ខ្សែតាង, then ខ្សែកោង, then ខ្សែជាង — three separate real observed
+  //     cases) — the Khmer curriculum has an open-ended set of synonyms for
+  //     "the curve of a function" built on the "ខ្សែ" (line/curve) root, so
+  //     rather than keep enumerating suffixes one at a time as each new one
+  //     surfaces, accept "ខ្សែ" followed by any Khmer-script continuation
+  //     (see the noun list's own note below on why this whole approach is a
+  //     stopgap, not the durable fix).
+  // Allow a bounded gap between the verb and noun (covers #1) across a
+  // small set of accepted nouns (covers #2), stopping at the end of the
+  // sentence (Khmer full stop "។") or a newline so it can't reach into an
+  // unrelated later sentence that happens to also mention a graph. This
+  // noun list is inherently open-ended — see DIAGRAM_STRUCTURE_JSON_GUIDE.md
+  // for why a structured, AI-declared "requiresFunctionGraph" field (cross-
+  // checked against this regex, not replaced by it) is the more durable fix.
+  const GRAPH_NOUN = "(?:ក្រា(?:ប|ហ្វ)|ខ្សែ[ក-៿]*)";
+  const asksForGraph = new RegExp(
+    `(សង់[^\\n។]{0,80}?${GRAPH_NOUN}|គូស[^\\n។]{0,80}?${GRAPH_NOUN}|construct(?:ing|s)?\\s+the\\s+graph|sketch(?:ing|es)?\\s+the\\s+graph|draw(?:ing|s)?\\s+the\\s+graph|plot(?:ting|s)?\\s+the\\s+graph)`,
+    "i",
+  ).test(source);
+  if (!asksForGraph) return [];
+
+  // From here on, the problem explicitly asked for a graph and doesn't
+  // already have a real one — every remaining bail-out below means this
+  // backstop itself failed to satisfy that request. Each of those failure
+  // modes has, in practice, turned out to be a real bug worth finding (a
+  // regex too narrow to find the function's own latex, a truncation inside
+  // normalizeDiagramBlocks, an asymptote heuristic mistaking exponential
+  // growth for a pole) rather than something actually unfixable about the
+  // AI's output — so log loudly instead of returning [] silently, the same
+  // way a caught exception should never vanish without a trace.
+  const functionLatex = findConcreteFunctionLatex(source);
+  if (!functionLatex) {
+    logger.warn("[diagram:backstop-failed] no-concrete-function-latex-found", {
+      problemPreview: problem.slice(0, 200),
+    });
+    return [];
+  }
+
+  // Scan for a vertical asymptote (a denominator root) to center a sane
+  // domain around — a rational function's curve is meaningless without
+  // showing both sides of it. A genuine asymptote/pole is a point the
+  // function is undefined at — evaluateLatexAt already signals exactly
+  // that by returning null (division by zero blowing up to a non-finite
+  // result). A merely *large but finite* y is NOT the same thing: an
+  // exponential term (e.g. "(x+1)(e^{-2x}+1)", a real observed case) grows
+  // without bound as x becomes very negative, with no discontinuity
+  // anywhere — treating that as "found an asymptote at x=-10" centered the
+  // domain on [-15,-5], far from where the function's actual interesting
+  // behavior is, and every sample in that window then failed the "|y|<200"
+  // sanity filter below, silently producing an empty curve. Only a real
+  // null counts as a pole; a big finite value just means "don't center on
+  // this x", not "something is discontinuous here".
+  let asymptoteX: number | null = null;
+  for (let x = -10; x <= 10; x++) {
+    if (evaluateLatexAt(functionLatex, x) === null) {
+      asymptoteX = x;
+      break;
+    }
+  }
+  let domain: [number, number] = asymptoteX !== null ? [asymptoteX - 5, asymptoteX + 5] : [-6, 6];
+
+  // A coarse range estimate is all this needs — normalizeDiagramBlocks
+  // resamples the actual curve points itself once handed empty "points"
+  // alongside this latex, this pass is only choosing a sane viewport.
+  const rawSamples: Array<{ x: number; y: number }> = [];
+  const SAMPLE_COUNT = 40;
+  for (let i = 0; i <= SAMPLE_COUNT; i++) {
+    const x = domain[0] + ((domain[1] - domain[0]) * i) / SAMPLE_COUNT;
+    if (asymptoteX !== null && Math.abs(x - asymptoteX) < 0.3) continue;
+    const y = evaluateLatexAt(functionLatex, x);
+    if (y !== null && Number.isFinite(y)) rawSamples.push({ x, y });
+  }
+  if (!rawSamples.length) {
+    logger.warn("[diagram:backstop-failed] no-valid-samples-in-default-domain", {
+      functionLatex,
+      domain,
+      asymptoteX,
+    });
+    return [];
+  }
+
+  // A fixed "|y| < 200" cutoff used to decide which samples counted as
+  // "reasonable" — too loose for an exponential term: a real observed
+  // case, "(2-x)e^x + 2 - x", stays in the single digits across most of
+  // its domain but reaches ~-150 to ~-180 just past x=4 — comfortably under
+  // 200, so those tail samples survived the filter and dragged the
+  // auto-computed range out to [-181, 40]. The function's actual
+  // interesting behavior (the asymptote crossing, the inflection point, the
+  // tangent point — all within roughly -10 to +10) then got squeezed into
+  // an unreadable sliver at the very top of a 221-unit-tall chart, which is
+  // exactly what shipped (a real observed case). "(x+1)(e^{-2x}+1)" from an
+  // earlier fix has the same shape and was already known to still be
+  // imperfect for the same underlying reason.
+  //
+  // Use each sample's distance from the *median* |y| instead of a fixed
+  // constant — the median is what "reasonable" means for THIS function,
+  // not a one-size-fits-all number. A steep exponential tail is a small
+  // minority of samples once you're not right at the domain's edge, so it
+  // can't drag the median itself very far; trimming everything more than a
+  // generous multiple of it away keeps the core shape intact while cutting
+  // the runaway tail this fixed cutoff let through.
+  const sortedAbsY = rawSamples.map((s) => Math.abs(s.y)).sort((a, b) => a - b);
+  const medianAbsY = sortedAbsY[Math.floor(sortedAbsY.length / 2)];
+  const magnitudeCap = Math.max(medianAbsY * 8, 10);
+  const coreSamples = rawSamples.filter((s) => Math.abs(s.y) <= magnitudeCap);
+  // If literally everything (or all but a couple of points) got trimmed —
+  // a function that's huge basically everywhere in this domain — trust the
+  // untrimmed set instead of collapsing to a near-empty, degenerate viewport.
+  const samplesForViewport = coreSamples.length >= 3 ? coreSamples : rawSamples;
+
+  // Same reasoning as before: an exponential can grow without bound toward
+  // one edge of the default window with no discontinuity anywhere, so
+  // evaluateLatexAt never flags it as a pole. Narrow the domain down to
+  // just the x-range this trimmed sample set actually covers.
+  if (asymptoteX === null) {
+    domain = [
+      Math.min(...samplesForViewport.map((s) => s.x)),
+      Math.max(...samplesForViewport.map((s) => s.x)),
+    ];
+  }
+
+  const viewportYs = samplesForViewport.map((s) => s.y);
+  const yMin = Math.min(...viewportYs);
+  const yMax = Math.max(...viewportYs);
+  const pad = Math.max(1, (yMax - yMin) * 0.2);
+
+  const result = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    functions: [{ kind: "points", latex: functionLatex, points: [] }],
+    domain,
+    range: [Math.floor(yMin - pad), Math.ceil(yMax + pad)],
+    xAxisLabel: "x",
+    yAxisLabel: "y",
+  }]);
+  // normalizeDiagramBlocks can still reject this synthesized spec itself
+  // (already logged in detail from inside diagram-blocks.ts if so) — this
+  // is the counterpart success/failure signal specifically for *this*
+  // backstop path, so its hit rate is visible on its own rather than only
+  // inferable from the absence of a drop log.
+  if (result.length) {
+    logger.info("[diagram:backstop-succeeded] function-graph", { functionLatex, domain });
+  } else {
+    logger.warn("[diagram:backstop-failed] normalizeDiagramBlocks-rejected-synthesized-spec", { functionLatex, domain });
+  }
+  return result;
 }
 
 function inferRationalInequalitySignTableBlocks(problem: string, solutionText: string): ReturnType<typeof normalizeDiagramBlocks> {
@@ -3874,13 +4161,23 @@ function inferPieChartBlocks(
 // Extracts "f(x0) = y0" / "f(x0) \approx y0" style anchor claims from a
 // solution's own worked text — a common, greppable pattern in these
 // solutions: they substitute a concrete value and state the result inline
-// (e.g. "f(0) = -2", "f(1) \approx 0.19"). Deliberately narrow (only the
-// literal function name "f", only plain decimal numbers, not fractions) to
-// keep false positives near zero — a wrongly-dropped correct diagram is as
-// bad as a wrongly-kept wrong one.
-export function extractAnchorClaims(solutionText: string): Array<{ x: number; y: number }> {
+// (e.g. "f(0) = -2", "f(1) \approx 0.19"). Deliberately narrow (only plain
+// decimal numbers, not fractions) to keep false positives near zero — a
+// wrongly-dropped correct diagram is as bad as a wrongly-kept wrong one.
+//
+// `functionName` restricts which letter counts as an anchor claim — default
+// "f" preserves the original behavior for the overwhelming majority of
+// single-function problems. Callers checking a specific plotted function
+// (verifyDiagramBlocksAgainstSolution, via extractFunctionNameFromLatex)
+// pass that function's own name instead: a real observed case defines both
+// "f(x)=(1-x)e^x-1" and "g(x)=(2-x)e^x+2-x" in the same problem, and a
+// diagram correctly plotting g got dropped because the hardcoded "f"-only
+// pattern picked up "f(0)=0" (a claim about the *other* function) and
+// compared it against g(0)=4.
+export function extractAnchorClaims(solutionText: string, functionName: string = "f"): Array<{ x: number; y: number }> {
   const anchors: Array<{ x: number; y: number }> = [];
-  const pattern = /f\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)\s*(?:=|\\approx|\\thickapprox)\s*(-?\d+(?:\.\d+)?)/g;
+  const escapedName = functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`${escapedName}\\s*\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\)\\s*(?:=|\\\\approx|\\\\thickapprox)\\s*(-?\\d+(?:\\.\\d+)?)`, "g");
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(solutionText)) !== null) {
     const x = Number(match[1]);
@@ -3960,7 +4257,6 @@ export function extractLineEquationClaims(text: string): Array<{ m: number; b: n
 // extra to include since every call site already has it in hand.
 export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], solutionText: string, finalAnswer?: string): RenderBlock[] {
   if (!blocks.length || !solutionText) return blocks;
-  const anchors = extractAnchorClaims(solutionText);
   // Real observed case: an oblique-asymptote problem ("y = \sqrt{4x^2+x+5}")
   // derives y=2x+1/4 (as x->+inf) and y=-2x-1/4 (as x->-inf), stated
   // plainly in both solutionText and finalAnswer — but the diagram plotted
@@ -3971,7 +4267,6 @@ export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], soluti
   // latex ("y=2x") from the start — params and latex agree with each
   // other, just not with what the solution actually derived.
   const lineClaims = extractLineEquationClaims(`${solutionText}\n${finalAnswer ?? ""}`);
-  if (!anchors.length && !lineClaims.length) return blocks;
 
   return blocks.filter((block) => {
     if (block.type !== "diagram" || block.diagramType !== "function-graph") return true;
@@ -3979,6 +4274,14 @@ export function verifyDiagramBlocksAgainstSolution(blocks: RenderBlock[], soluti
     const functions = Array.isArray(spec?.functions) ? spec.functions as Array<Record<string, unknown>> : [];
     const primaryFn = functions[0];
     const latex = typeof primaryFn?.latex === "string" ? primaryFn.latex : "";
+
+    // Anchors are collected per-block, restricted to names that plausibly
+    // refer to *this* plotted function (see acceptedAnchorNames) — a real
+    // observed case defines "f(x)=(1-x)e^x-1" and "g(x)=(2-x)e^x+2-x" in
+    // the same problem; a diagram correctly plotting g used to get dropped
+    // because a claim about the *other* function ("f(0)=0") got pooled in
+    // and compared against g(0)=4.
+    const anchors = latex ? acceptedAnchorNames(latex).flatMap((name) => extractAnchorClaims(solutionText, name)) : [];
 
     if (latex && anchors.length) {
       let checkedCount = 0;
@@ -4140,6 +4443,80 @@ export function verifyConstantSolvingFinalAnswer(problem: string, finalAnswer: s
       claimed: result.claimed,
       numericLimitEstimate: result.estimate,
       statedTarget: result.target,
+    });
+  }
+}
+
+export type ExtremaValueCheck =
+  | { ok: true }
+  | { ok: false; x: number; claimedY: number; actualY: number };
+
+// A real observed case: for y=(x²+2x+2)/(x+1) the solution correctly found
+// the critical points x=-2 and x=0, then stated "y(-2) = -3" — but
+// substituting directly, f(-2) = ((-2)²+2(-2)+2)/(-2+1) = 2/-1 = -2, not
+// -3. The wrong value propagated into the variation table's boundary cell
+// and the graph description's "vertex (-2,-3)" too. Nothing else in this
+// pipeline catches this: it isn't a diagram problem (no diagram, or a
+// correct one, is entirely possible here), and the surrounding derivation
+// steps (finding y'=0 at x=-2, the general shape of the argument) all look
+// individually plausible — the mistake is purely in the final arithmetic
+// substitution.
+//
+// Deliberately checks *any* "f(x0)=y0" / "y(x0)=y0" claim the solution
+// states inline against the function's own latex (found via
+// findConcreteFunctionLatex), not just claimed extrema specifically — an
+// extremum's value is simply the most common shape of inline claim these
+// solutions make. `{ok:true}` covers "verified", "no function latex could
+// be found", and "no such claim in the text" alike; this never asserts a
+// false positive, only a genuine numeric mismatch against ground truth.
+export function checkExtremaValueClaims(problem: string, solutionText: string): ExtremaValueCheck {
+  if (!problem || !solutionText) return { ok: true };
+  const functionLatex = findConcreteFunctionLatex(normalizeDigits(`${problem}\n${solutionText}`));
+  if (!functionLatex) return { ok: true };
+
+  // Restrict to claims about *this specific* function — "f" and "y" used to
+  // be accepted unconditionally, which is right for the overwhelming
+  // majority of single-function problems (where "y(2)=5" and "f(2)=5" mean
+  // the same thing) but wrong the moment a problem defines a second,
+  // differently-named function: a real observed case states "f(0) = 0" for
+  // one function and "g(0) = 4" for another in the same solution, and
+  // findConcreteFunctionLatex correctly returned g's latex (the one
+  // relevant to the graph being built) — checking the *other* function's
+  // claim ("f(0)=0") against g(0)=4 as if they were the same thing produced
+  // a false mismatch. Still accepts "y" as a generic alias alongside
+  // whatever specific name was found, since a derivation casually calls the
+  // function under discussion "y" even when it has a proper name.
+  const namePattern = acceptedAnchorNames(functionLatex)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const pattern = new RegExp(`(?:${namePattern})\\s*\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\)\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`, "g");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(solutionText)) !== null) {
+    const x = Number(match[1]);
+    const claimedY = Number(match[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(claimedY)) continue;
+    const actualY = evaluateLatexAt(functionLatex, x);
+    if (actualY === null) continue; // near an asymptote (or outside this function's own domain) — nothing to check against
+    const tolerance = Math.max(0.05, Math.abs(actualY) * 0.02);
+    if (Math.abs(actualY - claimedY) > tolerance) return { ok: false, x, claimedY, actualY };
+  }
+  return { ok: true };
+}
+
+// Thin logging wrapper around checkExtremaValueClaims, same posture as
+// verifyConstantSolvingFinalAnswer above: observability only, no
+// modification. A wrong function-value claim doesn't invalidate the
+// solution's final answer or its diagram (both can — and in the observed
+// case, did — remain correct independently), so there's no safe automatic
+// action beyond logging it for now.
+export function verifyExtremaValueClaims(problem: string, solutionText: string): void {
+  const result = checkExtremaValueClaims(problem, solutionText);
+  if (result.ok === false) {
+    logger.warn("[verifyExtremaValueClaims] solution states a function value that doesn't match its own function's latex", {
+      problem: problem.slice(0, 200),
+      x: result.x,
+      claimedY: result.claimedY,
+      actualY: result.actualY,
     });
   }
 }
@@ -4323,6 +4700,7 @@ DIAGRAM SELECTION RULES (CRITICAL):
 5. For a limit, continuity, or root-existence problem, the function you plot MUST be the exact function named in the PROBLEM statement (e.g. the expression whose limit is being taken, or the f(x) the problem defines) — never an intermediate expression that only appears partway through the solution's derivation (an algebraic rewrite, a simplified denominator, a substitution). If the problem asks for lim f(x) and the solution rewrites part of f(x) along the way (e.g. "1 - cos x = 2 sin²(x/2)"), the diagram's function latex must still be f(x) itself, not that rewritten fragment — plotting the fragment instead misrepresents the problem, even though the fragment is mathematically valid on its own.
 6. Never guess a "sign-table"'s sign cells. Before emitting one, actually work out the sign of the named function/expression at a real test value in each interval (e.g. compute f'(-1) numerically, don't assume a pattern) — a wrong sign row is worse than no diagram. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or the sign of something across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — return {"diagramBlocks":[]} for those rather than attaching an unnecessary, unverified one. This applies even when the problem is "solve for an unknown constant using a derivative" (e.g. "find a such that lim f(x)/x = 1/8" solved via L'Hôpital) — computing a derivative once and evaluating it at one point is not monotonicity analysis; it does not justify a sign-table showing "+" on both sides of some interior point, or any sign-table at all.
 7. When a "function-graph" shows a piecewise-defined function (the solution splits into cases like "for x > 0 ... for x < 0 ...", or has a jump/removable discontinuity), every piece that is NOT valid across the whole graph MUST carry its own "domain":[min,max] matching exactly which x-values that piece applies to (e.g. [0,3] for "x ≥ 0", not the graph's overall domain) — never rely on a note like "(x \\ge 0)" written inside "latex"; that text is never parsed as structured data. Two pieces sharing the graph's full domain with no per-piece "domain" render as two overlapping full lines/curves instead of two separate rays/branches meeting at the split — always split "domain" between the pieces so they don't overlap. Mark which side is included with "closed":true/false on the featurePoint at the split (the piece whose domain includes that x gets the closed dot; the other gets an open one).
+8. If the problem discusses a function in the abstract — its coefficients are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", asking about general asymptote/root behavior across all their possible values), never invent placeholder numbers for those letters (e.g. plugging in a=1,b=0,c=0 and silently dropping the rest) — that plots a completely different, unrelated function and misrepresents the problem. Either return {"diagramBlocks":[]}, or if a picture would genuinely help illustrate the general case, pick one concrete, fully-numeric example that actually exhibits the behavior being discussed (e.g. one specific choice of a,b,c,p,q,r producing two vertical asymptotes) and say in the diagram that it's an illustrative example — never claim it IS the problem's own (unspecified) function.
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -4515,6 +4893,12 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const inverseSquareIntervalRepair = repairInverseSquareIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
   if (inverseSquareIntervalRepair !== normalized) return inverseSquareIntervalRepair;
+
+  // Runs before the generic "useful" check below: a sign-table is a real,
+  // non-empty diagram, so it would otherwise pass that check untouched even
+  // when the problem explicitly asked to construct/sketch/draw the graph.
+  const constructedGraphForExplicitRequest = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, normalized);
+  if (constructedGraphForExplicitRequest.length) return constructedGraphForExplicitRequest;
 
   const useful = normalized.filter(
     (block) => !Array.isArray(block.warnings) || !block.warnings.some((w) => w.startsWith("empty-"))
@@ -4782,6 +5166,7 @@ Requirements:
     const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
       verifyConstantSolvingFinalAnswer(problem, metadata.finalAnswer);
+      verifyExtremaValueClaims(problem, rawSolution);
       verifySolutionCompleteness(rawSolution, metadata.finalAnswer);
       const diagramBlocks = verifyDiagramBlocksAgainstSolution(
         await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer, metadata.problemIntent).catch((err) => {
@@ -4851,7 +5236,8 @@ Rules:
 21. Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use these as routing fields, then put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 22. For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
 23. Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
-24. For a "function-graph" showing a piecewise-defined function (cases like "for x > 0 ... for x < 0 ...", a jump or removable discontinuity), every piece not valid across the whole graph MUST carry its own "domain":[min,max] for exactly the x-values that piece applies to — never rely on a note like "(x \\ge 0)" written inside "latex", which is never parsed as structured data. Without a per-piece "domain", both pieces render as overlapping full lines/curves across the entire graph instead of separate rays/branches meeting at the split. Mark the split with "closed":true/false on each piece's featurePoint there.`;
+24. For a "function-graph" showing a piecewise-defined function (cases like "for x > 0 ... for x < 0 ...", a jump or removable discontinuity), every piece not valid across the whole graph MUST carry its own "domain":[min,max] for exactly the x-values that piece applies to — never rely on a note like "(x \\ge 0)" written inside "latex", which is never parsed as structured data. Without a per-piece "domain", both pieces render as overlapping full lines/curves across the entire graph instead of separate rays/branches meeting at the split. Mark the split with "closed":true/false on each piece's featurePoint there.
+25. If the problem discusses a function in the abstract — coefficients that are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", a general case analysis over their possible values) — never invent placeholder numbers for those letters (e.g. a=1,b=0,c=0, silently dropping the rest of the expression); that plots an unrelated function. Omit diagramBlocks entirely, or use one concrete fully-numeric example that actually shows the behavior discussed and is clearly labeled as an example, never as the problem's own (unspecified) function.`;
 
   const schema = {
     type: Type.OBJECT,
@@ -4915,6 +5301,7 @@ Rules:
 
   if (isUsableProblemSolutionFirst(primary.data)) {
     verifyConstantSolvingFinalAnswer(problem, primary.data.finalAnswer);
+    verifyExtremaValueClaims(problem, primary.data.solutionText);
     verifySolutionCompleteness(primary.data.solutionText, primary.data.finalAnswer);
     // Prefer a dedicated second pass, grounded in the now-complete solutionText,
     // over whatever diagramBlocks the joint solve-and-diagram call produced —
@@ -5026,6 +5413,7 @@ End your response with:
       }
 
       verifyConstantSolvingFinalAnswer(finalProblemText, resolvedFinalAnswer);
+      verifyExtremaValueClaims(finalProblemText, rawSolution);
       verifySolutionCompleteness(rawSolution, resolvedFinalAnswer);
       const diagramBlocks = verifyDiagramBlocksAgainstSolution(
         await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer, metadata.problemIntent).catch((err) => {
@@ -5091,12 +5479,13 @@ Rules for solutionText:
 - Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use metadata for routing and put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 - For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
 - Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
+- If the problem discusses a function in the abstract — coefficients that are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", a general case analysis over their possible values) — never invent placeholder numbers for those letters (e.g. a=1,b=0,c=0, silently dropping the rest of the expression); that plots an unrelated function. Omit diagramBlocks entirely, or use one concrete fully-numeric example that actually shows the behavior discussed and is clearly labeled as an example, never as the problem's own (unspecified) function.
 - Diagram spec examples:
   number-line: {"ranges":[{"from":-2,"to":3,"closedStart":true,"closedEnd":false}]}
   sign-table: {"rows":[{"label":"x","values":["-∞","2","+∞"]},{"label":"f(x)","signs":["+","0","-"]}]}
   venn-diagram: {"sets":[{"label":"M","total":20},{"label":"S","total":15}],"intersection":8,"regions":{"leftOnly":12,"intersection":8,"rightOnly":7}}
 	  geometry: {"shapes":[{"shape":"triangle","vertices":[[0,0],[100,0],[50,80]],"labels":["A","B","C"]}]}
-	  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":0,"c":0},"latex":"y=x^2"}],"domain":[-5,5],"range":[-2,25]}
+	  function-graph: {"functions":[{"kind":"quadratic","params":{"a":1,"b":-4,"c":3},"latex":"y=x^2-4x+3"}],"domain":[-2,6],"range":[-2,8]}
 	  function-graph piecewise/jump discontinuity (each piece gets its own "domain" — never rely on latex text like "(x>=0)"): {"functions":[{"kind":"linear","params":{"m":2,"b":1},"latex":"y=2x+1","domain":[0,3]},{"kind":"linear","params":{"m":2,"b":-1},"latex":"y=2x-1","domain":[-3,0]}],"featurePoints":[{"point":[0,1],"label":"(0,1)","closed":true},{"point":[0,-1],"label":"(0,-1)","closed":false}],"domain":[-3,3],"range":[-8,8]}
 	  function-graph trigonometric wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"}]}
 	  solid-geometry: {"shape":"cube" | "cuboid" | "pyramid" | "cylinder" | "cone" | "frustum" | "sphere","dimensions":{"width":100,"height":100,"depth":80,"topRadius":3,"bottomRadius":6},"labels":{"edge":"a","diagonal":"D","topRadius":"r","bottomRadius":"R"}}
@@ -5173,6 +5562,7 @@ Return a single JSON object only.`;
 
   if (data && extractedProblemText && isUsableProblemSolutionFirst(data)) {
     verifyConstantSolvingFinalAnswer(extractedProblemText, data.finalAnswer);
+    verifyExtremaValueClaims(extractedProblemText, data.solutionText);
     verifySolutionCompleteness(data.solutionText, data.finalAnswer);
     // Same "prefer the dedicated, solution-grounded pass" priority as
     // solveProblemSolutionFirst above — see the comment there.

@@ -630,8 +630,25 @@ function sanitizeSolutionText(raw: string): string {
   return processed.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// A \begin{aligned}...\end{aligned} block is inherently one single
+// display-math unit — it must stay wrapped in exactly one pair of "$$"
+// delimiters. A real observed case had the model interleave *extra* "$$"
+// pairs mid-block (right after a nested \begin{vmatrix}...\end{vmatrix}
+// row): "$$\begin{aligned}\n...\vmatrix...\\\n$$&= ...\\$$\n$$&= ...$$\n
+// \end{aligned}$$". The segmenter (which just alternates text/math on
+// successive "$$" pairs, with no idea what's semantically inside) then
+// splits that into several fragments — the interior ones tagged "text"
+// even though they're just as much raw LaTeX as the "math" ones, only
+// mis-tagged — and those render as literal, unformatted "&= (5(-5) -
+// 0(0))..." lines instead of typeset math. Stripping every "$$" strictly
+// between a \begin{aligned} and its matching \end{aligned} collapses the
+// block back into the single coherent span it was always meant to be.
+export function repairNestedDollarsInsideAligned(input: string): string {
+  return input.replace(/\\begin\{aligned\}[\s\S]*?\\end\{aligned\}/g, (block) => block.replace(/\$\$/g, ""));
+}
+
 function repairGeneratedMathText(input: string): string {
-  const text = `${input ?? ""}`;
+  const text = repairNestedDollarsInsideAligned(`${input ?? ""}`);
   if (!text.trim()) return "";
 
   // Fix LaTeX commands corrupted by JSON escape sequence parsing:
@@ -2116,6 +2133,64 @@ function acceptedAnchorNames(functionLatex: string): string[] {
   return name === "y" ? ["f", "y"] : [name, "y"];
 }
 
+function formatFeatureNumber(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+// Extracts "NAME(x, y)" or bare "(x, y)" labeled-point claims from the
+// solution's own construction notes — the "ង. សង់..." section of these
+// problems conventionally lists the exact feature points a hand-drawn
+// graph needs (an inflection point, a tangent point, an asymptote
+// crossing), e.g. "ចំណុចរបត់ I(0, 4)", "ត្រង់ (1, e+1)", "ត្រង់ចំណុច (2, 0)".
+// A real observed case: the backstop-built diagram plotted the curve
+// correctly but shipped with featurePoints/guideLines both empty, missing
+// every one of these even though the solution states them explicitly.
+//
+// Each candidate's x/y are evaluated via the general expression engine
+// (handles bare numbers and simple expressions with e/pi, e.g. "e+1") —
+// this is also what filters out false positives for free: interval/domain
+// notation like "(0, +\infty)" fails to evaluate ("\infty" isn't a token
+// this engine supports) and never reaches the list. A candidate is only
+// kept if it's independently verified to actually lie on the plotted
+// function or on the given asymptote/tangent line — never trust the
+// prose's own labeling of what a point "is" without checking it against
+// ground truth, the same posture as every other inline claim in this file.
+function extractFeaturePointClaims(
+  text: string,
+  functionLatex: string,
+  lines: Array<{ m: number; b: number }>,
+): Array<{ point: [number, number]; label: string }> {
+  const points: Array<{ point: [number, number]; label: string }> = [];
+  const pattern = /([A-Z])?\s*\(\s*([^(),\n]+?)\s*,\s*([^(),\n]+?)\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    const label = match[1] || "";
+    const x = evaluateLatexWithBindings(match[2], {});
+    const y = evaluateLatexWithBindings(match[3], {});
+    if (x === null || y === null) continue;
+
+    const tolerance = Math.max(0.05, Math.abs(y) * 0.02);
+    const curveY = evaluateLatexAt(functionLatex, x);
+    const onCurve = curveY !== null && Math.abs(curveY - y) <= tolerance;
+    const onLine = lines.some((line) => Math.abs((line.m * x + line.b) - y) <= tolerance);
+    if (!onCurve && !onLine) continue;
+
+    points.push({
+      point: [x, y],
+      label: `${label}(${formatFeatureNumber(x)}, ${formatFeatureNumber(y)})`,
+    });
+  }
+  // The same point is often stated more than once across the solution
+  // (e.g. both derived and then referenced again in the construction
+  // notes) — dedupe by rounded coordinates.
+  return points
+    .filter((p, idx, arr) => arr.findIndex((q) =>
+      Math.abs(q.point[0] - p.point[0]) < 1e-6 && Math.abs(q.point[1] - p.point[1]) < 1e-6
+    ) === idx)
+    .slice(0, 8);
+}
+
 export function inferConstructedFunctionGraphForExplicitGraphRequest(
   problem: string,
   solutionText: string,
@@ -2269,9 +2344,42 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   const yMax = Math.max(...viewportYs);
   const pad = Math.max(1, (yMax - yMin) * 0.2);
 
+  // A real observed case: the curve itself plotted correctly, but the
+  // diagram shipped with an empty featurePoints/no companion asymptote or
+  // tangent line, even though the solution's own "construct the curve"
+  // section explicitly lists them (e.g. "(D): y = 2-x", tangent point
+  // "(1, e+1)", inflection point "I(0, 4)") — a hand-drawn graph needs
+  // exactly this data, and it was sitting right there in the text, just
+  // never carried into the spec. extractLineEquationClaims already exists
+  // for the oblique-asymptote verification check elsewhere in this file;
+  // reuse it here to add each distinct line the solution actually derived
+  // as its own plotted "linear" function (deduped — the same line is
+  // typically restated several times), and extractFeaturePointClaims to
+  // add every point that's independently verified to lie on the curve or
+  // one of those lines.
+  const companionLines = extractLineEquationClaims(source)
+    // extractLineEquationClaims derives m/b by sampling three x-values and
+    // solving numerically — clean floating-point noise (e.g. m coming back
+    // as -0.9999999999999999 instead of -1) before it ends up baked into a
+    // displayed latex label.
+    .map((claim) => ({ m: Math.round(claim.m * 1e6) / 1e6, b: Math.round(claim.b * 1e6) / 1e6 }))
+    .filter((claim, idx, arr) => arr.findIndex((c) =>
+      Math.abs(c.m - claim.m) < 1e-6 && Math.abs(c.b - claim.b) < 1e-6
+    ) === idx)
+    .slice(0, 3);
+  const lineColors = ["red", "orange", "green"];
+  const companionFunctions = companionLines.map((line, idx) => ({
+    kind: "linear" as const,
+    latex: `y=${line.m}x${line.b >= 0 ? "+" : ""}${line.b}`,
+    params: { m: line.m, b: line.b },
+    color: lineColors[idx % lineColors.length],
+  }));
+  const featurePoints = extractFeaturePointClaims(source, functionLatex, companionLines);
+
   const result = normalizeDiagramBlocks([{
     diagramType: "function-graph",
-    functions: [{ kind: "points", latex: functionLatex, points: [] }],
+    functions: [{ kind: "points", latex: functionLatex, points: [] }, ...companionFunctions],
+    featurePoints,
     domain,
     range: [Math.floor(yMin - pad), Math.ceil(yMax + pad)],
     xAxisLabel: "x",

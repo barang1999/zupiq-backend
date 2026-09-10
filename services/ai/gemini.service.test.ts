@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it, vi } from "vitest";
-import { checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { logger } from "../../utils/logger.js";
 
@@ -514,6 +514,54 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     expect(rangeMax).toBeGreaterThanOrEqual(4);
   });
 
+  // Real observed case: the curve itself plotted correctly, but the
+  // diagram shipped with featurePoints empty and no companion asymptote or
+  // tangent line — even though the solution's own "ង. សង់ខ្សែជាង (C)"
+  // section explicitly lists them: "(D): y=2-x", the tangent point
+  // "(1, e+1)", and the inflection point "I(0, 4)".
+  const constructionNotesSolutionText = `
+    សមីការបន្ទាត់ប៉ះ $(\\Delta)$ គឺ៖ $y = -x + e + 2$
+    ដោយ $g''(x)$ ប្ដូរសញ្ញាត្រង់ $x = 0$ និង $g(0) = 4$ នោះចំណុចរបត់គឺ $I(0, 4)$។
+    ង. សង់ខ្សែជាង $(C)$៖
+    - បន្ទាត់ $(D) : y = 2-x$ កាត់តាម $(0, 2)$ និង $(2, 0)$។
+    - បន្ទាត់ $(\\Delta) : y = -x + e + 2$ ប៉ះ $(C)$ ត្រង់ $(1, e+1)$។
+    - ចំណុចរបត់ $I(0, 4)$ មានបន្ទាត់ប៉ះផ្ដេក $y = 4$។
+  `;
+
+  it("adds the derived asymptote/tangent lines as their own plotted functions, not just the bare curve", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, constructionNotesSolutionText, []);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const linearFns = (spec.functions as Array<Record<string, unknown>>).filter((f) => f.kind === "linear");
+    expect(linearFns.length).toBe(2);
+    const paramSets = linearFns.map((f) => f.params as { m: number; b: number });
+    expect(paramSets.some((p) => p.m === -1 && p.b === 2)).toBe(true); // (D): y = 2 - x
+    expect(paramSets.some((p) => p.m === -1 && Math.abs(p.b - (Math.E + 2)) < 1e-3)).toBe(true); // (Δ): y = -x + e + 2
+  });
+
+  it("adds feature points that are independently verified to lie on the curve or a derived line, not just echoed from the prose", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, constructionNotesSolutionText, []);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
+    expect(points).toEqual(expect.arrayContaining([
+      [0, 4], // inflection point I(0, 4) — on the curve
+      [2, 0], // asymptote crossing — on the curve and on (D)
+    ]));
+    // The tangent point (1, e+1): on the curve, y ≈ 3.718.
+    expect(points.some(([x, y]) => x === 1 && Math.abs(y - (Math.E + 1)) < 0.01)).toBe(true);
+  });
+
+  it("does not fabricate a feature point from interval/domain notation (e.g. '(0, +\\infty)') since \\infty doesn't evaluate", () => {
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(
+      curveWordProblem,
+      `${constructionNotesSolutionText}\nសម្រាប់ $x \\in (0, +\\infty)$`,
+      [],
+    );
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
+    expect(points.some(([x]) => x === 0 && points.some(([, y]) => !Number.isFinite(y)))).toBe(false);
+    expect(points.every(([, y]) => Number.isFinite(y))).toBe(true);
+  });
+
   describe("backstop failures/successes are logged, not silently returned as []", () => {
     it("logs a warning when the problem asks for a graph but no concrete function latex can be found at all", () => {
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
@@ -611,5 +659,45 @@ describe("checkExtremaValueClaims", () => {
       expect(result.x).toBe(1);
       expect(result.claimedY).toBe(100);
     }
+  });
+});
+
+describe("repairNestedDollarsInsideAligned", () => {
+  // Real observed case: a \begin{aligned}...\end{aligned} block (with a
+  // nested \begin{vmatrix}...\end{vmatrix} cross-product computation) came
+  // back with *extra* "$$" pairs interleaved mid-block — right after the
+  // vmatrix row, and again between two later rows — splitting what should
+  // be one coherent display-math span into several fragments. The
+  // segmenter (which just alternates text/math on successive "$$" pairs,
+  // with no idea what's semantically inside a block) then rendered the
+  // interior fragments as literal, unformatted "&= (5(-5) - 0(0))..." text
+  // instead of typeset math.
+  const malformed = `$$\\begin{aligned}
+\\vec{BC} \\times \\vec{BD} &= \\begin{vmatrix} \\vec{i} & \\vec{j} & \\vec{k} \\\\ -5 & 5 & 0 \\\\ -5 & 0 & -5 \\end{vmatrix} \\\\
+$$&= (5(-5) - 0(0))\\vec{i} - ((-5)(-5) - 0(-5))\\vec{j} + ((-5)(0) - 5(-5))\\vec{k} \\\\$$
+$$&= -25\\vec{i} - 25\\vec{j} + 25\\vec{k}$$
+\\end{aligned}$$`;
+
+  it("collapses a \\begin{aligned} block with interleaved stray '$$' pairs back into one coherent span", () => {
+    const fixed = repairNestedDollarsInsideAligned(malformed);
+    // Exactly one opening and one closing "$$" should remain — both outside
+    // the \begin{aligned}...\end{aligned} span, none interleaved inside it.
+    expect((fixed.match(/\$\$/g) ?? []).length).toBe(2);
+    expect(fixed).toContain("\\begin{aligned}\n\\vec{BC}");
+    expect(fixed).toContain("&= -25\\vec{i} - 25\\vec{j} + 25\\vec{k}\n\\end{aligned}$$");
+    // The interior of the block (between \begin{aligned} and \end{aligned})
+    // must contain zero "$$" — the whole thing reads as one continuous span.
+    const interior = fixed.match(/\\begin\{aligned\}([\s\S]*)\\end\{aligned\}/)?.[1] ?? "";
+    expect(interior).not.toContain("$$");
+  });
+
+  it("leaves ordinary content (no \\begin{aligned} block) untouched", () => {
+    const plain = "$$x + y = 5$$ and some prose with $z = 2$.";
+    expect(repairNestedDollarsInsideAligned(plain)).toBe(plain);
+  });
+
+  it("leaves a well-formed \\begin{aligned} block (no interior '$$') untouched", () => {
+    const wellFormed = "$$\\begin{aligned}\na &= 1 \\\\\nb &= 2\n\\end{aligned}$$";
+    expect(repairNestedDollarsInsideAligned(wellFormed)).toBe(wellFormed);
   });
 });

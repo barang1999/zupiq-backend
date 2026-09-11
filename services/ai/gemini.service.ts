@@ -20,6 +20,7 @@ export interface ChatUsage {
   completionTokens: number | null;
   totalTokens: number;
   source: "provider" | "estimate";
+  model?: string;
 }
 
 export interface ChatResult {
@@ -34,6 +35,22 @@ export type { AIRequestOptions } from "./core/types.js";
 export interface ImagePart {
   data: string; // base64
   mimeType: string;
+}
+
+// ─── Usage helpers ────────────────────────────────────────────────────────────
+
+function zeroUsage(): ChatUsage {
+  return { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+}
+
+function addUsage(a: ChatUsage, b: ChatUsage): ChatUsage {
+  return {
+    promptTokens: ((a.promptTokens ?? 0) + (b.promptTokens ?? 0)) || null,
+    completionTokens: ((a.completionTokens ?? 0) + (b.completionTokens ?? 0)) || null,
+    totalTokens: (a.totalTokens ?? 0) + (b.totalTokens ?? 0),
+    source: (a.source === "provider" || b.source === "provider") ? "provider" : "estimate",
+    model: b.model || a.model,
+  };
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
@@ -94,6 +111,7 @@ function estimateChatUsage(messages: ChatMessage[], responseText: string): ChatU
     completionTokens,
     totalTokens,
     source: "estimate",
+    model: env.GEMINI_MODEL,
   };
 }
 
@@ -119,8 +137,9 @@ export async function chat(
   // rather than asking the model to embed JSON in its prose (which is unreliable).
   const wantsTable = TABLE_REQUEST_PATTERN.test(lastMessage.content);
 
+  const modelName = options.aiModel || env.GEMINI_MODEL;
   const chatSession = client.chats.create({
-    model: env.GEMINI_MODEL,
+    model: modelName,
     config: {
       systemInstruction: buildSystemInstruction(options),
       temperature: 0.7,
@@ -140,7 +159,7 @@ export async function chat(
   }
 
   console.log("[ChatDebug] calling chatSession.sendMessage()...", {
-    model: env.GEMINI_MODEL,
+    model: modelName,
     historyLength: history.length,
     lastMessagePreview: lastMessage.content.slice(0, 120),
     hasImagePart: !!imagePart,
@@ -170,12 +189,12 @@ export async function chat(
     // Build the problem description from the recent conversation context (last few turns)
     const contextMessages = messages.slice(-4);
     const problem = contextMessages.map((m) => m.content).join("\n");
-    visualTable = await generateVisualTable(problem, subject, options, imagePart).catch(() => null);
+    visualTable = await generateVisualTable(problem, subject, options, imagePart).then((r) => r.table).catch(() => null);
   }
 
   const usage: ChatUsage = providerUsage
-    ? { ...providerUsage, source: "provider" }
-    : estimateChatUsage(messages, text);
+    ? { ...providerUsage, source: "provider", model: modelName }
+    : { ...estimateChatUsage(messages, text), model: modelName };
 
   return { text, usage, finishReason, visualTable };
 }
@@ -4781,6 +4800,7 @@ async function extractDiagramBlocksForSolution(
   options: AIRequestOptions,
   finalAnswer?: string,
   problemIntent?: ProblemIntent,
+  usageOut?: { current: ChatUsage },
 ): Promise<RenderBlock[]> {
   const subject = `${options.subject || ""}`.toLowerCase();
   const source = `${problem}\n${solutionText}`.toLowerCase();
@@ -4917,7 +4937,7 @@ ${solutionText.slice(0, 1800)}
 ${DIAGRAM_SPEC_GUIDE}`,
     options,
     temperature: 0,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 4096,
     taskName: "extractDiagramBlocksForSolution",
     maxAttempts: 2,
     recoverFromRaw: (raw) => {
@@ -5015,6 +5035,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
     },
   });
 
+  if (usageOut) usageOut.current = result.usage;
   const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
   // Filter out blocks the normalizer flagged as empty (AI produced a diagram type but no data).
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
@@ -5145,6 +5166,34 @@ ${DIAGRAM_SPEC_GUIDE}`,
   return inferRectangleSemicircleBlocks(problem, solutionText, normalized);
 }
 
+// ─── On-demand diagram generation (exported for session-diagram route) ────────
+
+/**
+ * Generates diagram blocks for an existing session on demand.
+ * Runs the full extractDiagramBlocksForSolution → verifyDiagramBlocksAgainstSolution
+ * pipeline — same path used during solveProblemSolutionFirst.
+ */
+export async function generateDiagramBlocksForSession(
+  problem: string,
+  solutionText: string,
+  finalAnswer: string | undefined,
+  options: AIRequestOptions,
+): Promise<{ blocks: RenderBlock[]; usage: ChatUsage }> {
+  const usageOut = { current: zeroUsage() };
+  const blocks = await extractDiagramBlocksForSolution(
+    problem,
+    solutionText,
+    options,
+    finalAnswer,
+    undefined,
+    usageOut,
+  );
+  return {
+    blocks: verifyDiagramBlocksAgainstSolution(blocks, solutionText, finalAnswer),
+    usage: usageOut.current,
+  };
+}
+
 // ─── Two-phase generation helpers ────────────────────────────────────────────
 
 /**
@@ -5159,6 +5208,7 @@ async function generateRawSolution(
   imagePart?: ImagePart,
 ): Promise<{ text: string; usage: ChatUsage }> {
   const client = getGeminiClient();
+  const modelName = options.aiModel || env.GEMINI_PRO_MODEL;
   const parts: Part[] = [
     ...(imagePart
       ? [{ inlineData: { data: imagePart.data, mimeType: imagePart.mimeType } } as Part]
@@ -5166,8 +5216,13 @@ async function generateRawSolution(
     { text: prompt },
   ];
 
+  console.log("🤖 [GeminiModel] generateRawSolution", {
+    model: modelName,
+    hasImagePart: !!imagePart,
+  });
+
   const generatePromise = client.models.generateContent({
-    model: env.GEMINI_PRO_MODEL,
+    model: modelName,
     config: {
       systemInstruction: buildSystemInstruction(options),
       temperature: 0.1,
@@ -5189,8 +5244,8 @@ async function generateRawSolution(
   const response = await Promise.race([generatePromise, timeoutPromise]);
   const providerUsage = extractProviderUsage(response);
   const usage: ChatUsage = providerUsage
-    ? { ...providerUsage, source: "provider" }
-    : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+    ? { ...providerUsage, source: "provider", model: modelName }
+    : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate", model: modelName };
   return { text: (response.text ?? "").trim(), usage };
 }
 
@@ -5345,6 +5400,7 @@ Requirements:
 - For multi-line derivations use: $$\\begin{aligned} ... \\end{aligned}$$
 - For a monotonicity/variation table (តារាងអថេរភាព) or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
   $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
+- If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞ (the two limits give different lines), explicitly state BOTH asymptote equations somewhere in the solution — even if the problem's own wording only asks about one direction. A graph of the curve needs both lines to be drawn correctly, and an asymptote that was never written down as an equation cannot be added to the graph later.
 - Do NOT repeat or restate the problem. Begin directly with the solution.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - No internal reasoning or self-corrections. Output only the final polished derivation.
@@ -5416,7 +5472,7 @@ Rules:
 2. Do NOT create a step-by-step explanation tree.
 3. solutionText should look like a clean, professional, A+ student-written solution.
 4. solutionText should be mostly equations and short labels. Avoid explanatory sentences.
-5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$". For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"): "$$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$".
+5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$". For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"): "$$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$". If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞, explicitly state BOTH asymptote equations even if the problem only asks about one direction — a graph of the curve needs both.
 6. finalAnswer must be the final answer only.
 7. explanationStatus must be "not_generated" and explanation must be null.
 8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
@@ -5581,6 +5637,7 @@ Solution format:
 - For multi-line derivations: $$\\begin{aligned} ... \\end{aligned}$$
 - For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
   $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
+- If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞, explicitly state BOTH asymptote equations even if the problem only asks about one direction — a graph of the curve needs both.
 - Use exact LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - No internal reasoning, no self-corrections. Output only the final polished derivation.
 
@@ -5670,6 +5727,7 @@ Rules for solutionText:
 - For multi-line math, use one display block: $$\\begin{aligned} ... \\end{aligned}$$
 - For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"):
   $$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$
+- If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞, explicitly state BOTH asymptote equations even if the problem only asks about one direction — a graph of the curve needs both.
 - Use exact KaTeX LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
 - finalAnswer must be the final answer only.
@@ -5844,7 +5902,7 @@ export async function breakdownProblem(
   options: AIRequestOptions = {},
   imagePart?: ImagePart,
   solutionContext?: string
-): Promise<ProblemBreakdown> {
+): Promise<{ data: ProblemBreakdown; usage: ChatUsage }> {
   const targetLangCode = (options.language ?? "en").toLowerCase();
   const targetLangName = LANGUAGE_NAMES[targetLangCode] ?? "English";
 
@@ -5927,7 +5985,7 @@ Rules:
   });
 
   if (isUsableProblemBreakdown(primary.data)) {
-    return sanitizeBreakdownNodes(primary.data);
+    return { data: sanitizeBreakdownNodes(primary.data), usage: primary.usage };
   }
 
   // Recovery pass: disable JSON mime/schema and force strict JSON object output.
@@ -5944,16 +6002,20 @@ Return ONE complete JSON object only. Ensure every branch includes concrete math
     noJsonMime: true,
   });
 
+  const combinedUsage = addUsage(primary.usage, recovery.usage);
   if (isUsableProblemBreakdown(recovery.data)) {
-    return sanitizeBreakdownNodes(recovery.data);
+    return { data: sanitizeBreakdownNodes(recovery.data), usage: combinedUsage };
   }
 
-  return buildFallbackBreakdown(
-    problem,
-    options.subject ?? "General",
-    recovery.raw || primary.raw,
-    options.language
-  );
+  return {
+    data: buildFallbackBreakdown(
+      problem,
+      options.subject ?? "General",
+      recovery.raw || primary.raw,
+      options.language
+    ),
+    usage: combinedUsage,
+  };
 }
 
 export async function instantBreakdown(
@@ -6275,7 +6337,7 @@ export async function expandNode(
   parentProblem: string,
   options: AIRequestOptions = {},
   context: ExpandNodeContext = {}
-): Promise<Omit<BreakdownNode, 'parentId'>[]> {
+): Promise<{ nodes: Omit<BreakdownNode, 'parentId'>[]; usage: ChatUsage }> {
   const contextBlock = [
     context.nodeDescription ? `Parent step explanation: ${context.nodeDescription}` : "",
     context.previousStep ? `Previous visible step: ${context.previousStep}` : "",
@@ -6336,7 +6398,7 @@ Rules:
 - Labels must be short action phrases (3-5 words), such as "Substitute known values" or "Cancel common factor"
 - Descriptions must explain why that one small calculation move is valid`;
 
-  const { data } = await generateStructuredJson<Omit<BreakdownNode, "parentId">[]>({
+  const result = await generateStructuredJson<Omit<BreakdownNode, "parentId">[]>({
     prompt,
     options,
     temperature: 0.2,
@@ -6345,7 +6407,7 @@ Rules:
     maxAttempts: 2,
   });
 
-  return Array.isArray(data) ? data : [];
+  return { nodes: Array.isArray(result.data) ? result.data : [], usage: result.usage };
 }
 
 // ─── Regenerate a branch node ────────────────────────────────────────────────
@@ -6363,7 +6425,7 @@ export async function regenerateBranchNode(
   nodeType: string,
   parentProblem: string,
   options: AIRequestOptions = {}
-): Promise<RegeneratedBranchNode> {
+): Promise<{ node: RegeneratedBranchNode; usage: ChatUsage }> {
   const fallback: RegeneratedBranchNode = {
     label: (nodeLabel ?? "").trim() || "Refined step",
     description: (nodeDescription ?? "").trim() || "Refined explanation of this solving step.",
@@ -6393,7 +6455,7 @@ Rules:
 - mathContent must contain real math notation, not empty
 - No markdown, no extra keys, no prose outside JSON`;
 
-  const { data } = await generateStructuredJson<RegeneratedBranchNode>({
+  const regenResult = await generateStructuredJson<RegeneratedBranchNode>({
     prompt,
     options,
     temperature: 0.3,
@@ -6402,11 +6464,12 @@ Rules:
     maxAttempts: 2,
   });
 
-  const label = `${data?.label ?? ""}`.trim() || fallback.label;
-  const description = `${data?.description ?? ""}`.trim() || fallback.description;
-  const mathContent = `${data?.mathContent ?? ""}`.trim() || fallback.mathContent || fallback.label;
+  const regenData = regenResult.data;
+  const label = `${regenData?.label ?? ""}`.trim() || fallback.label;
+  const description = `${regenData?.description ?? ""}`.trim() || fallback.description;
+  const mathContent = `${regenData?.mathContent ?? ""}`.trim() || fallback.mathContent || fallback.label;
 
-  return { label, description, mathContent };
+  return { node: { label, description, mathContent }, usage: regenResult.usage };
 }
 
 // ─── Analyze image ────────────────────────────────────────────────────────────
@@ -6985,7 +7048,7 @@ export async function getNodeInsight(
   subject: string,
   options: AIRequestOptions = {},
   level: string = 'standard'
-): Promise<NodeInsight> {
+): Promise<{ insight: NodeInsight; usage: ChatUsage }> {
   const isKidLevel = level === '5-year-old';
   logger.info("[getNodeInsight] start", {
     level,
@@ -7033,8 +7096,8 @@ export async function getNodeInsight(
       preview: debugPreview(finalKidText || normalizedKid || kidText),
     });
     return {
-      simpleBreakdown: finalKidText,
-      keyFormula: "",
+      insight: { simpleBreakdown: finalKidText, keyFormula: "" },
+      usage: zeroUsage(),
     };
   }
 
@@ -7061,7 +7124,7 @@ Return ONLY this JSON:
   "keyFormula": "LaTeX expression only, or empty string"
 }`;
 
-  const { data, source } = await generateStructuredJson<NodeInsight>({
+  const insightResult = await generateStructuredJson<NodeInsight>({
     prompt,
     options,
     temperature: isKidLevel ? 0.5 : 0.2,
@@ -7070,6 +7133,7 @@ Return ONLY this JSON:
     maxAttempts: 3,
     recoverFromRaw: (raw) => recoverNodeInsightFromPartialJson(raw),
   });
+  const { data, source } = insightResult;
 
   if (data) {
     const cleaned = normalizeSimpleBreakdown(data.simpleBreakdown ?? "");
@@ -7081,8 +7145,8 @@ Return ONLY this JSON:
         preview: debugPreview(cleaned),
       });
       return {
-        simpleBreakdown: cleaned,
-        keyFormula: normalizeKeyFormula(data.keyFormula ?? ""),
+        insight: { simpleBreakdown: cleaned, keyFormula: normalizeKeyFormula(data.keyFormula ?? "") },
+        usage: insightResult.usage,
       };
     }
     logger.warn("[getNodeInsight] discarded short cleaned simpleBreakdown", {
@@ -7116,8 +7180,8 @@ Return ONLY this JSON:
     preview: debugPreview(acceptedRescued || normalizedRescued || rescuedText),
   });
   return {
-    simpleBreakdown: acceptedRescued || deterministicStandard,
-    keyFormula: "",
+    insight: { simpleBreakdown: acceptedRescued || deterministicStandard, keyFormula: "" },
+    usage: insightResult.usage,
   };
 }
 
@@ -7162,14 +7226,14 @@ export async function generateVisualTable(
   subject: string,
   options: AIRequestOptions,
   imagePart?: ImagePart | null
-): Promise<VisualTable | null> {
+): Promise<{ table: VisualTable | null; usage: ChatUsage }> {
   const deterministicRationalTable = inferRationalInequalityVisualTable(problem);
   if (deterministicRationalTable) {
     logger.info("[generateVisualTable] deterministic rational inequality table", {
       rowCount: deterministicRationalTable.rows.length,
       rows: deterministicRationalTable.rows,
     });
-    return deterministicRationalTable;
+    return { table: deterministicRationalTable, usage: zeroUsage() };
   }
 
   const imageNote = imagePart
@@ -7244,7 +7308,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     required: ["type", "rows"],
   };
 
-  const { data } = await generateStructuredJson<VisualTable>({
+  const vtResult = await generateStructuredJson<VisualTable>({
     prompt,
     options,
     temperature: 0.1,
@@ -7255,15 +7319,15 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     responseSchema: visualTableSchema,
   });
 
-  const sanitized = data ? sanitizeVisualTable(data) : null;
+  const sanitized = vtResult.data ? sanitizeVisualTable(vtResult.data) : null;
 
   if (!sanitized || !['sign_analysis', 'generic'].includes(sanitized.type) || !Array.isArray(sanitized.rows) || sanitized.rows.length === 0) {
     logger.warn("[generateVisualTable] invalid or empty result", {
-      hasData: !!data,
-      type: (data as VisualTable | null)?.type ?? null,
-      rowCount: Array.isArray((data as VisualTable | null)?.rows) ? (data as VisualTable).rows.length : null,
+      hasData: !!vtResult.data,
+      type: (vtResult.data as VisualTable | null)?.type ?? null,
+      rowCount: Array.isArray((vtResult.data as VisualTable | null)?.rows) ? (vtResult.data as VisualTable).rows.length : null,
     });
-    return null;
+    return { table: null, usage: vtResult.usage };
   }
 
   logger.info("[generateVisualTable] success", {
@@ -7272,7 +7336,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     rows: sanitized.rows,
   });
 
-  return sanitized;
+  return { table: sanitized, usage: vtResult.usage };
 }
 
 // ─── Internal helper ──────────────────────────────────────────────────────────
@@ -7873,11 +7937,11 @@ async function generateStructuredJson<T>(
   let lastRaw = "";
 
   // Use Pro model for structured breakdowns to ensure complete results for complex math
-  let modelName = config.taskName.toLowerCase().includes("breakdown") || config.taskName.toLowerCase().includes("solve")
+  let modelName = config.options.aiModel || (config.taskName.toLowerCase().includes("breakdown") || config.taskName.toLowerCase().includes("solve")
     ? env.GEMINI_PRO_MODEL
-    : env.GEMINI_MODEL;
+    : env.GEMINI_MODEL);
 
-  let accUsage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+  let accUsage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate", model: modelName };
 
   function mergeUsage(a: ChatUsage, b: ChatUsage): ChatUsage {
     const prompt = (a.promptTokens ?? 0) + (b.promptTokens ?? 0);
@@ -7887,6 +7951,7 @@ async function generateStructuredJson<T>(
       completionTokens: completion || null,
       totalTokens: (a.totalTokens ?? 0) + (b.totalTokens ?? 0),
       source: (a.source === "provider" || b.source === "provider") ? "provider" : "estimate",
+      model: b.model || a.model,
     };
   }
 
@@ -7899,6 +7964,12 @@ async function generateStructuredJson<T>(
 
     let response;
     try {
+      console.log("🤖 [GeminiModel] generateStructuredJson", {
+        taskName: config.taskName,
+        model: modelName,
+        attempt,
+        hasImagePart: !!config.imagePart,
+      });
       logger.debug(`[DEBUG:AI:PROMPT] Task: ${config.taskName}`, {
         model: modelName,
         systemInstruction: buildSystemInstruction(config.options),
@@ -7941,8 +8012,8 @@ async function generateStructuredJson<T>(
 
     const providerUsage = extractProviderUsage(response);
     const callUsage: ChatUsage = providerUsage
-      ? { ...providerUsage, source: "provider" }
-      : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
+      ? { ...providerUsage, source: "provider", model: modelName }
+      : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate", model: modelName };
     accUsage = mergeUsage(accUsage, callUsage);
 
     const raw = response.text ?? "";

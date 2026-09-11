@@ -17,6 +17,7 @@ import {
   getNodeInsight,
   requiresVisualTable,
   generateVisualTable,
+  generateDiagramBlocksForSession,
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
@@ -33,6 +34,7 @@ import { requireAuth } from "../middlewares/auth.middleware.js";
 import { aiRateLimit } from "../middlewares/rateLimit.middleware.js";
 import { BillingUsageLimitError, ForbiddenError, ValidationError } from "../middlewares/error.middleware.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
+import { env } from "../../config/env.js";
 import { generateId, nowISO } from "../../utils/helpers.js";
 import { getUploadById } from "../../services/upload.service.js";
 import { buildUserKnowledgeContext } from "../../services/knowledge.service.js";
@@ -428,6 +430,65 @@ interface MeteredUsage {
   ai_cost_usd: number;
 }
 
+interface ModelPricing {
+  model: string;
+  inputCostPerMillion: number;
+  outputCostPerMillion: number;
+}
+
+const GEMINI_PRICING_BY_MODEL: ModelPricing[] = [
+  { model: "gemini-3.8-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },
+  { model: "gemini-3.7-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },
+  { model: "gemini-3.6-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },
+  { model: "gemini-3.5-flash-lite", inputCostPerMillion: 0.30, outputCostPerMillion: 2.50 },
+  { model: "gemini-3.5-flash", inputCostPerMillion: 1.50, outputCostPerMillion: 9.00 },
+  { model: "gemini-2.5-flash-lite", inputCostPerMillion: 0.10, outputCostPerMillion: 0.40 },
+  { model: "gemini-2.5-flash", inputCostPerMillion: 0.30, outputCostPerMillion: 2.50 },
+  { model: "gemini-2.5-pro", inputCostPerMillion: 1.25, outputCostPerMillion: 10.00 },
+];
+
+function normalizeGeminiModelName(model: string): string {
+  return model.trim().toLowerCase().replace(/^models\//, "");
+}
+
+function resolveGeminiPricing(model: string | undefined): ModelPricing {
+  const normalized = normalizeGeminiModelName(model || env.GEMINI_PRO_MODEL || env.GEMINI_MODEL);
+  const exact = GEMINI_PRICING_BY_MODEL.find((pricing) => pricing.model === normalized);
+  if (exact) return exact;
+
+  const family = GEMINI_PRICING_BY_MODEL.find((pricing) => normalized.startsWith(pricing.model));
+  if (family) return { ...family, model: normalized };
+
+  logger.warn("[token-usage] unknown Gemini model pricing; falling back to Gemini 3.6 Flash", {
+    model: normalized,
+  });
+  return { model: normalized || "gemini-3.6-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 };
+}
+
+function shouldUseSimpleMathModel(problem: string, subject?: string | null): boolean {
+  const text = (problem || "").trim();
+  if (!text || text.length > 320 || looksLikeImagePlaceholder(text)) return false;
+  if ((text.match(/\n/g) ?? []).length > 1) return false;
+  if (/(?:^|\n)\s*(?:[1-9][.)]|[១-៩][.)]|[ក-ហ][.)])/.test(text)) return false;
+
+  const subjectHint = `${subject ?? ""}`.toLowerCase();
+  const mathishSubject = !subjectHint
+    || subjectHint.includes("math")
+    || subjectHint.includes("general")
+    || subjectHint.includes("គណិត");
+  if (!mathishSubject) return false;
+
+  const complexTaskPattern = /(prove|show that|demonstrate|derive|graph|plot|sketch|construct|variation|monotonic|concavity|inflection|differentiate|derivative|integral|matrix|determinant|vector|probability|statistics|geometry|triangle|circle|physics|chemistry|បង្ហាញ|សង់|ក្រាហ្វ|ខ្សែតាង|អថេរភាព|ដេរីវេ|អាំងតេក្រាល|ប្រូបាប|ត្រីកោណ|រង្វង់|រូបវិទ្យា|គីមី)/i;
+  if (complexTaskPattern.test(text)) return false;
+
+  return /(?:=|\\frac|[+\-*/^√]|solve|find|factor|simplify|expand|evaluate|asymptote|រក|ដោះស្រាយ|គណនា|សម្រួល|កត្តា|អាស៊ីមតូត|\d)/i.test(text);
+}
+
+function maybeUseSimpleMathModel(options: AIRequestOptions, problem: string, subject?: string | null): AIRequestOptions {
+  if (!shouldUseSimpleMathModel(problem, subject)) return options;
+  return { ...options, aiModel: env.GEMINI_SIMPLE_MODEL };
+}
+
 function estimateTokensFromText(text: string): number {
   const normalized = (text ?? "").trim();
   if (!normalized) return 0;
@@ -503,6 +564,7 @@ async function consumeTokenBudget(
     promptTokens?: number | null;
     completionTokens?: number | null;
     source?: "provider" | "estimate";
+    model?: string | null;
   }
 ): Promise<MeteredUsage> {
   const providerTotal = typeof payload.providerTotalTokens === "number" && Number.isFinite(payload.providerTotalTokens)
@@ -536,22 +598,31 @@ async function consumeTokenBudget(
     source: payload.source ?? (providerTotal !== null ? "provider" : "estimate"),
   };
 
-  // Cost estimate using Gemini 2.5 Flash pricing
-  const INPUT_COST_PER_TOKEN  = 0.075 / 1_000_000;  // $0.075 per 1M input tokens
-  const OUTPUT_COST_PER_TOKEN = 0.300 / 1_000_000;  // $0.300 per 1M output tokens
-  const inputTokens  = meteredUsage.promptTokens     ?? estimatedInput;
-  const outputTokens = meteredUsage.completionTokens ?? estimatedOutput;
-  const ai_cost_usd  = +((inputTokens * INPUT_COST_PER_TOKEN) + (outputTokens * OUTPUT_COST_PER_TOKEN)).toFixed(6);
+  const pricing = resolveGeminiPricing(payload.model || env.GEMINI_PRO_MODEL || env.GEMINI_MODEL);
+  const inputTokens = meteredUsage.promptTokens ?? estimatedInput;
+  const explicitOutputTokens = meteredUsage.completionTokens ?? estimatedOutput;
+  const providerOutputWithThinking = providerTotal !== null && meteredUsage.promptTokens !== null
+    ? Math.max(0, providerTotal - meteredUsage.promptTokens)
+    : null;
+  const outputTokens = Math.max(explicitOutputTokens, providerOutputWithThinking ?? 0);
+  const ai_cost_usd = +(
+    (inputTokens * pricing.inputCostPerMillion / 1_000_000)
+    + (outputTokens * pricing.outputCostPerMillion / 1_000_000)
+  ).toFixed(6);
 
   const finalUsage: MeteredUsage = { ...meteredUsage, ai_cost_usd };
 
   logger.info("[token-usage] consumed", {
     userId: budget.userId,
     source: finalUsage.source,
+    model: pricing.model,
     promptTokens: inputTokens,
-    completionTokens: outputTokens,
+    completionTokens: explicitOutputTokens,
+    billableOutputTokens: outputTokens,
     totalTokens: consumedTokens,
     estimatedCostUsd: ai_cost_usd,
+    inputCostPerMillion: pricing.inputCostPerMillion,
+    outputCostPerMillion: pricing.outputCostPerMillion,
     dailyUsed: nextUsed,
     dailyLimit: budget.limit,
   });
@@ -658,6 +729,7 @@ router.post(
         promptTokens: chatResult.usage.promptTokens,
         completionTokens: chatResult.usage.completionTokens,
         source: chatResult.usage.source,
+        model: chatResult.usage.model,
       });
 
       console.log("[ChatDebug] sending response to client:", {
@@ -1031,11 +1103,12 @@ router.post(
         problemPreview: trimmedProblem.slice(0, 160),
       });
 
-      const breakdown = await breakdownProblem(trimmedProblem, aiOptions, imagePart);
+      const { data: breakdown, usage: breakdownUsage } = await breakdownProblem(trimmedProblem, aiOptions, imagePart);
 
       // Generate visual table if the frontend detected one in OCR (sign_table_hint),
       // or if the backend heuristic fires on the problem text itself.
       let visualTable = null;
+      let tableUsage = null;
       const needsVisualTable = sign_table_hint === true || heuristicResult;
       if (needsVisualTable) {
         const tableSubject = (breakdown as { subject?: string }).subject ?? subject ?? "General";
@@ -1045,13 +1118,15 @@ router.post(
           hasImagePart: !!imagePart,
           problemPreview: trimmedProblem.slice(0, 120),
         });
-        visualTable = await generateVisualTable(trimmedProblem, tableSubject, aiOptions, imagePart ?? null).catch((err) => {
+        const vtResult = await generateVisualTable(trimmedProblem, tableSubject, aiOptions, imagePart ?? null).catch((err) => {
           logger.error("[breakdown] visual-table generation failed", {
             userId: req.user!.sub,
             error: err instanceof Error ? err.message : String(err),
           });
           return null;
         });
+        visualTable = vtResult?.table ?? null;
+        tableUsage = vtResult?.usage ?? null;
         logger.info("[breakdown] visual-table result", {
           userId: req.user!.sub,
           generated: visualTable !== null,
@@ -1060,9 +1135,17 @@ router.post(
         });
       }
 
+      const totalPromptTokens = (breakdownUsage.promptTokens ?? 0) + (tableUsage?.promptTokens ?? 0);
+      const totalCompletionTokens = (breakdownUsage.completionTokens ?? 0) + (tableUsage?.completionTokens ?? 0);
+      const totalTokens = breakdownUsage.totalTokens + (tableUsage?.totalTokens ?? 0);
       const usage = await consumeTokenBudget(budget, {
         input: { problem: trimmedProblem, subject, upload_id: upload_id ?? null },
         output: breakdown,
+        providerTotalTokens: totalTokens || null,
+        promptTokens: totalPromptTokens || null,
+        completionTokens: totalCompletionTokens || null,
+        source: (breakdownUsage.source === "provider" || tableUsage?.source === "provider") ? "provider" : "estimate",
+        model: breakdownUsage.model ?? aiOptions.aiModel ?? null,
       });
 
       res.json({ breakdown, usage, ...(visualTable ? { visualTable } : {}) });
@@ -1118,10 +1201,10 @@ router.post(
         referenceQuery: session.problem,
       });
 
-      const explanation = await breakdownProblem(
-        session.problem, 
-        aiOptions, 
-        undefined, 
+      const { data: explanation, usage: explanationUsage } = await breakdownProblem(
+        session.problem,
+        aiOptions,
+        undefined,
         solutionPayload.solutionText || undefined
       );
       const explanationNodes = Array.isArray(explanation.nodes)
@@ -1145,6 +1228,11 @@ router.post(
       const usage = await consumeTokenBudget(budget, {
         input: { session_id: session.id, problem: session.problem, subject: session.subject },
         output: explanation,
+        providerTotalTokens: explanationUsage.totalTokens || null,
+        promptTokens: explanationUsage.promptTokens,
+        completionTokens: explanationUsage.completionTokens,
+        source: explanationUsage.source,
+        model: explanationUsage.model ?? aiOptions.aiModel ?? null,
       });
 
       res.json({
@@ -1255,6 +1343,15 @@ router.post(
         emitProgress(traceId, { stage: "SOLVING", progress: 30, message: "Solving problem..." });
 
         stage = "ai:solve-text";
+        aiOptions = maybeUseSimpleMathModel(aiOptions, text, subject);
+        if (aiOptions.aiModel) {
+          logger.info("[instant-session] routed to simple math model", {
+            traceId,
+            model: aiOptions.aiModel,
+            problemLength: text.length,
+            problemPreview: text.slice(0, 160),
+          });
+        }
         solution = await solveProblemSolutionFirst(text, aiOptions);
         problemText = text;
 
@@ -1429,6 +1526,7 @@ router.post(
         promptTokens: solutionUsage?.promptTokens ?? null,
         completionTokens: solutionUsage?.completionTokens ?? null,
         source: solutionUsage?.source ?? "estimate",
+        model: solutionUsage?.model ?? aiOptions.aiModel ?? null,
       });
 
       // Persist token usage and cost to the session record (fire-and-forget)
@@ -1473,10 +1571,15 @@ router.post(
         subject,
         referenceQuery: [nodeLabel, nodeMathContent, parentProblem].filter(Boolean).join("\n"),
       });
-      const nodes = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
+      const { nodes, usage: expandUsage } = await expandNode(nodeLabel, nodeMathContent ?? nodeLabel, parentProblem, aiOptions);
       const usage = await consumeTokenBudget(budget, {
         input: { nodeLabel, nodeMathContent: nodeMathContent ?? nodeLabel, parentProblem, subject },
         output: nodes,
+        providerTotalTokens: expandUsage.totalTokens || null,
+        promptTokens: expandUsage.promptTokens,
+        completionTokens: expandUsage.completionTokens,
+        source: expandUsage.source,
+        model: expandUsage.model ?? aiOptions.aiModel ?? null,
       });
       res.json({ nodes, usage });
     } catch (err) {
@@ -1540,7 +1643,7 @@ router.post(
           targetNode.mathContent,
         ].filter(Boolean).join("\n"),
       });
-      const generated = await expandNode(
+      const { nodes: generated, usage: expandUsage } = await expandNode(
         String(targetNode.label || targetNode.title || `Step ${targetNode.id}`),
         String(targetNode.mathContent || targetNode.math || targetNode.label || ""),
         session.problem,
@@ -1571,6 +1674,11 @@ router.post(
       const usage = await consumeTokenBudget(budget, {
         input: { session_id: session.id, node_id: targetNode.id, subject: session.subject },
         output: subSteps,
+        providerTotalTokens: expandUsage.totalTokens || null,
+        promptTokens: expandUsage.promptTokens,
+        completionTokens: expandUsage.completionTokens,
+        source: expandUsage.source,
+        model: expandUsage.model ?? aiOptions.aiModel ?? null,
       });
 
       res.json({
@@ -1600,7 +1708,7 @@ router.post(
         subject,
         referenceQuery: [nodeLabel, nodeDescription, nodeMathContent, parentProblem].filter(Boolean).join("\n"),
       });
-      const node = await regenerateBranchNode(
+      const { node, usage: regenUsage } = await regenerateBranchNode(
         nodeLabel,
         nodeDescription ?? "",
         nodeMathContent ?? nodeLabel,
@@ -1618,6 +1726,11 @@ router.post(
           subject,
         },
         output: node,
+        providerTotalTokens: regenUsage.totalTokens || null,
+        promptTokens: regenUsage.promptTokens,
+        completionTokens: regenUsage.completionTokens,
+        source: regenUsage.source,
+        model: regenUsage.model ?? aiOptions.aiModel ?? null,
       });
       res.json({ node, usage });
     } catch (err) {
@@ -1651,7 +1764,7 @@ router.post(
         nodeLabelPreview: clip(nodeLabel ?? ""),
       });
 
-      const insight = await getNodeInsight(
+      const { insight, usage: insightUsage } = await getNodeInsight(
         nodeLabel,
         nodeDescription ?? '',
         nodeMathContent ?? nodeLabel,
@@ -1677,8 +1790,131 @@ router.post(
           level: level ?? "standard",
         },
         output: insight,
+        providerTotalTokens: insightUsage.totalTokens || null,
+        promptTokens: insightUsage.promptTokens,
+        completionTokens: insightUsage.completionTokens,
+        source: insightUsage.source,
+        model: insightUsage.model ?? aiOptions.aiModel ?? null,
       });
       res.json({ insight, usage });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/ai/session-diagram ─────────────────────────────────────────────
+
+router.post(
+  "/session-diagram",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { session_id, force = false } = req.body;
+      if (typeof session_id !== "string" || !session_id.trim()) {
+        throw new ValidationError("session_id is required");
+      }
+
+      const userId = req.user!.sub;
+      const session = await getSessionById(session_id.trim(), userId);
+      if (!session) throw new ForbiddenError("Session is not available.");
+
+      const payload = parseJsonDeep(session.breakdown_json) as Record<string, any> | null;
+      if (!payload || typeof payload !== "object") {
+        throw new ValidationError("Session solution data is not available.");
+      }
+
+      const existingBlocks: any[] = Array.isArray(payload.diagramBlocks) ? payload.diagramBlocks : [];
+
+      const budget = await reserveTokenBudget(userId);
+
+      // Use the lite model — diagram extraction is structured JSON, not deep reasoning
+      const aiOptions = await resolveAIOptions(req, { subject: session.subject });
+      aiOptions.aiModel = env.GEMINI_SIMPLE_MODEL;
+
+      // Extract plain problem text (may be stored as JSON string)
+      const rawProblem = session.problem as unknown;
+      let problemText: string;
+      if (typeof rawProblem === "string") {
+        const parsed = parseJsonDeep(rawProblem) as any;
+        problemText = (typeof parsed?.text === "string" ? parsed.text : rawProblem).trim();
+      } else {
+        problemText = String(rawProblem ?? "").trim();
+      }
+      if (!problemText) throw new ValidationError("Session problem text is not available.");
+
+      // solutionText may be absent on sessions where only solutionBlocks were stored.
+      // Reconstruct from render blocks as a fallback so the diagram prompt has real context.
+      let solutionText = String(payload.solutionText || "").trim();
+      if (!solutionText && Array.isArray(payload.solutionBlocks)) {
+        solutionText = (payload.solutionBlocks as any[])
+          .map((b: any) => {
+            if (b?.type === "text") return String(b.content || "");
+            if (b?.type === "math") return String(b.latex || b.normalizedLatex || "");
+            return "";
+          })
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+      }
+      const finalAnswer = String(payload.finalAnswer || "").trim() || undefined;
+
+      logger.info("[session-diagram] context", {
+        sessionId: session.id,
+        subject: session.subject,
+        problemLength: problemText.length,
+        solutionTextLength: solutionText.length,
+        finalAnswer: finalAnswer?.slice(0, 80) ?? null,
+        existingBlockCount: existingBlocks.length,
+        model: aiOptions.aiModel ?? "default",
+      });
+
+      if (!solutionText) {
+        throw new ValidationError("Session solution text is not available for diagram generation.");
+      }
+
+      // Full pipeline: extractDiagramBlocksForSolution → verifyDiagramBlocksAgainstSolution
+      const { blocks: diagramBlocks, usage: diagramUsage } = await generateDiagramBlocksForSession(
+        problemText,
+        solutionText,
+        finalAnswer,
+        aiOptions,
+      );
+
+      if (!diagramBlocks.length) {
+        res.json({ diagram_blocks: [], message: "No diagram applicable for this problem." });
+        return;
+      }
+
+      let mergedBlocks: any[];
+      if (force) {
+        // force=true: replace all existing diagram blocks with newly generated ones
+        mergedBlocks = diagramBlocks;
+      } else {
+        // Deduplicate: skip new blocks whose diagramType already exists
+        const existingTypes = new Set(existingBlocks.map((b: any) => b?.diagramType).filter(Boolean));
+        const newBlocks = diagramBlocks.filter((b: any) => !existingTypes.has(b?.diagramType));
+        if (!newBlocks.length) {
+          res.json({ diagram_blocks: existingBlocks, message: "Diagram already generated." });
+          return;
+        }
+        mergedBlocks = [...existingBlocks, ...newBlocks];
+      }
+      const updatedPayload = { ...payload, diagramBlocks: mergedBlocks };
+      const updatedSession = await updateSession(session.id, userId, {
+        breakdown_json: updatedPayload,
+      });
+
+      const usage = await consumeTokenBudget(budget, {
+        input: { session_id: session.id, problem: problemText.slice(0, 200), subject: session.subject },
+        output: diagramBlocks,
+        providerTotalTokens: diagramUsage.totalTokens || null,
+        promptTokens: diagramUsage.promptTokens,
+        completionTokens: diagramUsage.completionTokens,
+        source: diagramUsage.source,
+        model: diagramUsage.model ?? env.GEMINI_SIMPLE_MODEL,
+      });
+
+      res.json({ diagram_blocks: mergedBlocks, session: updatedSession, usage, cached: false });
     } catch (err) {
       next(err);
     }

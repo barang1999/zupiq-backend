@@ -145,6 +145,26 @@ export function enrichRenderBlocks(blocks: unknown): RenderBlock[] {
         const rawText = `${block.content ?? ""}`;
         if (!rawText.trim()) return [];
         const lang = typeof block.lang === "string" ? block.lang : undefined;
+
+        // Only re-route through buildRenderBlocks when there's an actual "$...$"
+        // still embedded — that's the one case this exists to catch. A block
+        // that's already pure prose (the overwhelmingly common case on a SECOND
+        // pass — this function re-processes blocks a prior buildRenderBlocks call
+        // already built, e.g. a cached/re-served session) has nothing to split
+        // out, and calling buildRenderBlocks on it in ISOLATION is actively
+        // harmful: with no delimiter to trigger the segmented branch, it falls
+        // through to the naive `raw.split(/\n{2,}/).map(part => ...part.trim())`
+        // fallback, which trims away leading/trailing blank lines — exactly the
+        // signal that marked this block as starting a new paragraph relative to
+        // whatever (a math block, usually) preceded it in the original sequence.
+        // A real observed case: a text block "\n\nដើម្បីឲ្យ ..." — right after a
+        // display equation — loses its leading "\n\n" on this second pass, so the
+        // paragraph after the equation gets glued onto it instead of starting its
+        // own <p>. Passing it through untouched keeps that whitespace intact; it
+        // was already normalized once, on the pass that originally built it.
+        if (!hasMathDelimiters(rawText)) {
+          return [{ type: "text", content: rawText, ...(lang ? { lang } : {}) }];
+        }
         return buildRenderBlocks(rawText, { lang });
       }
 
@@ -232,14 +252,14 @@ function normalizeTextBlockContent(content: string): string {
     // Ensure bullet points (e.g. "- item" or "* item") preceded by punctuation start on a new line
     .replace(/([។៕.!?៖:])\s*([*-]\s+)/g, "$1\n\n$2")
     // Ensure section titles with bold or plain numbered markers (e.g. **1. ...**, **១. ...**, 1., ១.) start on a clean new line with double newline
-    .replace(/(?:\r?\n)*\s*(\*{1,2}\s*(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d)[ \t]*)/g, (match, p1, offset) => {
+    .replace(/(?:\r?\n)*\s*(\*{1,2}\s*(?:\b\d+|[\u17E0-\u17E9]+)(?:\.(?!\d)|\))[ \t]*)/g, (match, p1, offset) => {
       return offset === 0 ? p1 : `\n\n${p1}`;
     })
-    .replace(/(?:\r?\n)*\s*((?<!\*|\b(?:v|p|fig|eq|step|no|ch|ex|al)\b)(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d)[ \t]*)/gi, (match, p1, offset) => {
+    .replace(/(?:\r?\n)*\s*((?<!\*|\b(?:v|p|fig|eq|step|no|ch|ex|al)\b)(?:\b\d+|[\u17E0-\u17E9]+)(?:\.(?!\d)|\))[ \t]*)/gi, (match, p1, offset) => {
       return offset === 0 ? p1 : `\n\n${p1}`;
     })
     .replace(/([។៕.!?»”\)])\s*(\*\*[^\n*]+?\*\*)/g, "$1\n\n$2")
-    .replace(/([៖:])\s*(\*{1,2}(?:\b\d+|[\u17E0-\u17E9]+)\.(?!\d))/g, "$1\n\n$2")
+    .replace(/([៖:])\s*(\*{1,2}(?:\b\d+|[\u17E0-\u17E9]+)(?:\.(?!\d)|\)))/g, "$1\n\n$2")
     // Keep test/example cues on their own line after a bold condition label:
     // `**សម្រាប់ $x>2$:** ឧទាហរណ៍...` should not read as one continuous claim.
     .replace(/([៖:]\*\*)[ \t]+(?=(?:ឧទាហរណ៍|Example\b|For example\b))/gi, "$1\n")

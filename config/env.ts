@@ -45,6 +45,7 @@ export const env = {
   GEMINI_API_KEY: requireEnv("GEMINI_API_KEY", ""),
   GEMINI_MODEL: optionalEnv("GEMINI_MODEL", "gemini-2.5-flash"),
   GEMINI_PRO_MODEL: optionalEnv("GEMINI_PRO_MODEL", "gemini-2.5-flash"),
+  GEMINI_SIMPLE_MODEL: optionalEnv("GEMINI_SIMPLE_MODEL", "gemini-3.5-flash-lite"),
   WOLFRAM_APP_ID: optionalEnv("WOLFRAM_APP_ID", ""),
 
   // Mathpix — math-specialized OCR (~500ms, outputs LaTeX)

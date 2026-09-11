@@ -27,4 +27,9 @@ export interface AIRequestOptions {
    * (persistent saved knowledge).
    */
   userInstruction?: string;
+  /**
+   * Optional per-request model override. Used for routing simple, low-risk tasks
+   * to cheaper models while keeping complex solve paths on the default model.
+   */
+  aiModel?: string;
 }

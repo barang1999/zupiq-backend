@@ -236,6 +236,7 @@ describe("verifyDiagramBlocksAgainstSolution", () => {
     expect(spec.functions.length).toBe(1);
     expect(spec.featurePoints.length).toBe(1);
   });
+
 });
 
 describe("extractLineEquationClaims", () => {

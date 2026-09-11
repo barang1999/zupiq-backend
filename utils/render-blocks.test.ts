@@ -2,7 +2,7 @@
 // control-character repair in normalizeLatexForRender (exercised here via
 // the exported buildMathBlock, its only entry point).
 import { describe, expect, it } from "vitest";
-import { buildMathBlock, buildRenderBlocks } from "./render-blocks.js";
+import { buildMathBlock, buildRenderBlocks, enrichRenderBlocks } from "./render-blocks.js";
 
 describe("control-character repair (JSON-deserialization artifacts)", () => {
   it("does not invent a bogus command out of an ordinary newline before a new aligned-block line", () => {
@@ -96,5 +96,40 @@ describe("normalizeTextBlockContent's '\\ ' separator repair does not eat LaTeX 
     const blocks = buildRenderBlocks("ដំណាក់កាលទី១ \\ ដំណាក់កាលទី២");
     const text = blocks.map((b) => (b.type === "text" ? b.content : "")).join("");
     expect(text).toBe("ដំណាក់កាលទី១\nដំណាក់កាលទី២");
+  });
+});
+
+describe("enrichRenderBlocks preserves paragraph-break whitespace across a re-serve", () => {
+  // attachRenderBlocksToPayload's `Array.isArray(payload.solutionBlocks)`
+  // branch runs enrichRenderBlocks on blocks a PRIOR buildRenderBlocks call
+  // already built (e.g. a cached/re-served session re-fetched on reload) —
+  // the same re-serve path that previously dropped table blocks entirely
+  // (see table-blocks.test.ts). A real observed case here: a text block
+  // "\n\nដើម្បីឲ្យ ..." — right after a display equation — lost its leading
+  // "\n\n" on this second pass, so the paragraph after the equation got
+  // glued onto it (via a bare "<br/>") instead of starting its own <p>.
+  it("does not eat a leading blank line off a pure-prose text block with no math delimiters", () => {
+    const original = buildRenderBlocks("$x=1$\n\nដើម្បីឲ្យអនុគមន៍កើន");
+    const textBlockIndex = original.findIndex((b) => b.type === "text");
+    expect(textBlockIndex).toBeGreaterThan(-1);
+    const textBlock = original[textBlockIndex];
+    if (textBlock.type !== "text") throw new Error("expected text block");
+    expect(textBlock.content).toMatch(/^\n\n/); // sanity: the leading blank line survived the FIRST pass
+
+    // Simulate the JSON round-trip a cached response actually goes through,
+    // then the second-pass re-enrichment attachRenderBlocksToPayload runs.
+    const roundTripped = JSON.parse(JSON.stringify(original));
+    const reEnriched = enrichRenderBlocks(roundTripped);
+    const reEnrichedText = reEnriched[textBlockIndex];
+    expect(reEnrichedText.type).toBe("text");
+    if (reEnrichedText.type === "text") {
+      expect(reEnrichedText.content).toBe(textBlock.content); // unchanged, blank line intact
+    }
+  });
+
+  it("still splits out embedded math from a text block that has a genuine '$...$' baked into its content", () => {
+    const blocks = enrichRenderBlocks([{ type: "text", content: "តម្លៃគឺ $x=2y$ សម្រាប់គ្រប់ករណី" }]);
+    expect(blocks.some((b) => b.type === "math" && b.latex === "x=2y")).toBe(true);
+    expect(blocks.some((b) => b.type === "text" && b.content.includes("តម្លៃគឺ"))).toBe(true);
   });
 });

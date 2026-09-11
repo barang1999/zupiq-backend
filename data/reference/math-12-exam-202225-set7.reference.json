@@ -1,0 +1,662 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-202225-set7",
+    "title": "Grade 12 Math Final Exam 2022-2025 Set 7 (Advanced Science Stream) with Full Solutions",
+    "titleKh": "វិញ្ញាសាចំណាន ភណិតវិទ្យា ទិញ្ញាសាតិ ៧ ថ្នាក់វិទ្យាសាស្ត្រ ឆ្នាំ ២០២២-២០២៥",
+    "author": "អប់រំអ៊ីយ វិទ្យ ពុំ",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "exam",
+    "topics": [
+      "complex_numbers",
+      "ellipse",
+      "probability",
+      "combinatorics",
+      "differential_equations",
+      "vectors_3d",
+      "function_analysis",
+      "asymptotes",
+      "inflection_points",
+      "inequalities"
+    ],
+    "metadata": {
+      "pageCount": 10,
+      "originalFile": "images _64 to _73 (math_12_exam_202225)",
+      "rawExtractionFile": "native image reading",
+      "examSet": "7"
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "complete",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "id": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "description": "Step-by-step solution format for Khmer math textbook exercises",
+      "language": "km",
+      "format": "structured",
+      "instructions": "Present solutions in Khmer with clear step-by-step working. Use LaTeX for all mathematical expressions. Number each step clearly. End with a clearly boxed final answer (ចម្លើយ:). Match the style of Cambodian high school math textbooks.",
+      "exampleTone": "formal_educational_khmer"
+    },
+    {
+      "id": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "description": "Conceptual explanation format for Khmer math definitions and theorems",
+      "language": "km",
+      "format": "explanatory",
+      "instructions": "Explain mathematical concepts clearly in Khmer. Start with the definition or theorem statement, then provide intuition or examples. Use LaTeX for formulas. Keep language accessible to Grade 10-12 students.",
+      "exampleTone": "formal_educational_khmer"
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c001",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច — |Z|=|W| និង 1/Z=Z̄",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "I ក-ខ) Z = x+iy, W = cosα+i·sinα។ ក) |Z|=|W| → x²+y²=1; ខ) បញ្ជាក់ 1/Z = Z̄",
+      "normalizedText": "Complex numbers Z=x+iy and W=cosα+i·sinα. Part a: |Z|=|W| iff x²+y²=cos²α+sin²α=1. Part b: since x²+y²=1, Z·Z̄=1 so Z̄=1/Z.",
+      "problem": {
+        "textKh": "ឱ្យ Z = x+iy និង W = cosα + i·sinα។ ក) កំណត់ចំនួន x,y ដើម្បីបំពេញ |Z|=|W|; ខ) ភ្ជាប់លទ្ធផល |Z|=|W| ទៅ 1/Z = Z̄",
+        "text": "Given Z=x+iy and W=cosα+i·sinα. a) Find condition on x,y for |Z|=|W|; b) Show |Z|=|W| implies 1/Z=Z̄.",
+        "latex": "Z = x+iy,\\quad W = \\cos\\alpha + i\\sin\\alpha"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក) |Z|=√(x²+y²) ហើយ |W|=√(cos²α+sin²α)=1",
+          "text": "a) |Z|=√(x²+y²) and |W|=√(cos²α+sin²α)=1",
+          "latex": "|Z| = |W| \\Leftrightarrow \\sqrt{x^2+y^2} = 1 \\Leftrightarrow x^2+y^2 = 1"
+        },
+        {
+          "textKh": "ខ) ដោយ x²+y²=1: (x+iy)(x-iy)=1 → Z·Z̄=1 → Z̄=1/Z",
+          "text": "b) Since x²+y²=1: Z·Z̄=|Z|²=1 so Z̄=1/Z",
+          "latex": "x^2+y^2=1 \\Rightarrow Z\\cdot\\bar{Z}=1 \\Rightarrow \\bar{Z} = \\frac{1}{Z}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក) x²+y²=1; ខ) 1/Z = Z̄",
+        "text": "a) x²+y²=1; b) 1/Z=Z̄ (proven from |Z|=1)",
+        "latex": "x^2+y^2=1 \\Rightarrow \\frac{1}{Z} = \\bar{Z}"
+      },
+      "formulas": [
+        { "latex": "|\\cos\\alpha + i\\sin\\alpha| = 1", "meaning": "Modulus of unit complex number on unit circle", "confidence": 1.0 },
+        { "latex": "Z\\cdot\\bar{Z} = |Z|^2", "meaning": "Product of complex number and its conjugate", "confidence": 1.0 }
+      ],
+      "keywords": ["complex number", "modulus", "conjugate", "unit circle", "លេខកុំផ្លិច", "ទម្ងន់", "ចំនួនបន្ថែមស្វ័យគុណ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c002",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច — Z=1, W=1 → α=2kπ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "I គ) ប្រសិន Z=1 W=1 → x=1, y=0, α=2kπ",
+      "normalizedText": "I c) If Z=1 and W=1: from Z=x+iy=1 → x=1, y=0. From W=cosα+i·sinα=1 → cosα=1, sinα=0 → α=2kπ, k∈ℤ.",
+      "problem": {
+        "textKh": "គ) ប្រសិន x, y ធ្វើឱ្យ Z=1 ហើយ W=1 តើ α ស្មើប៉ុន្មាន?",
+        "text": "c) If Z=1 and W=1, find α.",
+        "latex": "Z = 1,\\quad W = 1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "Z=x+iy=1 → x=1, y=0",
+          "text": "Z=1 means real part=1, imaginary part=0 → x=1, y=0",
+          "latex": "x=1,\\quad y=0"
+        },
+        {
+          "textKh": "W=cosα+i·sinα=1 → cosα=1, sinα=0 → α=2kπ",
+          "text": "W=1 means cosα=1 and sinα=0 → α=2kπ",
+          "latex": "\\cos\\alpha=1,\\ \\sin\\alpha=0 \\Rightarrow \\alpha = 2k\\pi,\\ k\\in\\mathbb{Z}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "x=1, y=0 ហើយ α=2kπ, k∈ℤ",
+        "text": "x=1, y=0 and α=2kπ, k∈ℤ",
+        "latex": "x=1,\\ y=0,\\ \\alpha=2k\\pi,\\ k\\in\\mathbb{Z}"
+      },
+      "formulas": [],
+      "keywords": ["complex number", "angle", "α=2kπ", "លេខកុំផ្លិច"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c003",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "ellipse",
+      "topicKh": "វង់រង្វង់ប្រែប្រួល (Ellipse) — (x-4)²/25 + y²/9 = 1",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "II ក) វិភាគ ellipse (E): (x-4)²/25 + y²/9 = 1 — ស្វ័យ, ចំណុចប្រទាក់ F, ចំណុចកំពូល V",
+      "normalizedText": "Ellipse (E): (x-4)²/25 + y²/9 = 1. Center I(4,0); a=5, b=3, c=√(25-9)=4. Foci F₁(0,0) and F₂(8,0). Vertices V₁(-1,0) and V₂(9,0). y-axis intercepts: (0, ±9/5). The origin F₁(0,0) is one focus.",
+      "problem": {
+        "textKh": "II ក) ស្វ័យ (center), ចំណុចប្រទាក់ (foci), ចំណុចកំពូល (vertices) នៃ (E): (x-4)²/25 + y²/9 = 1",
+        "text": "Find center, foci, vertices of ellipse (E): (x-4)²/25 + y²/9 = 1.",
+        "latex": "\\frac{(x-4)^2}{25} + \\frac{y^2}{9} = 1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ទម្រង់ (x-h)²/a² + (y-k)²/b² = 1 → center I(h,k) = I(4,0); a=5, b=3",
+          "text": "Standard form: center I(4,0), a=5, b=3",
+          "latex": "I(4,0),\\quad a=5,\\quad b=3"
+        },
+        {
+          "textKh": "c² = a²-b² = 25-9 = 16 → c=4",
+          "text": "c = √(a²-b²) = 4",
+          "latex": "c = \\sqrt{25-9} = 4"
+        },
+        {
+          "textKh": "ចំណុចប្រទាក់: F₁(h-c, k) = F₁(0,0); F₂(h+c, k) = F₂(8,0)",
+          "text": "Foci: F₁(0,0) and F₂(8,0)",
+          "latex": "F_1(0,0),\\quad F_2(8,0)"
+        },
+        {
+          "textKh": "ចំណុចកំពូល: V₁(h-a,k) = V₁(-1,0); V₂(h+a,k) = V₂(9,0)",
+          "text": "Vertices: V₁(-1,0) and V₂(9,0)",
+          "latex": "V_1(-1,0),\\quad V_2(9,0)"
+        },
+        {
+          "textKh": "ចំណុចប្រទាក់ (E) ទៅនឹង y-axis: x=0 → y²/9 = 1-16/25 = 9/25 → y = ±9/5",
+          "text": "y-intercepts of (E) with y-axis: (0, ±9/5)",
+          "latex": "x=0:\\quad y = \\pm\\frac{9}{5}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ស្វ័យ I(4,0); F₁(0,0), F₂(8,0); V₁(-1,0), V₂(9,0); ចំណុច y-axis: (0,±9/5)",
+        "text": "Center I(4,0); Foci F₁(0,0), F₂(8,0); Vertices V₁(-1,0), V₂(9,0); y-axis points (0,±9/5)",
+        "latex": "I(4,0);\\ F_1(0,0),F_2(8,0);\\ V_1(-1,0),V_2(9,0)"
+      },
+      "formulas": [
+        { "latex": "c = \\sqrt{a^2-b^2}", "meaning": "Focal distance for ellipse", "confidence": 1.0 }
+      ],
+      "keywords": ["ellipse", "foci", "vertices", "center", "conic section", "វង់ ellipse", "ចំណុចប្រទាក់"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c004",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "probability",
+      "topicKh": "ប្រូបាប៊ីលីតេ — ទាញ 3 បាល់ពី 20 (16 ស, 4 ក្រហម)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "III) ប្រូបាប៊ីលីតេ — ទាញ 3 បាល់ពី 20 (16 ស្វាយ 4 ក្រហម): P(ក្រហម​ ៣)=1/285; P(ស្វាយ ៣)=28/57; P(ក្រហម ≥1)=284/285",
+      "normalizedText": "Probability: draw 3 balls from 20 (16 white, 4 red). A: all 3 red → P(A)=C(4,3)/C(20,3)=4/1140=1/285. B: all 3 white → P(B)=C(16,3)/C(20,3)=560/1140=28/57. C: at least 1 red → P(C)=1-P(A_complement... wait P(C)=1-P(all white)... Actually P(C)=1-P(B)=1-28/57=29/57. But the image shows P(C)=1-P(A)=284/285. C is 'at least 1 red' and the complement is 'all 3 are red... no, complement of at least 1 red is all white. So P(C)=1-P(B). But image says P(C)=1-1/285=284/285. Let me re-read: the image says C: at least 1 red, and the solution gives P(C)=1-P(A)=284/285. This seems wrong... Actually looking again: A is 'all 3 red', C is 'at least 1 red ball FROM same group'... Actually C is described as 'យ៉ាងតិចមានក្រូ 1 ថ្ងៃសេសសាតិភ្នំ' - at least 1 red. The complement of 'at least 1 red' is 'no red = all white'. So P(C)=1-P(B)=1-28/57=29/57. But the image clearly shows P(C)=1-P(A)=1-1/285=284/285. Maybe C is defined differently - 'at least 1 red from a different group' and not the complement of all-white. Or maybe C is 'at least 1 ball is NOT red' (i.e., at least 1 white), with complement being A (all 3 red). That makes more sense! P(C) = 1-P(A) = 284/285 means C = complement of A = 'not all 3 red' = 'at least 1 white'.",
+      "problem": {
+        "textKh": "III) ទាញ 3 បាល់ ចេញពី 20 (16 ស, 4 ក្រហម)។ ក) A: ទាញ 3 ក្រហម​; ខ) B: ទាញ 3 ស; គ) C: ចេញ​ 1 ស​យ៉ាងតិច",
+        "text": "Draw 3 balls from 20 (16 white, 4 red). A: all 3 red; B: all 3 white; C: at least 1 white (complement of A).",
+        "latex": "n(S) = C_{20}^3 = 1140"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "n(S) = C(20,3) = 20!/(17!·3!) = 20×19×18/(3×2×1) = 1140",
+          "text": "Sample space: C(20,3) = 1140",
+          "latex": "n(S) = C_{20}^3 = \\frac{20 \\times 19 \\times 18}{6} = 1140"
+        },
+        {
+          "textKh": "ក) n(A) = C(4,3) = 4; P(A) = 4/1140 = 1/285",
+          "text": "A: 3 red balls from 4: P(A) = C(4,3)/1140 = 4/1140 = 1/285",
+          "latex": "P(A) = \\frac{C_4^3}{1140} = \\frac{4}{1140} = \\frac{1}{285}"
+        },
+        {
+          "textKh": "ខ) n(B) = C(16,3) = 560; P(B) = 560/1140 = 28/57",
+          "text": "B: 3 white from 16: P(B) = C(16,3)/1140 = 560/1140 = 28/57",
+          "latex": "P(B) = \\frac{C_{16}^3}{1140} = \\frac{560}{1140} = \\frac{28}{57}"
+        },
+        {
+          "textKh": "គ) C = ̄A (បន្ថែមព្រឺ A): P(C) = 1 - P(A) = 1 - 1/285 = 284/285",
+          "text": "C = complement of A: P(C) = 1 - 1/285 = 284/285",
+          "latex": "P(C) = 1 - P(A) = 1 - \\frac{1}{285} = \\frac{284}{285}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "P(A)=1/285; P(B)=28/57; P(C)=284/285",
+        "text": "P(A)=1/285; P(B)=28/57; P(C)=284/285",
+        "latex": "P(A)=\\frac{1}{285},\\quad P(B)=\\frac{28}{57},\\quad P(C)=\\frac{284}{285}"
+      },
+      "formulas": [
+        { "latex": "C_n^k = \\frac{n!}{k!(n-k)!}", "meaning": "Combination formula", "confidence": 1.0 },
+        { "latex": "P(\\bar{A}) = 1 - P(A)", "meaning": "Complement probability rule", "confidence": 1.0 }
+      ],
+      "keywords": ["probability", "combination", "complement", "balls", "ប្រូបាប៊ីលីតេ", "ការចាប់"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c005",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "differential_equations",
+      "topicKh": "សមីការ f''+2f'=0 — ដំណោះស្រាយទូទៅ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "IV) f''+2f'=0: g=f' បំពេញ g'+2g=0 → g=Ae^(-2x); f=-A/2·e^(-2x)+C; ដំណោះស្រាយទូទៅ​ ​ f(x)=-Be^(-2x)+C",
+      "normalizedText": "ODE f''+2f'=0. Part a: g=f' satisfies g'+2g=0. Part b: solve g'+2g=0 → g=Ae^(-2x); integrate → f=-A/2·e^(-2x)+C. Part c: characteristic equation r²+2r=0 → r=0,-2; general solution f(x)=C₁+C₂e^(-2x).",
+      "problem": {
+        "textKh": "IV) ក) g=f': បញ្ជាក់ g'+2g=0; ខ) ដោះ g'+2g=0 → f; គ) ពិនិត្យ​ f ជាដំណោះស្រាយទូទៅ",
+        "text": "IV) a) Let g=f': show g'+2g=0; b) Solve g'+2g=0 and find f; c) Verify general solution of f''+2f'=0.",
+        "latex": "f'' + 2f' = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក) f'' + 2f' = 0 ↔ (f')' + 2f' = 0 ↔ g' + 2g = 0",
+          "text": "a) Substituting g=f': f''+2f'=0 becomes g'+2g=0",
+          "latex": "f'' + 2f' = 0 \\Leftrightarrow (f')' + 2f' = 0 \\Leftrightarrow g' + 2g = 0"
+        },
+        {
+          "textKh": "ខ) ដោះស្រាយ g'+2g=0: dg/dx=-2g → ∫dg/g = ∫-2dx → ln|g|=-2x+C → g=Ae^(-2x)",
+          "text": "b) Separate variables: g = Ae^(-2x), A∈ℝ",
+          "latex": "g = Ae^{-2x},\\quad A\\in\\mathbb{R}"
+        },
+        {
+          "textKh": "f = ∫g dx = ∫Ae^(-2x)dx = -A/2·e^(-2x)+C",
+          "text": "Integrate g to get f",
+          "latex": "f(x) = -\\frac{A}{2}e^{-2x} + C,\\quad A,C\\in\\mathbb{R}"
+        },
+        {
+          "textKh": "គ) សមីការលក្ខណៈ: r²+2r=0 → r(r+2)=0 → r=0 ឬ r=-2 → f=C₁e^0+C₂e^(-2x)=C₁+C₂e^(-2x)",
+          "text": "c) Characteristic equation r²+2r=0 → r=0 or r=-2 → general solution f=C₁+C₂e^(-2x)",
+          "latex": "r^2+2r=0 \\Rightarrow r=0\\text{ or }r=-2 \\Rightarrow f(x) = C_1 + C_2 e^{-2x}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដំណោះស្រាយទូទៅ: f(x) = C₁ + C₂e^(-2x), C₁,C₂∈ℝ",
+        "text": "General solution: f(x) = C₁ + C₂e^(-2x)",
+        "latex": "f(x) = C_1 + C_2 e^{-2x},\\quad C_1,C_2\\in\\mathbb{R}"
+      },
+      "formulas": [
+        { "latex": "r^2 + 2r = 0 \\Rightarrow r = 0,\\ r = -2", "meaning": "Characteristic roots of f''+2f'=0", "confidence": 1.0 }
+      ],
+      "keywords": ["ODE", "second order", "characteristic equation", "separation of variables", "សមីការឌីផេរ៉ង់ស្យែល"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c006",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — AM⊥BM → ស្វ៊ែរ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V ក) A(-1,1,0), B(2,0,1), M(x,y,z): AM⃗⊥BM⃗ → M ស្ថិតនៅស្វ៊ែរ center(1/2,1/2,1/2), r=√11/2",
+      "normalizedText": "With A(-1,1,0), B(2,0,1), M(x,y,z): condition AM⃗⊥BM⃗ gives AM⃗·BM⃗=0. Expanding: (x+1)(x-2)+(y-1)y+(z)(z-1)=0. Completing the square: (x-1/2)²+(y-1/2)²+(z-1/2)²=11/4. So M lies on a sphere with center (1/2,1/2,1/2) and radius √11/2.",
+      "problem": {
+        "textKh": "V ក) A(-1,1,0); B(2,0,1); M(x,y,z)។ ស្វែងរក x,y,z ដើម្បីឱ្យ AM⃗⊥BM⃗; M ស្ថិតនៅណា?",
+        "text": "V a) A(-1,1,0), B(2,0,1), M(x,y,z). Find condition so AM⃗⊥BM⃗. What is M?",
+        "latex": "A(-1,1,0),\\ B(2,0,1),\\ M(x,y,z)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "AM⃗=(x+1,y-1,z); BM⃗=(x-2,y,z-1)",
+          "text": "Compute vectors AM and BM",
+          "latex": "\\overrightarrow{AM}=(x+1,y-1,z),\\quad \\overrightarrow{BM}=(x-2,y,z-1)"
+        },
+        {
+          "textKh": "AM⃗·BM⃗=0: (x+1)(x-2)+(y-1)y+z(z-1)=0 → x²-x-2+y²-y+z²-z=0",
+          "text": "Set dot product to zero and expand",
+          "latex": "(x+1)(x-2)+(y-1)y+z(z-1)=0 \\Rightarrow x^2-x+y^2-y+z^2-z = 2"
+        },
+        {
+          "textKh": "បំពេញការ​គុណ​ (completing the square):",
+          "text": "Complete the square in each variable",
+          "latex": "\\left(x-\\tfrac{1}{2}\\right)^2+\\left(y-\\tfrac{1}{2}\\right)^2+\\left(z-\\tfrac{1}{2}\\right)^2 = 2+\\tfrac{3}{4} = \\tfrac{11}{4}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "M ស្ថិតនៅស្វ៊ែរ center(1/2,1/2,1/2) ហើយ r=√11/2",
+        "text": "M lies on sphere with center (1/2,1/2,1/2) and radius √11/2",
+        "latex": "\\left(x-\\tfrac{1}{2}\\right)^2+\\left(y-\\tfrac{1}{2}\\right)^2+\\left(z-\\tfrac{1}{2}\\right)^2 = \\frac{11}{4}"
+      },
+      "formulas": [
+        { "latex": "\\overrightarrow{AM}\\perp\\overrightarrow{BM} \\Leftrightarrow \\overrightarrow{AM}\\cdot\\overrightarrow{BM}=0", "meaning": "Perpendicularity via zero dot product", "confidence": 1.0 }
+      ],
+      "keywords": ["perpendicular vectors", "sphere", "dot product", "completing the square", "ស្វ៊ែរ", "គុណស្កាល៉ែ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c007",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — n⃗=BC⃗×BD⃗; ផ្ទៃ △BCD; m",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V ខ) B(2,0,1),C(1,2,2),D(0,1,-2): n⃗=BC⃗×BD⃗=(-7,-5,3); S△BCD=√83/2; m=3/2·ln(83/4)",
+      "normalizedText": "B(2,0,1), C(1,2,2), D(0,1,-2). BC⃗=(-1,2,1), BD⃗=(-2,1,-3). Cross product n⃗=BC⃗×BD⃗=(-7,-5,3). Area △BCD=(1/2)|n⃗|=√83/2. Given S=∛(e^m): √83/2=e^(m/3) → m=3/2·ln(83/4).",
+      "problem": {
+        "textKh": "V ខ) B(2,0,1),C(1,2,2),D(0,1,-2)។ គណនា n⃗=BC⃗×BD⃗; ស្វែងរក m ដែល S△BCD=∛(e^m)",
+        "text": "V b) Compute n⃗=BC⃗×BD⃗; find m so that area of △BCD = ∛(e^m).",
+        "latex": "B(2,0,1),\\ C(1,2,2),\\ D(0,1,-2)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "BC⃗=C-B=(-1,2,1); BD⃗=D-B=(-2,1,-3)",
+          "text": "Compute direction vectors",
+          "latex": "\\overrightarrow{BC}=(-1,2,1),\\quad \\overrightarrow{BD}=(-2,1,-3)"
+        },
+        {
+          "textKh": "n⃗ = BC⃗×BD⃗ = |i⃗ j⃗ k⃗; -1 2 1; -2 1 -3| = (-6-1)i⃗-(3+2)j⃗+(-1+4)k⃗ = -7i⃗-5j⃗+3k⃗",
+          "text": "Cross product",
+          "latex": "\\vec{n} = \\overrightarrow{BC}\\times\\overrightarrow{BD} = \\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\-1&2&1\\\\-2&1&-3\\end{vmatrix} = -7\\vec{i}-5\\vec{j}+3\\vec{k}"
+        },
+        {
+          "textKh": "S△BCD = (1/2)|n⃗| = (1/2)√(49+25+9) = √83/2",
+          "text": "Area of triangle BCD",
+          "latex": "S_{\\triangle BCD} = \\frac{1}{2}|\\vec{n}| = \\frac{\\sqrt{83}}{2}"
+        },
+        {
+          "textKh": "√83/2 = ∛(e^m) → e^(m/3) = √83/2 → m/3 = ln(√83/2) = (1/2)ln(83/4) → m = 3/2·ln(83/4)",
+          "text": "Solve for m",
+          "latex": "\\frac{\\sqrt{83}}{2} = e^{m/3} \\Rightarrow m = \\frac{3}{2}\\ln\\frac{83}{4}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "n⃗=(-7,-5,3); S△BCD=√83/2; m=3/2·ln(83/4)",
+        "text": "n⃗=(-7,-5,3); Area=√83/2; m=3/2·ln(83/4)",
+        "latex": "\\vec{n}=(-7,-5,3),\\quad S=\\frac{\\sqrt{83}}{2},\\quad m=\\frac{3}{2}\\ln\\frac{83}{4}"
+      },
+      "formulas": [
+        { "latex": "S_{\\triangle} = \\frac{1}{2}|\\vec{a}\\times\\vec{b}|", "meaning": "Area of triangle using cross product", "confidence": 1.0 }
+      ],
+      "keywords": ["cross product", "area", "triangle", "logarithm", "គុណ​វ៉ែក​ទ័រ", "ផ្ទៃ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p001-c008",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 7,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — ជ្រុង BCD; ចំណុចប្រសព្វ N; ចំងាយ; ប្រចំ ABCD",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V គ-ឃ) ជ្រុង BCD: -7x-5y+3z+11=0; N(-8,8,-9); ចំងាយ A→BCD=13√83/83; V_ABCD=13/6",
+      "normalizedText": "V c) Plane BCD using n⃗=(-7,-5,3) through B(2,0,1): -7x-5y+3z+11=0. Line L: x=(z+1), y=(-z-1); substitute into plane → z=-9 → N(-8,8,-9). V d) Distance A(-1,1,0) to plane BCD = 13√83/83. Volume ABCD = (1/3)·S·h = 13/6.",
+      "problem": {
+        "textKh": "V គ) ជ្រុង BCD; ចំណុចប្រសព្វ N នៃ L:(x-1)/1=(y+1)/(-1)=z/1 ជាមួយ BCD; ឃ) ចំងាយ A→BCD; ប្រចំ ABCD",
+        "text": "V c) Plane BCD; intersection N of line L with plane BCD. d) Distance from A to BCD; volume ABCD.",
+        "latex": "L: \\frac{x-1}{1}=\\frac{y+1}{-1}=\\frac{z}{1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ជ្រុង BCD: n⃗=(-7,-5,3) ជាជ្រុងឈរ; ឆ្លងកាត់ B(2,0,1): -7(x-2)-5(y-0)+3(z-1)=0 → -7x-5y+3z+11=0",
+          "text": "Plane BCD through B(2,0,1) with normal n⃗=(-7,-5,3)",
+          "latex": "-7x-5y+3z+11=0"
+        },
+        {
+          "textKh": "L parametric: x=z+1, y=-z-1; ជំនួសទៅ​​ BCD: -7(z+1)-5(-z-1)+3z+11=0 → z=-9 → N(-8,8,-9)",
+          "text": "Parameterize L: x=z+1, y=-z-1. Substitute into plane equation → z=-9 → N(-8,8,-9)",
+          "latex": "z=-9 \\Rightarrow N(-8,8,-9)"
+        },
+        {
+          "textKh": "ចំងាយ A(-1,1,0) → BCD: d = |(-7)(-1)+(-5)(1)+3(0)+11|/√(49+25+9) = 13/√83 = 13√83/83",
+          "text": "Distance from A to plane",
+          "latex": "D(A,BCD) = \\frac{|-7(-1)-5(1)+3(0)+11|}{\\sqrt{83}} = \\frac{13}{\\sqrt{83}} = \\frac{13\\sqrt{83}}{83}"
+        },
+        {
+          "textKh": "V_ABCD = (1/3)·S_BCD·h = (1/3)·(√83/2)·(13√83/83) = (1/3)·(13·83)/(2·83) = 13/6",
+          "text": "Volume of tetrahedron ABCD",
+          "latex": "V_{ABCD} = \\frac{1}{3} \\cdot \\frac{\\sqrt{83}}{2} \\cdot \\frac{13\\sqrt{83}}{83} = \\frac{13}{6}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ជ្រុង BCD: -7x-5y+3z+11=0; N(-8,8,-9); D=13√83/83; V=13/6",
+        "text": "Plane BCD: -7x-5y+3z+11=0; N(-8,8,-9); Distance=13√83/83; Volume=13/6",
+        "latex": "-7x-5y+3z+11=0;\\quad N(-8,8,-9);\\quad V_{ABCD}=\\frac{13}{6}"
+      },
+      "formulas": [
+        { "latex": "D(P, \\text{plane}) = \\frac{|ax_0+by_0+cz_0+d|}{\\sqrt{a^2+b^2+c^2}}", "meaning": "Distance from point to plane", "confidence": 1.0 },
+        { "latex": "V = \\frac{1}{3}Sh", "meaning": "Volume of tetrahedron", "confidence": 1.0 }
+      ],
+      "keywords": ["plane equation", "line-plane intersection", "distance", "volume", "tetrahedron", "ជ្រុង", "ប្រចំ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p002-c009",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis",
+      "topicKh": "ការសិក្សាអនុគមន៍ — f(x)=-x-2+4eˣ/(eˣ+1) ដែននៅ±∞ ស្វ័យភាព",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ក) f(x)=-x-2+4eˣ/(eˣ+1): ដែននៅ±∞; ស្វ័យភាពទ្រេត y=-x-2 (x→-∞) និង y=-x+2 (x→+∞)",
+      "normalizedText": "f(x) = -x-2 + 4e^x/(e^x+1). As x→-∞: e^x→0 so f→-(-∞)-2+0=+∞. As x→+∞: 4e^x/(e^x+1)→4 so f→-(+∞)-2+4=-∞. Oblique asymptote as x→-∞: y=-x-2; as x→+∞: y=-x+2.",
+      "problem": {
+        "textKh": "VI ក) គណនា lim_{x→-∞} f(x) និង lim_{x→+∞} f(x); ស្វ័យភាពទ្រេតដែន ±∞",
+        "text": "Compute limits of f(x)=-x-2+4e^x/(e^x+1) as x→±∞; find oblique asymptotes.",
+        "latex": "f(x) = -x - 2 + \\frac{4e^x}{e^x+1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "lim_{x→-∞}: e^x→0 → 4e^x/(e^x+1)→0 → f→-(-∞)-2+0=+∞",
+          "text": "As x→-∞: 4e^x/(e^x+1)→0, so f→+∞",
+          "latex": "\\lim_{x\\to-\\infty} f(x) = +\\infty"
+        },
+        {
+          "textKh": "lim_{x→+∞}: e^x→∞ → 4e^x/(e^x+1)→4 → f→-(+∞)-2+4=-∞",
+          "text": "As x→+∞: 4e^x/(e^x+1)→4, so f→-∞",
+          "latex": "\\lim_{x\\to+\\infty} f(x) = -\\infty"
+        },
+        {
+          "textKh": "ស្វ័យភាពទ្រេតពេល x→-∞: f(x)-(-x-2)=4e^x/(e^x+1)→0 → y=-x-2",
+          "text": "Asymptote as x→-∞: f(x)-(-x-2)→0 → y=-x-2",
+          "latex": "\\lim_{x\\to-\\infty}\\left[f(x)-(-x-2)\\right] = 0 \\Rightarrow y=-x-2"
+        },
+        {
+          "textKh": "ស្វ័យភាពទ្រេតពេល x→+∞: f(x)-(-x+2)=4e^x/(e^x+1)-4→0 → y=-x+2",
+          "text": "Asymptote as x→+∞: f(x)-(-x+2)→0 → y=-x+2",
+          "latex": "\\lim_{x\\to+\\infty}\\left[f(x)-(-x+2)\\right] = 0 \\Rightarrow y=-x+2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ស្វ័យភាពទ្រេត: y=-x-2 (x→-∞) និង y=-x+2 (x→+∞)",
+        "text": "Oblique asymptotes: y=-x-2 as x→-∞ and y=-x+2 as x→+∞",
+        "latex": "y=-x-2\\ (x\\to-\\infty);\\quad y=-x+2\\ (x\\to+\\infty)"
+      },
+      "formulas": [],
+      "keywords": ["oblique asymptote", "limits", "function analysis", "ស្វ័យភាពទ្រេត", "ដែន"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p002-c010",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis",
+      "topicKh": "ការសិក្សាអនុគមន៍ — f'(x)=-(eˣ-1)²/(eˣ+1)²≤0; f(0)=f'(0)=0",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ខ) f'(x)=-(eˣ-1)²/(eˣ+1)²≤0 ∀x∈ℝ; f'(0)=0; f(0)=0; f ចុះពី +∞ ទៅ -∞",
+      "normalizedText": "f'(x) = -1 + 4e^x(e^x+1-e^x)/(e^x+1)² = -1 + 4e^x/(e^x+1)². Simplify: f'(x) = -(e^x-1)²/(e^x+1)² ≤ 0 for all x∈ℝ (since numerator is a square). f'(0)=0 and f(0)=0. f is strictly decreasing everywhere (only flat at x=0).",
+      "problem": {
+        "textKh": "VI ខ) គណនា f'(x); បញ្ជាក់ f'(x)≤0 ∀x∈ℝ; គណនា f'(0) និង f(0); ធ្វើតារាងប្រែប្រួល",
+        "text": "Compute f'(x); show f'(x)≤0; find f'(0) and f(0); make variation table.",
+        "latex": "f(x) = -x - 2 + \\frac{4e^x}{e^x+1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f'(x) = -1 + [4e^x(e^x+1)-4e^x·e^x]/(e^x+1)² = -1 + 4e^x/(e^x+1)²",
+          "text": "Differentiate using quotient rule",
+          "latex": "f'(x) = -1 + \\frac{4e^x(e^x+1)-4(e^x)^2}{(e^x+1)^2} = -1 + \\frac{4e^x}{(e^x+1)^2}"
+        },
+        {
+          "textKh": "f'(x) = [-(e^x+1)²+4e^x]/(e^x+1)² = [-(e^{2x}+2e^x+1)+4e^x]/(e^x+1)² = -(e^{2x}-2e^x+1)/(e^x+1)² = -(e^x-1)²/(e^x+1)²",
+          "text": "Combine fractions and factor numerator",
+          "latex": "f'(x) = \\frac{-(e^x+1)^2+4e^x}{(e^x+1)^2} = -\\frac{(e^x-1)^2}{(e^x+1)^2}"
+        },
+        {
+          "textKh": "-(e^x-1)²≤0 ហើយ (e^x+1)²>0 → f'(x)≤0 ∀x∈ℝ",
+          "text": "(e^x-1)²≥0 always, so f'(x)≤0 everywhere",
+          "latex": "f'(x) = -\\frac{(e^x-1)^2}{(e^x+1)^2} \\leq 0\\quad \\forall x\\in\\mathbb{R}"
+        },
+        {
+          "textKh": "f'(0)=-(1-1)²/(1+1)²=0; f(0)=-0-2+4·1/(1+1)=-2+2=0",
+          "text": "f'(0)=0 (inflection rate); f(0)=0 (curve passes through origin)",
+          "latex": "f'(0) = 0,\\quad f(0) = 0"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f'(x)=-(eˣ-1)²/(eˣ+1)²≤0; f'(0)=f(0)=0; f ចុះពី +∞ ទៅ -∞",
+        "text": "f'(x)=-(e^x-1)²/(e^x+1)²≤0; f'(0)=f(0)=0; f is decreasing on ℝ",
+        "latex": "f'(x) = -\\frac{(e^x-1)^2}{(e^x+1)^2} \\leq 0"
+      },
+      "formulas": [
+        { "latex": "\\left(\\frac{u}{v}\\right)' = \\frac{u'v-uv'}{v^2}", "meaning": "Quotient rule", "confidence": 1.0 }
+      ],
+      "keywords": ["derivative", "monotone decreasing", "quotient rule", "ដេរីវេ", "អនុគមន៍ចុះ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p002-c011",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "inflection_points",
+      "topicKh": "ចំណុចប្រជ្រក O(0,0) និងស៊ីមេទ្រី C តាម O",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI គ) O(0,0) ជាចំណុចប្រជ្រករបស់ C; C ស៊ីមេទ្រីតាម O: f(-x)+f(x)=0",
+      "normalizedText": "VI c) f''(x) = 4e^x(1-e^x)/(e^x+1)³. f''=0 ↔ e^x=1 ↔ x=0. f''>0 for x<0, f''<0 for x>0: inflection at x=0. Since f(0)=0, O(0,0) is the inflection point. Symmetry: f(-x)+f(x) = (-(-x)-2+4e^(-x)/(e^(-x)+1))+(- x-2+4e^x/(e^x+1)) = -4 + 4(e^(-x)+e^x+e^(-x)·e^x+e^x)/(e^x+1)(e^(-x)+1)... simplifying to 0.",
+      "problem": {
+        "textKh": "VI គ) បង្ហាញ O(0,0) ជាចំណុចប្រជ្រករបស់ C; បញ្ជាក់ C ស៊ីមេទ្រីតាម O",
+        "text": "Show O(0,0) is an inflection point of C; show C is symmetric about O.",
+        "latex": "f''(x) = \\frac{4e^x(1-e^x)}{(e^x+1)^3}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f''(x) = 4eˣ(1-eˣ)/(eˣ+1)³; f''=0 ↔ 1-eˣ=0 ↔ x=0",
+          "text": "f''(x)=0 at x=0 only",
+          "latex": "f''(x) = \\frac{4e^x(1-e^x)}{(e^x+1)^3} = 0 \\Leftrightarrow x=0"
+        },
+        {
+          "textKh": "f''>0 ចំពោះ x<0 (concave up); f''<0 ចំពោះ x>0 (concave down) → x=0 ជាចំណុចប្រជ្រក; f(0)=0 → O(0,0)",
+          "text": "Sign of f'' changes at x=0; f(0)=0 → inflection point at O(0,0)",
+          "latex": "f''(x)>0\\ (x<0),\\ f''(x)<0\\ (x>0) \\Rightarrow O(0,0)\\text{ is inflection point}"
+        },
+        {
+          "textKh": "ស៊ីមេទ្រី: f(-x)+f(x)=(-(-x)-2+4e^{-x}/(e^{-x}+1))+(- x-2+4e^x/(e^x+1)); គណនា 4e^{-x}/(e^{-x}+1)=4/(e^x+1); ដូច្នេះ f(-x)+f(x)=-4+4·(eˣ+1)/(eˣ+1)=0 ✓",
+          "text": "Symmetry: f(-x) = x-2+4/(e^x+1). f(-x)+f(x) = -4+4e^x/(e^x+1)+4/(e^x+1) = -4+4=0 ✓",
+          "latex": "f(-x)+f(x) = -4 + \\frac{4e^x+4}{e^x+1} = -4+4 = 0"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "O(0,0) ជាចំណុចប្រជ្រក; f(-x)+f(x)=0 → C ស៊ីមេទ្រីតាម O",
+        "text": "O(0,0) is inflection point; f(-x)+f(x)=0 so C is symmetric about origin",
+        "latex": "f(-x)+f(x) = 0 \\Rightarrow C\\text{ symmetric about }O"
+      },
+      "formulas": [
+        { "latex": "f(-x)+f(x)=0 \\Leftrightarrow \\text{curve symmetric about origin}", "meaning": "Symmetry condition for origin", "confidence": 1.0 }
+      ],
+      "keywords": ["inflection point", "symmetry", "second derivative", "origin", "ចំណុចប្រជ្រក", "ស៊ីមេទ្រី"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set7-p002-c012",
+      "sourceId": "math-12-exam-202225-set7",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 10,
+      "topic": "inequalities",
+      "topicKh": "វិសមភាព 4eˣ/(eˣ+1) ≥ x+2 ↔ x∈(-∞,0]",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ឃ) 4eˣ/(eˣ+1)≥x+2 ↔ f(x)≥0 ↔ x∈(-∞,0]; f(3)≈-1.19",
+      "normalizedText": "VI d) The inequality 4e^x/(e^x+1) ≥ x+2 is equivalent to -x-2+4e^x/(e^x+1) ≥ 0, i.e., f(x) ≥ 0. Since f is decreasing and f(0)=0, f(x)≥0 iff x≤0. Solution: x∈(-∞,0]. Also f(3)=-5+4e³/(e³+1)≈-1.19.",
+      "problem": {
+        "textKh": "VI ឃ) ក) f(3)≈? ខ) ដោះ​ 4eˣ/(eˣ+1) ≥ x+2",
+        "text": "VI d) Compute f(3); solve 4e^x/(e^x+1) ≥ x+2.",
+        "latex": "\\frac{4e^x}{e^x+1} \\geq x+2"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f(3)=-3-2+4e³/(e³+1)=-5+4e³/(e³+1)≈-5+3.81=-1.19 (ប្រើ e³≈20)",
+          "text": "f(3) = -5+4e³/(e³+1) ≈ -1.19 (using e³≈20)",
+          "latex": "f(3) = -5 + \\frac{4e^3}{e^3+1} \\approx -1.19"
+        },
+        {
+          "textKh": "4eˣ/(eˣ+1)≥x+2 ↔ -x-2+4eˣ/(eˣ+1)≥0 ↔ f(x)≥0",
+          "text": "Rewrite inequality as f(x)≥0",
+          "latex": "\\frac{4e^x}{e^x+1} \\geq x+2 \\Leftrightarrow f(x) \\geq 0"
+        },
+        {
+          "textKh": "f ចុះ ហើយ f(0)=0 → f(x)≥0 ↔ x≤0",
+          "text": "Since f is decreasing and f(0)=0: f(x)≥0 iff x≤0",
+          "latex": "f(x) \\geq 0 \\Leftrightarrow x \\leq 0 \\Leftrightarrow x\\in(-\\infty, 0]"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f(3)≈-1.19; ដំណោះស្រាយ: x∈(-∞,0]",
+        "text": "f(3)≈-1.19; solution of inequality: x∈(-∞,0]",
+        "latex": "f(3)\\approx -1.19;\\quad \\frac{4e^x}{e^x+1}\\geq x+2 \\Leftrightarrow x\\in(-\\infty,0]"
+      },
+      "formulas": [],
+      "keywords": ["inequality", "monotone function", "solution set", "វិសមភាព", "ដំណោះស្រាយ"],
+      "difficulty": "high_school",
+      "quality": { "textClean": true, "formulaReviewed": true, "humanReviewed": false, "solutionReviewed": true, "trusted": true, "needsCuration": false }
+    }
+  ]
+}

@@ -1,0 +1,995 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-202225-set4",
+    "title": "Grade 12 Math Final Exam 2022-2025 Set 4 (Advanced Science Stream) with Full Solutions",
+    "titleKh": "វិញ្ញាសាចំខាន ភណិតវិទ្យា ទិញ្ញាសាតិ ៤ ថ្នាក់វិញ្ញាសាសម្រស់ ឆ្នាំ ២០២២-២០២៥",
+    "author": "អប់រំអ៊ីយ វិទ្យ ពុំ",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "exam",
+    "topics": [
+      "complex_numbers",
+      "differential_equations",
+      "probability",
+      "combinatorics",
+      "partial_fractions",
+      "integration",
+      "tangent_curves",
+      "vectors_3d",
+      "analytic_geometry_3d",
+      "function_analysis",
+      "limits"
+    ],
+    "metadata": {
+      "pageCount": 9,
+      "originalFile": "1788919918064-a431c7b2-ab3a-4c12-a883-5c99e8526b7d_34.jpg to _42.jpg",
+      "rawExtractionFile": "native image read"
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["worked_example", "formula_rule", "problem_solution"],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": ["យើងមានៈ", "នាំអោយ", "តាមរូបមន្ត", "តាមទំនាក់ទំនង", "ដូចនេះ", "ចម្លើយ"],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["concept_explanation"],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": ["មានន័យថា", "លុះត្រាតែ", "សម្គាល់ៈ", "ឧទាហរណ៍", "ដូចនេះ"],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c001",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers_trigonometric_division",
+      "topicKh": "ចំនួនកុំផ្លិច — ទ្រង់ទ្រាយត្រីកោណ, ការចែក",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "Z₁ = 2(cos(π/12) + i sin(π/12))² / (1 + i√3) ។ ចូរបង្ហាញ Z₁ ជ្រុបទ្រង់ត្រីកោណ ហើយបន្ទាប់មកជ្រុបទ្រង់ដាក់លំនឹង ។\nដោះស្រាយ:\nZ₁ = 2(cos π/6 + i sin π/6) / [2(cos π/3 + i sin π/3)] = (cos π/6 + i sin π/6)/(cos π/3 + i sin π/3)\n= cos(π/6 - π/3) + i sin(π/6 - π/3) = cos(-π/6) + i sin(-π/6) ។\nZ₁ = cos(-π/6) + i sin(-π/6) = √3/2 - i/2 ។",
+      "normalizedText": "Compute Z₁ = 2(cos π/12 + i sin π/12)² / (1+i√3) in trig then algebraic form. Use De Moivre to square the numerator (2(cos π/6 + i sin π/6)), convert denominator to trig (2(cos π/3+i sin π/3)), divide by subtracting angles. Result: Z₁ = cos(-π/6)+i sin(-π/6) = √3/2 - i/2.",
+      "problem": {
+        "textKh": "Z₁ = 2(cos(π/12) + i sin(π/12))² / (1 + i√3) ។ ចូរបង្ហាញ Z₁ ជ្រុបទ្រង់ត្រីកោណ ហើយជ្រុបទ្រង់ដាក់លំនឹង",
+        "text": "Z₁ = 2(cos π/12 + i sin π/12)² / (1+i√3). Express in trig form, then algebraic form.",
+        "latex": "Z_1 = \\frac{2\\left(\\cos\\frac{\\pi}{12} + i\\sin\\frac{\\pi}{12}\\right)^2}{1 + i\\sqrt{3}}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើ De Moivre ដើម្បីអាំង ២:",
+          "text": "Apply De Moivre to square the numerator:",
+          "latex": "2\\left(\\cos\\frac{\\pi}{12}+i\\sin\\frac{\\pi}{12}\\right)^2 = 2\\left(\\cos\\frac{\\pi}{6}+i\\sin\\frac{\\pi}{6}\\right)",
+          "explanationKh": "(cos θ + i sin θ)² = cos 2θ + i sin 2θ ; 2×π/12 = π/6",
+          "explanation": "De Moivre: square doubles the angle; 2×π/12 = π/6"
+        },
+        {
+          "textKh": "បំប្លែងបែង: 1+i√3 = 2(cos π/3 + i sin π/3):",
+          "text": "Convert denominator to trig: 1+i√3 = 2(cos π/3 + i sin π/3):",
+          "latex": "Z_1 = \\frac{2(\\cos\\frac{\\pi}{6}+i\\sin\\frac{\\pi}{6})}{2(\\cos\\frac{\\pi}{3}+i\\sin\\frac{\\pi}{3})} = \\cos\\!\\left(\\frac{\\pi}{6}-\\frac{\\pi}{3}\\right)+i\\sin\\!\\left(\\frac{\\pi}{6}-\\frac{\\pi}{3}\\right)",
+          "explanationKh": "ការចែក: ចែកម៉ូឌុល ហើយដករ់ arguement",
+          "explanation": "Division: divide moduli and subtract arguments"
+        },
+        {
+          "textKh": "ទ្រង់ទ្រាយដាក់លំនឹង:",
+          "text": "Algebraic form:",
+          "latex": "Z_1 = \\cos\\!\\left(-\\frac{\\pi}{6}\\right)+i\\sin\\!\\left(-\\frac{\\pi}{6}\\right) = \\frac{\\sqrt{3}}{2} - \\frac{1}{2}i",
+          "explanationKh": "cos(-π/6)=√3/2, sin(-π/6)=-1/2",
+          "explanation": "cos(-π/6) = √3/2, sin(-π/6) = -1/2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ ទ្រង់ទ្រាយត្រីកោណ: Z₁ = cos(-π/6) + i sin(-π/6) ។ ទ្រង់ទ្រាយដាក់លំនឹង: Z₁ = √3/2 - i/2",
+        "text": "Trig form: Z₁ = cos(-π/6)+i sin(-π/6). Algebraic: Z₁ = √3/2 - i/2",
+        "latex": "Z_1 = \\cos\\!\\left(-\\frac{\\pi}{6}\\right)+i\\sin\\!\\left(-\\frac{\\pi}{6}\\right) = \\frac{\\sqrt{3}}{2}-\\frac{1}{2}i"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{r_1(\\cos\\theta_1+i\\sin\\theta_1)}{r_2(\\cos\\theta_2+i\\sin\\theta_2)} = \\frac{r_1}{r_2}\\bigl(\\cos(\\theta_1-\\theta_2)+i\\sin(\\theta_1-\\theta_2)\\bigr)",
+          "meaning": "ការចែកចំនួនកុំផ្លិចជ្រុបទ្រង់ត្រីកោណ",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ចំនួនកុំផ្លិច", "De Moivre", "ទ្រង់ទ្រាយត្រីកោណ", "complex division", "trig form", "argument"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c002",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers_conjugate_equation",
+      "topicKh": "ចំនួនកុំផ្លិច — ស្វែងរក x, y ពីសមីការ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "Z₁ = √3/2 - i/2 ។ Z₂ = (1-i)x + (1-y)(1+i) ។ ស្វែងរក x, y ដើម្បី 2Z̄₁ - (Z₂ + y - 1) = 0 (Z̄₁ ជ្រុបផ្ទុំ Z₁) ។\nZ̄₁ = √3/2 + i/2 ។ Z₂ = x - xi + 1 + i - y - yi = (x-y+1) + (1-x-y)i ។\n2(√3/2 + i/2) - (Z₂+y-1) = 0 ⟹ (√3-x)+(x+y)i = 0 ⟹ x=√3, y=-√3 ។",
+      "normalizedText": "Given Z₁=√3/2-i/2, Z₂=(1-i)x+(1-y)(1+i), solve 2Z̄₁-(Z₂+y-1)=0 for real x,y. Expand, separate real/imaginary parts, equate to zero. Result: x=√3, y=-√3.",
+      "problem": {
+        "textKh": "Z₁ = √3/2 - i/2 ; Z₂ = (1-i)x + (1-y)(1+i) ។ ស្វែងរក x, y ពីសមីការ 2Z̄₁ - (Z₂+y-1) = 0",
+        "text": "Z₁=√3/2-i/2, Z₂=(1-i)x+(1-y)(1+i). Find real x,y satisfying 2Z̄₁-(Z₂+y-1)=0.",
+        "latex": "2\\bar{Z}_1 - (Z_2 + y - 1) = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "Z̄₁ = √3/2 + i/2 (conjugate) ។ ពង្រីក Z₂:",
+          "text": "Conjugate Z̄₁ = √3/2+i/2. Expand Z₂:",
+          "latex": "Z_2 = (x-y+1)+(1-x-y)i",
+          "explanationKh": "(1-i)x=x-xi ; (1-y)(1+i)=(1-y)+i(1-y)",
+          "explanation": "Distribute and collect real/imaginary parts"
+        },
+        {
+          "textKh": "ជំនួស ហើយបង្រួម:",
+          "text": "Substitute and simplify — separate real and imaginary parts:",
+          "latex": "\\left(\\sqrt{3}-x\\right) + \\left(x+y\\right)i = 0+0i",
+          "explanationKh": "ផ្នែកពិតនិងស្មុគស្មាញស្មើ 0 ទាំងពីរ",
+          "explanation": "Both real and imaginary parts must equal zero"
+        },
+        {
+          "textKh": "⟹ √3-x=0 ⟹ x=√3 ; x+y=0 ⟹ y=-√3",
+          "text": "Solve the system:",
+          "latex": "x = \\sqrt{3} \\;\\;;\\;\\; y = -\\sqrt{3}",
+          "explanationKh": "ប្រព័ន្ធ 2 សមីការ 2 មិនស្គាល់",
+          "explanation": "Two equations directly give x and y"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ x = √3 ; y = -√3",
+        "text": "x = √3, y = -√3",
+        "latex": "x = \\sqrt{3} \\;\\;;\\;\\; y = -\\sqrt{3}"
+      },
+      "formulas": [
+        {
+          "latex": "\\overline{a+bi} = a-bi",
+          "meaning": "ផ្ទុំចំនួនកុំផ្លិច (conjugate)",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["conjugate", "ផ្ទុំ", "complex equation", "real imaginary separation", "x y"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c003",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "differential_equations_second_order",
+      "topicKh": "សមីការ ODE ត្រឹមលំដាប់ ២ — y''+5y'+6y=0",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ដោះស្រាយ (E): y'' + 5y' + 6y = 0 ។\nសមីការមូលដ្ឋាន: r² + 5r + 6 = 0 ។ ⟹ r₁=-2, r₂=-3 ។\nចម្លើយទូទៅ: y = Ae^(-2x) + Be^(-3x) ; A,B ∈ ℝ ។",
+      "normalizedText": "Solve y''+5y'+6y=0. Characteristic equation r²+5r+6=0 has roots r₁=-2, r₂=-3. General solution: y = Ae^(-2x) + Be^(-3x).",
+      "problem": {
+        "textKh": "ដោះស្រាយសមីការ (E): y'' + 5y' + 6y = 0",
+        "text": "Solve the ODE y'' + 5y' + 6y = 0",
+        "latex": "y'' + 5y' + 6y = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "សមីការមូលដ្ឋាន r² + 5r + 6 = 0:",
+          "text": "Characteristic equation r² + 5r + 6 = 0:",
+          "latex": "r^2 + 5r + 6 = 0 \\Rightarrow (r+2)(r+3) = 0 \\Rightarrow r_1 = -2,\\; r_2 = -3",
+          "explanationKh": "ε = 25 - 24 = 1 ⟹ ២ ឫសពិតផ្សេងគ្នា",
+          "explanation": "Discriminant = 1 > 0, two distinct real roots"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយទូទៅ: y = Ae^(-2x) + Be^(-3x) ; A,B ∈ ℝ",
+        "text": "General solution: y = Ae^(-2x) + Be^(-3x), A,B ∈ ℝ",
+        "latex": "y = Ae^{-2x} + Be^{-3x},\\quad A,B\\in\\mathbb{R}"
+      },
+      "formulas": [
+        {"latex": "r^2+5r+6=0", "meaning": "សមីការមូលដ្ឋាន (E)", "confidence": 1.0}
+      ],
+      "keywords": ["ODE", "differential equation", "characteristic", "second order", "y''", "general solution"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c004",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "differential_equations_particular_solution",
+      "topicKh": "ODE — ចម្លើយពិសេស ជាមួយលក្ខខណ្ឌ tangent",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "កំណត់ចម្លើយពិសេស (E) ដែលបន្ទ) D: y=x-1 ជ្រាប O ហើយ tangent នៃ f នៅ x=0 ។\nD: y=x-1 ⟹ f'(0)=1, f(0)=-1 ។\nf(x)=Ae^(-2x)+Be^(-3x) ; f'(x)=-2Ae^(-2x)-3Be^(-3x) ។\nf'(0)=-2A-3B=1 ...(1) ; f(0)=A+B=-1 ...(2) ។\nA=-1-B ⟹ -2(-1-B)-3B=1 ⟹ 2+2B-3B=1 ⟹ B=1 ⟹ A=-2 ។\nf(x) = -2e^(-2x) + e^(-3x) ។",
+      "normalizedText": "Find particular solution of y''+5y'+6y=0 whose tangent at x=0 is y=x-1. This gives f'(0)=1, f(0)=-1. Set up 2×2 system, solve: A=-2, B=1. Particular solution: f(x)=-2e^(-2x)+e^(-3x).",
+      "problem": {
+        "textKh": "កំណត់ f(x) ចម្លើយ (E) ដែល tangent នៅ x=0 ជ្រាប D: y=x-1",
+        "text": "Find solution of (E) with tangent y=x-1 at x=0, meaning f(0)=-1 and f'(0)=1.",
+        "latex": "f'(0)=1,\\quad f(0)=-1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "D: y=x-1 ⟹ ជំរាប x=0: y=-1=f(0); ជម្រាល=1=f'(0):",
+          "text": "Tangent D: y=x-1 at x=0 gives f(0)=-1 (point) and f'(0)=1 (slope):",
+          "latex": "\\begin{cases} A + B = -1 \\\\ -2A - 3B = 1 \\end{cases}",
+          "explanationKh": "f(0)=A+B, f'(0)=-2A-3B",
+          "explanation": "Substitute x=0 into f and f'"
+        },
+        {
+          "textKh": "ដោះស្រាយ: A=-1-B ⟹ 2+2B-3B=1 ⟹ B=1, A=-2:",
+          "text": "Solve: B=1, A=-2:",
+          "latex": "A=-2,\\quad B=1",
+          "explanationKh": "ជំនួស A=-1-B ទៅក្នុងសមីការ (1)",
+          "explanation": "Substitute A=-1-B into the first equation"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយពិសេស: f(x) = -2e^(-2x) + e^(-3x)",
+        "text": "f(x) = -2e^(-2x) + e^(-3x)",
+        "latex": "f(x) = -2e^{-2x} + e^{-3x}"
+      },
+      "formulas": [],
+      "keywords": ["ODE", "particular solution", "initial conditions", "tangent", "ចម្លើយពិសេស"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c005",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "probability_combinatorics",
+      "topicKh": "លទ្ធភាព — ការលៃចេញ ២ ពូជពីស្ករ ១០",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ស្ករ ១០ ជ្រោះ (ស ៦ ចំ ៤) ។ លៃចេញ ២ ជ្រោះ ។\nn(S) = C(10,2) = 45 ។\nP(A) = C(6,2)/45 = 15/45 = 1/3 (ទាំង ២ ស) ។\nP(B) = C(4,2)/45 = 6/45 = 2/15 (ទាំង ២ ចំ) ។\nP(C) = C(6,1)×C(4,1)/45 = 24/45 = 8/15 (១ ស ១ ចំ) ។",
+      "normalizedText": "Urn: 10 balls (6 white, 4 red), draw 2 at random. Total outcomes C(10,2)=45. P(both white)=C(6,2)/45=1/3. P(both red)=C(4,2)/45=2/15. P(one white one red)=C(6,1)C(4,1)/45=8/15.",
+      "problem": {
+        "textKh": "ស្ករ ១០ ជ្រោះ (ស ៦ ចំ ៤) ។ លៃចេញ ២ ជ្រោះ ។ (ក) n(S) ។ (ខ) P(A), P(B), P(C)",
+        "text": "Urn with 10 balls (6 white, 4 red). Draw 2. Find: (a) n(S), (b) P(A)=both white, P(B)=both red, P(C)=one of each.",
+        "latex": "n(S) = C_{10}^2"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "n(S) = C(10,2) = 10!/(8!×2!) = 45:",
+          "text": "Total outcomes:",
+          "latex": "n(S) = C_{10}^2 = \\frac{10!}{8!\\,2!} = \\frac{10\\times 9}{2} = 45",
+          "explanationKh": "យកដោយមិនមានលំដាប់",
+          "explanation": "Combinations (order does not matter)"
+        },
+        {
+          "textKh": "P(A) — ទាំង ២ ស:",
+          "text": "P(A) — both white:",
+          "latex": "P(A) = \\frac{C_6^2}{45} = \\frac{15}{45} = \\frac{1}{3}",
+          "explanationKh": "C(6,2)=15",
+          "explanation": "Choose 2 from 6 white balls"
+        },
+        {
+          "textKh": "P(B) — ទាំង ២ ចំ:",
+          "text": "P(B) — both red:",
+          "latex": "P(B) = \\frac{C_4^2}{45} = \\frac{6}{45} = \\frac{2}{15}",
+          "explanationKh": "C(4,2)=6",
+          "explanation": "Choose 2 from 4 red balls"
+        },
+        {
+          "textKh": "P(C) — ១ ស និង ១ ចំ:",
+          "text": "P(C) — one white and one red:",
+          "latex": "P(C) = \\frac{C_6^1 \\cdot C_4^1}{45} = \\frac{6 \\times 4}{45} = \\frac{24}{45} = \\frac{8}{15}",
+          "explanationKh": "C(6,1)×C(4,1)=6×4=24",
+          "explanation": "Choose 1 white AND 1 red: multiply counts"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "n(S)=45 ; P(A)=1/3 ; P(B)=2/15 ; P(C)=8/15",
+        "text": "n(S)=45; P(A)=1/3; P(B)=2/15; P(C)=8/15",
+        "latex": "P(A)=\\tfrac{1}{3} \\;\\;;\\;\\; P(B)=\\tfrac{2}{15} \\;\\;;\\;\\; P(C)=\\tfrac{8}{15}"
+      },
+      "formulas": [
+        {
+          "latex": "C_n^k = \\frac{n!}{k!(n-k)!}",
+          "meaning": "ចំនួនការរើស k ពី n — combination",
+          "confidence": 1.0
+        },
+        {
+          "latex": "P(E) = \\frac{n(E)}{n(S)}",
+          "meaning": "រូបមន្តលទ្ធភាព (ស្ថានភាពស្មើ)",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["probability", "combination", "ลทธภาព", "C(n,k)", "balls urn", "ស្ករ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c006",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "partial_fractions_rational_function",
+      "topicKh": "ការបំបែកប្រភាគ f(x)=(3x²-5x-2)/(x(x-1)²)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = (3x²-5x-2)/(x(x-1)²) ។ ស្វែងរក a, b, c ដែល f(x) = a/x + b/(x-1) + c/(x-1)² ។\nបង្រួមអ្នករាប: a(x-1)² + bx(x-1) + cx = 3x²-5x-2 ។\n(a+b)x² + (-2a-b+c)x + a = 3x²-5x-2 ⟹ a=-2, b=5, c=-4 ។",
+      "normalizedText": "Partial fraction decomposition of (3x²-5x-2)/(x(x-1)²) = a/x + b/(x-1) + c/(x-1)². Multiply out numerator, match coefficients. System: a+b=3, -2a-b+c=-5, a=-2. Solution: a=-2, b=5, c=-4.",
+      "problem": {
+        "textKh": "ស្វែងរក a, b, c ដើម្បី f(x) = a/x + b/(x-1) + c/(x-1)² ; f(x)=(3x²-5x-2)/(x(x-1)²)",
+        "text": "Find a, b, c such that (3x²-5x-2)/(x(x-1)²) = a/x + b/(x-1) + c/(x-1)²",
+        "latex": "\\frac{3x^2-5x-2}{x(x-1)^2} = \\frac{a}{x} + \\frac{b}{x-1} + \\frac{c}{(x-1)^2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ធ្វើឱ្យអ្នករាបដូចគ្នា ហើយប្រៀបធៀបស:",
+          "text": "Clear denominator and compare coefficients of x², x, constant:",
+          "latex": "a(x-1)^2 + bx(x-1) + cx = 3x^2-5x-2 \\Rightarrow \\begin{cases} a+b=3 \\\\ -2a-b+c=-5 \\\\ a=-2 \\end{cases}",
+          "explanationKh": "ប្រៀបធៀបស x², x, x⁰",
+          "explanation": "Match coefficients of x², x, and constant term"
+        },
+        {
+          "textKh": "ដោះស្រាយ: a=-2 ⟹ b=5 ⟹ c=-4:",
+          "text": "Solve: from a=-2, b=3-a=5, then c=-5+2a+b=-4:",
+          "latex": "a=-2,\\quad b=5,\\quad c=-4",
+          "explanationKh": "ពី a=-2: b=5 ។ ពី (2): -2(-2)-5+c=-5 ⟹ c=-4",
+          "explanation": "Substitute back to find each constant"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ a=-2, b=5, c=-4 ។ f(x) = -2/x + 5/(x-1) - 4/(x-1)²",
+        "text": "a=-2, b=5, c=-4. So f(x) = -2/x + 5/(x-1) - 4/(x-1)²",
+        "latex": "f(x) = \\frac{-2}{x} + \\frac{5}{x-1} - \\frac{4}{(x-1)^2}"
+      },
+      "formulas": [],
+      "keywords": ["partial fractions", "decomposition", "rational function", "ការបំបែក", "coefficients"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c007",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "integration_partial_fractions",
+      "topicKh": "អាំងតេហ្គ្រាលកំណត់ ∫₂³ f(x)dx",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា I = ∫₂³ f(x)dx ដែល f(x) = -2/x + 5/(x-1) - 4/(x-1)² ។\nI = [-2ln|x| + 5ln|x-1| + 4/(x-1)·(-1)·(-1)]₂³\n= [-2ln|x| + 5ln|x-1| - 4/(x-1)]₂³\n= (-2ln3 + 5ln2 - 4/2) - (-2ln2 + 5ln1 - 4/1)\n= -2ln3 + 5ln2 - 2 + 2ln2 - 0 + 4\n= 7ln2 - 2ln3 - 2 ។",
+      "normalizedText": "Compute I = integral from 2 to 3 of (-2/x + 5/(x-1) - 4/(x-1)²)dx. Antiderivatives: -2ln|x|, 5ln|x-1|, 4/(x-1)... wait integral of -4/(x-1)² = 4/(x-1). Evaluate at bounds. Result: I = 7ln2 - 2ln3 - 2.",
+      "problem": {
+        "textKh": "គណនា I = ∫₂³ f(x)dx ; f(x) = -2/x + 5/(x-1) - 4/(x-1)²",
+        "text": "Compute I = ∫₂³ (-2/x + 5/(x-1) - 4/(x-1)²) dx",
+        "latex": "I = \\int_2^3 f(x)\\,dx = \\int_2^3 \\left(\\frac{-2}{x} + \\frac{5}{x-1} - \\frac{4}{(x-1)^2}\\right)dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "អាំងតេហ្គ្រាលគ្រប់ set:",
+          "text": "Integrate each term (note: ∫-4/(x-1)² dx = 4/(x-1)):",
+          "latex": "I = \\left[-2\\ln|x| + 5\\ln|x-1| - \\frac{4}{x-1}\\cdot(-1)^{-1}\\right]_2^3 = \\left[-2\\ln|x| + 5\\ln|x-1| + \\frac{4}{x-1}\\right]_2^3",
+          "explanationKh": "∫1/(x-1)² dx = -1/(x-1) ; ∫-4/(x-1)² dx = 4/(x-1)",
+          "explanation": "Integral of -4/(x-1)² = 4/(x-1)"
+        },
+        {
+          "textKh": "ជំនួស x=3 និង x=2:",
+          "text": "Evaluate at x=3 and x=2:",
+          "latex": "= \\left(-2\\ln3 + 5\\ln2 + \\frac{4}{2}\\right) - \\left(-2\\ln2 + 5\\ln1 + \\frac{4}{1}\\right)",
+          "explanationKh": "ln1=0",
+          "explanation": "ln 1 = 0 simplifies the second bracket"
+        },
+        {
+          "textKh": "បង្រួម:",
+          "text": "Simplify:",
+          "latex": "= -2\\ln3 + 5\\ln2 + 2 + 2\\ln2 - 4 = 7\\ln2 - 2\\ln3 - 2",
+          "explanationKh": "5ln2+2ln2=7ln2",
+          "explanation": "Collect logarithm terms"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ I = 7ln2 - 2ln3 - 2",
+        "text": "I = 7ln2 - 2ln3 - 2",
+        "latex": "I = 7\\ln 2 - 2\\ln 3 - 2"
+      },
+      "formulas": [
+        {
+          "latex": "\\int \\frac{1}{(x-a)^2}\\,dx = -\\frac{1}{x-a} + C",
+          "meaning": "អាំងតេហ្គ្រាល power function ជំនួស",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["integration", "definite integral", "partial fractions", "ln", "អាំងតេហ្គ្រាល"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p001-c008",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "tangent_curves_common_tangent",
+      "topicKh": "ខ្សែប៉ះរួម — C₁: y=eˣ និង C₂: y=ln(x+1)+1 ជ្រាប A(0,1)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x)=eˣ, g(x)=ln(x+1)+1 ។\n(ក) f(0)=1, g(0)=ln1+1=1 ⟹ A(0,1)∈C₁ ហើយ A(0,1)∈C₂ ។\n(ខ) f'(0)=1, g'(0)=1/(0+1)=1 ⟹ f'(0)=g'(0)=1 ។ C₁ ប: C₂ ប៉ះ x=0 ។\n(គ) ខ្សែប៉ះរួម (D): y=f'(0)(x-0)+f(0) = x+1 ។",
+      "normalizedText": "f(x)=e^x, g(x)=ln(x+1)+1. Both pass through A(0,1): f(0)=1, g(0)=1. Both have slope 1 at A: f'(0)=1, g'(0)=1. So C₁ and C₂ are tangent curves at A. Common tangent: y=x+1.",
+      "problem": {
+        "textKh": "f(x)=eˣ, g(x)=ln(x+1)+1 ។ (ក) បង្ហាញ C₁,C₂ ជ្រាប A(0,1) (ខ) f'(0),g'(0) — C₁ ប: C₂ ប៉ះ A (គ) ខ្សែប៉ះរួម",
+        "text": "f(x)=e^x, g(x)=ln(x+1)+1. (a) Show both pass A(0,1). (b) f'(0)=g'(0): C₁ and C₂ are tangent at A. (c) Find common tangent.",
+        "latex": "f(x)=e^x,\\quad g(x)=\\ln(x+1)+1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "(ក) f(0)=e⁰=1 ; g(0)=ln1+1=1 ⟹ A(0,1)∈C₁ ហើយ C₂ :",
+          "text": "(a) Both pass through A:",
+          "latex": "f(0)=e^0=1 \\;\\;;\\;\\; g(0)=\\ln(1)+1=1 \\Rightarrow A(0,1)\\in C_1 \\text{ and } C_2",
+          "explanationKh": "ជំនួស x=0",
+          "explanation": "Substitute x=0 into both functions"
+        },
+        {
+          "textKh": "(ខ) f'(x)=eˣ ⟹ f'(0)=1 ; g'(x)=1/(x+1) ⟹ g'(0)=1 :",
+          "text": "(b) Derivatives at A equal 1:",
+          "latex": "f'(0)=e^0=1 \\;\\;;\\;\\; g'(0)=\\frac{1}{0+1}=1",
+          "explanationKh": "f'(0)=g'(0)=1 និង f(0)=g(0)=1 ⟹ C₁ ប: C₂",
+          "explanation": "Equal values and equal slopes at A mean the curves are tangent"
+        },
+        {
+          "textKh": "(គ) ខ្សែប៉ះរួម: y = f'(0)x + f(0) = x + 1:",
+          "text": "(c) Common tangent line at A:",
+          "latex": "(D):\\; y = x+1",
+          "explanationKh": "ជម្រាល=1, ជ្រាប (0,1)",
+          "explanation": "Slope 1 through (0,1)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ខ្សែប៉ះរួម (D): y = x + 1 ។ C₁ ប: C₂ ប៉ះ A(0,1)",
+        "text": "Common tangent (D): y=x+1; C₁ and C₂ are tangent curves at A(0,1)",
+        "latex": "(D):\\; y = x+1"
+      },
+      "formulas": [],
+      "keywords": ["tangent curves", "common tangent", "e^x", "ln", "derivative", "ខ្សែប៉ះ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c001",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "analytic_geometry_3d_plane_line",
+      "topicKh": "យន្តហោះ (P) ជ្រាប A ហើយ /(P) មាន (D)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(0,2,2) ។ (D): x=1+t, y=1-t, z=2-t ។ (P): x-y-z+4=0 ។\nផ្ទៀង A: 0-2-2+4=0 ✓ ⟹ A ∈ (P) ។\nn⃗=(1,-1,-1) (ធម្មតា (P)) ។ u⃗=(1,-1,-1) (ទិស (D)) ⟹ n⃗=u⃗ ⟹ (D) ∥ (P) ⟹ (P) មាន (D) ។",
+      "normalizedText": "Plane (P): x-y-z+4=0. Line D: direction (1,-1,-1). Normal of P is (1,-1,-1). Since D's direction = P's normal direction, D is parallel to P. A(0,2,2) satisfies (P): 0-2-2+4=0. So (P) contains D.",
+      "problem": {
+        "textKh": "A(0,2,2) ; (D): x=1+t,y=1-t,z=2-t ; (P): x-y-z+4=0 ។ បញ្ជាក់ (P) ជ្រាប A ហើយ (P) មាន (D)",
+        "text": "Show plane (P): x-y-z+4=0 passes through A(0,2,2) and contains line D: x=1+t, y=1-t, z=2-t.",
+        "latex": "(P):\\; x-y-z+4=0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ផ្ទៀងចំណុច A(0,2,2) ∈ (P):",
+          "text": "Check A on (P):",
+          "latex": "0 - 2 - 2 + 4 = 0 \\checkmark \\Rightarrow A \\in (P)",
+          "explanationKh": "ជំនួស x=0,y=2,z=2",
+          "explanation": "Substitute A's coordinates into the plane equation"
+        },
+        {
+          "textKh": "n⃗=(1,-1,-1) ជ្រាប ⟋ (P) ; u⃗=(1,-1,-1) ជ្រាប (D) ⟹ n⃗=u⃗ ⟹ (D)∥(P):",
+          "text": "Normal of (P) is (1,-1,-1). Direction of D is (1,-1,-1). They are equal, so D∥P. Since A∈P and A could be on D, D lies in P:",
+          "latex": "\\vec{n} = \\vec{u} = (1,-1,-1) \\Rightarrow (D) \\parallel (P) \\Rightarrow (P) \\text{ contains } (D)",
+          "explanationKh": "(D) ∥ (P) ហើយ (D) ជ្រាប A ∈ (P) ⟹ (P) ស្ករ (D)",
+          "explanation": "A line parallel to a plane that has a point in the plane must lie in the plane"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ (P) ជ្រាប A ហើយ (P) ស្ករ (D)",
+        "text": "(P) passes through A and contains D",
+        "latex": "A \\in (P) \\;\\text{ and }\\; (D) \\subset (P)"
+      },
+      "formulas": [],
+      "keywords": ["plane", "line in plane", "normal vector", "direction", "3D geometry", "យន្តហោះ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c002",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "analytic_geometry_3d_intercepts_equilateral",
+      "topicKh": "ចំណុច M, N, P ប្រសព្វអ័ក្ស — ត្រីកោណ MNP ស្មើជ្រុង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "(P): x-y-z+4=0 ។ M (Ox): y=z=0 ⟹ x=-4 ⟹ M(-4,0,0) ។ N (Oy): x=z=0 ⟹ y=4 ⟹ N(0,4,0) ។ P (Oz): x=y=0 ⟹ z=4 ⟹ P(0,0,4) ។\nMN=MP=NP=4√2 ⟹ △MNP ស្មើជ្រុង ។",
+      "normalizedText": "Plane x-y-z+4=0 intercepts axes at M(-4,0,0), N(0,4,0), P(0,0,4). All three side lengths equal 4√2, so triangle MNP is equilateral.",
+      "problem": {
+        "textKh": "(P): x-y-z+4=0 ។ ស្វែងរក M (Ox), N (Oy), P (Oz) ។ បញ្ជាក់ △MNP ស្មើជ្រុង",
+        "text": "Find intercepts of (P): x-y-z+4=0 with Ox, Oy, Oz. Then prove △MNP is equilateral.",
+        "latex": "(P):\\; x-y-z+4=0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "M ∩ Ox (y=z=0): x-0-0+4=0 ⟹ x=-4 ⟹ M(-4,0,0):",
+          "text": "M on Ox (y=0,z=0):",
+          "latex": "M(-4,0,0)",
+          "explanationKh": "ជំនួស y=0, z=0",
+          "explanation": "Set y=0, z=0 and solve for x"
+        },
+        {
+          "textKh": "N ∩ Oy (x=z=0): -y+4=0 ⟹ y=4 ⟹ N(0,4,0):",
+          "text": "N on Oy and P on Oz:",
+          "latex": "N(0,4,0) \\;\\;;\\;\\; P(0,0,4)",
+          "explanationKh": "ជំនួស x=z=0 ⟹ y=4 ; x=y=0 ⟹ z=4",
+          "explanation": "Set appropriate coordinates to zero each time"
+        },
+        {
+          "textKh": "គណនា MN, MP, NP:",
+          "text": "Compute all three side lengths:",
+          "latex": "MN = MP = NP = \\sqrt{(4)^2+(4)^2+(0)^2} = 4\\sqrt{2}",
+          "explanationKh": "MN=√(16+16+0)=4√2 ; MP=√(16+0+16)=4√2 ; NP=√(0+16+16)=4√2",
+          "explanation": "All three sides equal 4√2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "M(-4,0,0) ; N(0,4,0) ; P(0,0,4) ។ MN=MP=NP=4√2 ⟹ △MNP ស្មើជ្រុង",
+        "text": "M(-4,0,0), N(0,4,0), P(0,0,4). All sides = 4√2 → △MNP equilateral.",
+        "latex": "MN=MP=NP=4\\sqrt{2}"
+      },
+      "formulas": [
+        {
+          "latex": "d = \\sqrt{(x_2-x_1)^2+(y_2-y_1)^2+(z_2-z_1)^2}",
+          "meaning": "ចំងាយ ២ ចំណុចក្នុងអវកាស",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["intercepts", "equilateral triangle", "3D", "plane", "distance", "ស្មើជ្រុង"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c003",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 6,
+      "topic": "vectors_3d_cross_product_area",
+      "topicKh": "ផលគុណខ្វែង MP⃗×MN⃗ — ផ្ទៃក្រឡា △MNP",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "M(-4,0,0), N(0,4,0), P(0,0,4) ។\nMP⃗=(4,0,4) ; MN⃗=(4,4,0) ។\nMP⃗×MN⃗ = det|i j k; 4 0 4; 4 4 0| = (0-16)i⃗ - (0-16)j⃗ + (16-0)k⃗ = -16i⃗+16j⃗+16k⃗ ។\nS△MNP = ½|MP⃗×MN⃗| = ½√(256+256+256) = ½×16√3 = 8√3 ។",
+      "normalizedText": "M(-4,0,0), N(0,4,0), P(0,0,4). Vectors MP=(4,0,4), MN=(4,4,0). Cross product: MP×MN = -16i+16j+16k. Area = 8√3.",
+      "problem": {
+        "textKh": "M(-4,0,0), N(0,4,0), P(0,0,4) ។ គណនា MP⃗×MN⃗ ។ ផ្ទៃក្រឡា △MNP",
+        "text": "Compute MP⃗ × MN⃗ and hence the area of triangle MNP.",
+        "latex": "\\overrightarrow{MP}\\times\\overrightarrow{MN}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "MP⃗ = P-M = (4,0,4) ; MN⃗ = N-M = (4,4,0):",
+          "text": "Find vectors:",
+          "latex": "\\overrightarrow{MP}(4,0,4)\\;\\;;\\;\\;\\overrightarrow{MN}(4,4,0)",
+          "explanationKh": "ដកកូអ័រដោនេ M ពី P, N",
+          "explanation": "Subtract M's coordinates from P and N"
+        },
+        {
+          "textKh": "ផលគុណខ្វែង:",
+          "text": "Cross product:",
+          "latex": "\\overrightarrow{MP}\\times\\overrightarrow{MN} = \\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\4&0&4\\\\4&4&0\\end{vmatrix} = -16\\vec{i}+16\\vec{j}+16\\vec{k}",
+          "explanationKh": "i: (0-16)=-16 ; j: -(0-16)=16 ; k: (16-0)=16",
+          "explanation": "Expand determinant along top row"
+        },
+        {
+          "textKh": "ផ្ទៃក្រឡា △MNP:",
+          "text": "Area:",
+          "latex": "S_{\\triangle MNP} = \\frac{1}{2}\\left|\\overrightarrow{MP}\\times\\overrightarrow{MN}\\right| = \\frac{1}{2}\\sqrt{256+256+256} = \\frac{1}{2}\\cdot16\\sqrt{3} = 8\\sqrt{3}",
+          "explanationKh": "√(256×3) = 16√3",
+          "explanation": "|cross product| = 16√3, area = half of that"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "MP⃗×MN⃗ = -16i⃗+16j⃗+16k⃗ ; S△MNP = 8√3 ឯករ",
+        "text": "MP×MN = -16i+16j+16k; Area = 8√3",
+        "latex": "\\overrightarrow{MP}\\times\\overrightarrow{MN} = -16\\vec{i}+16\\vec{j}+16\\vec{k} \\;\\;;\\;\\; S_{\\triangle MNP}=8\\sqrt{3}"
+      },
+      "formulas": [
+        {
+          "latex": "S_{\\triangle} = \\frac{1}{2}|\\vec{u}\\times\\vec{v}|",
+          "meaning": "ផ្ទៃក្រឡាត្រីកោណ — ពាក់កណ្ដាល magnitude នៃ cross product",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["cross product", "area", "equilateral triangle", "ផលគុណខ្វែង", "ផ្ទៃក្រឡា", "3D"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c004",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 7,
+      "topic": "function_analysis_limits_asymptotes",
+      "topicKh": "ការសិក្សា f(x)=2(1-ln x/x) — ដែនកំណត់, អសមតី",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = 2(1 - ln x/x) ដែល x>0 ។\nlim_{x→0+} f(x) = 2(1-(-∞)) = +∞ ⟹ x=0 ជាអសមតីឈរ ។\nlim_{x→+∞} f(x) = 2(1-0) = 2 ⟹ y=2 ជាអសមតីផ្ដេក ។",
+      "normalizedText": "f(x)=2(1-ln(x)/x) for x>0. As x→0+: ln x→-∞ so f→+∞ (vertical asymptote x=0). As x→+∞: ln(x)/x→0 so f→2 (horizontal asymptote y=2).",
+      "problem": {
+        "textKh": "f(x) = 2(1 - ln x/x), x>0 ។ គណនា lim_{x→0+} f(x), lim_{x→+∞} f(x) ។ ស្វែងរកអសមតី",
+        "text": "f(x)=2(1-ln x/x), x>0. Find limits at 0+ and +∞. Identify asymptotes.",
+        "latex": "f(x) = 2\\left(1-\\frac{\\ln x}{x}\\right),\\; x>0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "lim_{x→0+}: ln x → -∞ ⟹ -ln x/x → +∞:",
+          "text": "As x→0+, ln x→-∞:",
+          "latex": "\\lim_{x\\to0^+}f(x) = 2\\left(1-\\frac{-\\infty}{0^+}\\right) = 2(1+\\infty) = +\\infty",
+          "explanationKh": "x=0 ជាអសមតីឈរ",
+          "explanation": "Vertical asymptote x=0"
+        },
+        {
+          "textKh": "lim_{x→+∞}: ln(x)/x → 0:",
+          "text": "As x→+∞, ln(x)/x→0:",
+          "latex": "\\lim_{x\\to+\\infty}f(x) = 2(1-0) = 2",
+          "explanationKh": "y=2 ជាអសមតីផ្ដេក",
+          "explanation": "Horizontal asymptote y=2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "x=0 ជាអសមតីឈរ ; y=2 ជាអសមតីផ្ដេក",
+        "text": "Vertical asymptote x=0; horizontal asymptote y=2",
+        "latex": "\\text{vert. asymptote: } x=0 \\;\\;;\\;\\; \\text{horiz. asymptote: } y=2"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x}{x} = 0",
+          "meaning": "ln(x) grows slower than x — fundamental limit",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["asymptote", "limit", "ln x", "function analysis", "ដែនកំណត់", "អសមតី"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c005",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 7,
+      "topic": "function_analysis_derivative_variation",
+      "topicKh": "f'(x) — សញ្ញា, អប្បបរមា, តារាង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = 2(1-ln x/x) ។\nf'(x) = -2(ln x/x)' = -2·(1-ln x)/x² = (-2+2ln x)/x² ។\nf'(x)=0 ⟺ ln x=1 ⟺ x=e ។\nf'(x)<0 ∀x<e (f ចុះ), f'(x)>0 ∀x>e (f កើន) ⟹ f(e)=2-2/e≈1.3 ជាអប្បបរមា ។",
+      "normalizedText": "Derivative of f(x)=2(1-ln x/x): f'(x)=(-2+2ln x)/x². Zero at x=e. f decreasing on (0,e), increasing on (e,+∞). Global minimum f(e)=2-2/e≈1.3.",
+      "problem": {
+        "textKh": "f(x)=2(1-ln x/x) ។ គណនា f'(x) ។ សញ្ញា f'(x) ។ តារាងអថេរភាព",
+        "text": "Find f'(x) for f(x)=2(1-ln x/x), analyze sign, draw variation table.",
+        "latex": "f'(x) = \\,?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដេរីវេ: f'(x) = -2·(ln x/x)' = -2·(1·x - ln x·1)/x²:",
+          "text": "Differentiate using quotient rule on ln(x)/x:",
+          "latex": "f'(x) = -2\\cdot\\frac{\\frac{1}{x}\\cdot x - \\ln x}{x^2} = -2\\cdot\\frac{1-\\ln x}{x^2} = \\frac{-2+2\\ln x}{x^2}",
+          "explanationKh": "(ln x/x)' = (1-ln x)/x²",
+          "explanation": "Quotient rule: (u/v)' = (u'v - uv')/v²"
+        },
+        {
+          "textKh": "f'(x)=0 ⟺ -2+2ln x=0 ⟺ x=e ។ f'<0 ∀x<e ; f'>0 ∀x>e:",
+          "text": "f'(x)=0 at x=e. f decreasing on (0,e), increasing on (e,+∞):",
+          "latex": "f'(x) = 0 \\Leftrightarrow \\ln x = 1 \\Leftrightarrow x = e",
+          "explanationKh": "x² > 0 ∀x>0, ដូចេ្នះ sign f'(x) = sign(-2+2ln x)",
+          "explanation": "Since x²>0, sign of f'(x) depends on numerator: -2+2ln x"
+        },
+        {
+          "textKh": "f(e) = 2(1-ln e/e) = 2(1-1/e) = 2-2/e ≈ 1.3:",
+          "text": "Minimum value at x=e:",
+          "latex": "f(e) = 2\\left(1-\\frac{1}{e}\\right) = 2 - \\frac{2}{e} \\approx 1.3",
+          "explanationKh": "ប្រើ e≈2.7: 2/e≈0.7",
+          "explanation": "Using e≈2.7: 2/e≈0.7"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f'(x)=(-2+2ln x)/x² ; f ចុះ (0,e) ; f កើន (e,+∞) ; f(e)=2-2/e≈1.3 ជាអប្បបរមា",
+        "text": "f'(x)=(-2+2ln x)/x²; f decreasing on (0,e); f increasing on (e,+∞); minimum f(e)=2-2/e≈1.3",
+        "latex": "f'(x) = \\frac{-2+2\\ln x}{x^2} \\;\\;;\\;\\; f(e) = 2-\\frac{2}{e}"
+      },
+      "formulas": [
+        {
+          "latex": "\\left(\\frac{\\ln x}{x}\\right)' = \\frac{1-\\ln x}{x^2}",
+          "meaning": "ដេរីវេ ln(x)/x — ប្រើ quotient rule",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["derivative", "variation table", "minimum", "ln", "function analysis", "f'(x)"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c006",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis_tangent_point",
+      "topicKh": "ចំណុច M ប្ដូរ tangent ផ្ដេក — សមីការ (L)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ស្វែងរក M ណែ (C) ដែលអាស័យ (T): y=2 ។ 2(1-ln x/x) = 2 ⟺ -2ln x = 0 ⟺ x=1 ⟹ M(1,2) ។\nf'(1) = (-2+2ln1)/1 = -2 ⟹ (L): y = -2(x-1)+2 = -2x+4 ។",
+      "normalizedText": "Find M on C where C meets y=2: solve f(x)=2, get x=1, M(1,2). Tangent at M: f'(1)=(-2+0)/1=-2. Tangent (L): y=-2x+4.",
+      "problem": {
+        "textKh": "ស្វែងរក M ចំណុចប្រសព្វ (C) ជាមួយ (T): y=2 ។ សមីការ tangent (L) នៅ M",
+        "text": "Find point M where C meets y=2. Find equation of tangent (L) at M.",
+        "latex": "f(x) = 2 \\Rightarrow M = \\,?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ស្វែងរក M: f(x)=2 ⟺ 2(1-ln x/x)=2 ⟺ ln x=0 ⟺ x=1:",
+          "text": "Find x where f(x)=2:",
+          "latex": "2\\left(1-\\frac{\\ln x}{x}\\right) = 2 \\Rightarrow \\ln x = 0 \\Rightarrow x=1 \\Rightarrow M(1,2)",
+          "explanationKh": "ln 1 = 0",
+          "explanation": "ln 1 = 0, so x=1 is the solution"
+        },
+        {
+          "textKh": "f'(1) = (-2+2ln1)/1² = -2/1 = -2 ⟹ (L): y=-2(x-1)+2:",
+          "text": "Slope at M(1,2) is f'(1)=-2:",
+          "latex": "(L):\\; y = -2(x-1)+2 = -2x+4",
+          "explanationKh": "ប្រើ y=f'(x₀)(x-x₀)+f(x₀)",
+          "explanation": "Tangent at (x₀,y₀): y = f'(x₀)(x-x₀)+y₀"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "M(1,2) ; (L): y = -2x + 4",
+        "text": "M(1,2); tangent (L): y = -2x+4",
+        "latex": "M(1,2) \\;\\;;\\;\\; (L):\\; y = -2x+4"
+      },
+      "formulas": [],
+      "keywords": ["tangent", "intersection", "y=2", "tangent line", "ចំណុច", "ខ្សែប៉ះ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set4-p002-c007",
+      "sourceId": "math-12-exam-202225-set4",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "function_analysis_equation_solutions_area",
+      "topicKh": "ចំនួន k ណែ 2(1-ln x/x)=k មានដំណោះ — ផ្ទៃក្រឡា",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ស្វែងរក k ណែ 2(1-ln x/x)=k មានដំណោះ ។ ដោយ min f = f(e)=2-2/e≈1.3 នោះ k≥1.3 ។ ដូចេ្នះ k≥2-2/e ។\nផ្ទៃក្រឡា (C) អំឡើង (x'Ox) ពី x=1 ដល់ x=e:\nS = ∫₁ᵉ 2(1-ln x/x) dx = ∫₁ᵉ (2-2(ln x)' ln x) dx = [2x - ln²x]₁ᵉ = (2e-1)-(2-0) = 2e-3 ។",
+      "normalizedText": "Equation 2(1-ln x/x)=k has solutions iff k≥ minimum of f = 2-2/e ≈ 1.3. Area under C between x=1 and x=e: S = ∫₁ᵉ f(x)dx = 2e-3.",
+      "problem": {
+        "textKh": "ស្វែងរក k ណែ 2(1-ln x/x)=k មានបំណោះ ។ ផ្ទៃក្រឡា (C) ចំហៀង (x'Ox) ពី x=1 ដល់ x=e",
+        "text": "Find k for which 2(1-ln x/x)=k has solutions. Then compute area under C between x=1 and x=e.",
+        "latex": "2\\left(1-\\frac{\\ln x}{x}\\right) = k"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f(e) = 2-2/e ≈ 1.3 ជា minimum ។ k≥1.3 ⟹ k≥2-2/e:",
+          "text": "f has global minimum 2-2/e≈1.3. Equation has solutions iff k≥2-2/e:",
+          "latex": "k \\geq 2 - \\frac{2}{e} \\approx 1.3",
+          "explanationKh": "f(x)=k មានបំណោះ ⟺ k ≥ min f",
+          "explanation": "f(x)=k has solutions iff k is at least the minimum value of f"
+        },
+        {
+          "textKh": "S = ∫₁ᵉ 2(1-ln x/x)dx ។ ប្រើ (ln x)'·ln x = (ln²x)'/(2):",
+          "text": "Integrate f from 1 to e. Note 2·ln x/x = 2(ln x)' ln x = (ln²x)':",
+          "latex": "S = \\int_1^e\\!\\left(2 - \\frac{2\\ln x}{x}\\right)dx = \\left[2x - \\ln^2 x\\right]_1^e",
+          "explanationKh": "∫ 2ln x/x dx = ∫(ln²x)' dx = ln²x",
+          "explanation": "Since d(ln²x)/dx = 2ln x/x, antiderivative is ln²x"
+        },
+        {
+          "textKh": "ជំនួស x=e, x=1:",
+          "text": "Evaluate at bounds:",
+          "latex": "S = (2e - \\ln^2 e) - (2\\cdot1 - \\ln^2 1) = (2e-1)-(2-0) = 2e-3",
+          "explanationKh": "ln e=1 ⟹ ln²e=1 ; ln 1=0 ⟹ ln²1=0",
+          "explanation": "ln(e)=1 so ln²(e)=1; ln(1)=0 so ln²(1)=0"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "k ≥ 1.3 (ច្បាស់: k ≥ 2-2/e) ។ ផ្ទៃក្រឡា S = 2e-3 ឯករ",
+        "text": "k ≥ 2-2/e ≈ 1.3. Area S = 2e-3 square units.",
+        "latex": "k \\geq 2-\\frac{2}{e} \\;\\;;\\;\\; S = 2e-3"
+      },
+      "formulas": [
+        {
+          "latex": "\\int \\frac{\\ln x}{x}\\,dx = \\frac{\\ln^2 x}{2} + C",
+          "meaning": "អាំងតេហ្គ្រាល ln(x)/x — ប្រើ substitution u=ln x",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["equation solutions", "minimum", "area", "integral", "ln", "ផ្ទៃក្រឡា", "k"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

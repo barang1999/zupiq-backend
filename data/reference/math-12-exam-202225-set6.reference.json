@@ -1,0 +1,919 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-202225-set6",
+    "title": "Grade 12 Math Final Exam 2022-2025 Set 6 (Advanced Science Stream) with Full Solutions",
+    "titleKh": "វិញ្ញាសាចំខាន ភណិតវិទ្យា ទិញ្ញាសាតិ ៦ ថ្នាក់វិញ្ញាសាសម្រស់ ឆ្នាំ ២០២២-២០២៥",
+    "author": "អប់រំអ៊ីយ វិទ្យ ពុំ",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "exam",
+    "topics": [
+      "complex_numbers",
+      "limits",
+      "combinatorics",
+      "differential_equations",
+      "partial_fractions",
+      "integration",
+      "function_analysis",
+      "vectors_3d",
+      "analytic_geometry_3d"
+    ],
+    "metadata": {
+      "pageCount": 9,
+      "originalFile": "1788919918064-a431c7b2-ab3a-4c12-a883-5c99e8526b7d_44.jpg to _52.jpg",
+      "rawExtractionFile": "native image read"
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["worked_example", "formula_rule", "problem_solution"],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": ["យើងមានៈ", "នាំអោយ", "តាមរូបមន្ត", "តាមទំនាក់ទំនង", "ដូចនេះ", "ចម្លើយ"],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["concept_explanation"],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": ["មានន័យថា", "លុះត្រាតែ", "សម្គាល់ៈ", "ឧទាហរណ៍", "ដូចនេះ"],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c001",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers_roots_of_quadratic",
+      "topicKh": "ចំនួនកុំផ្លិច — ស្វែងរក a, b ពីឫស x₁=1+i√3",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "x₁ = 1+i√3 ជាឫស x²+ax+b=0 ។ ស្វែងរក a, b ។\nx₁²+ax₁+b=0 ⟺ (1+i√3)²+a(1+i√3)+b=0\n⟺ (1+2i√3-3)+(a+ai√3)+b=0\n⟺ (-2+a+b)+(2√3+a√3)i=0\n⟹ 2√3+a√3=0 ⟹ a=-2 ; -2+a+b=0 ⟹ b=4 ។",
+      "normalizedText": "Find a, b such that x₁=1+i√3 is a root of x²+ax+b=0. Substitute x₁, expand, separate real/imaginary parts, solve system: a=-2, b=4.",
+      "problem": {
+        "textKh": "x₁=1+i√3 ជាឫស x²+ax+b=0 ; a,b ∈ ℝ ។ ស្វែងរក a, b",
+        "text": "x₁=1+i√3 is a root of x²+ax+b=0 with real a,b. Find a and b.",
+        "latex": "x_1 = 1+i\\sqrt{3} \\text{ is root of } x^2+ax+b=0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ជំនួស x₁ ទៅក្នុងសមីការ: x₁²+ax₁+b=0:",
+          "text": "Substitute x₁ into the equation:",
+          "latex": "(1+i\\sqrt{3})^2 + a(1+i\\sqrt{3}) + b = 0",
+          "explanationKh": "(1+i√3)² = 1+2i√3-3 = -2+2i√3",
+          "explanation": "(1+i√3)² = -2+2i√3"
+        },
+        {
+          "textKh": "បង្រួម ហើយបំបែកផ្នែកពិត/ស្មុគស្មាញ:",
+          "text": "Expand and separate real and imaginary parts:",
+          "latex": "(-2+a+b) + (2\\sqrt{3}+a\\sqrt{3})i = 0",
+          "explanationKh": "ភាគពិត: -2+a+b=0 ; ភាគស្មុគស្មាញ: (2+a)√3=0",
+          "explanation": "Real part: -2+a+b=0; imaginary part: (2+a)√3=0"
+        },
+        {
+          "textKh": "ដោះស្រាយ: a=-2 ⟹ b=4",
+          "text": "Solve: from imaginary part a=-2, then real part gives b=4",
+          "latex": "a = -2 \\;\\;;\\;\\; b = 4",
+          "explanationKh": "2+a=0 ⟹ a=-2 ; -2+(-2)+b=0 ⟹ b=4",
+          "explanation": "From 2√3+a√3=0: a=-2. Then -2-2+b=0: b=4"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ a=-2, b=4 ។ សមីការ x²-2x+4=0",
+        "text": "a=-2, b=4. Equation is x²-2x+4=0.",
+        "latex": "a=-2,\\quad b=4"
+      },
+      "formulas": [],
+      "keywords": ["complex root", "quadratic", "coefficients", "ឫស", "ចំនួនកុំផ្លិច"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c002",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers_quotient_trig_form",
+      "topicKh": "ចំនួនកុំផ្លិច — Z=(x₁/x₂)² ទ្រង់ទ្រាយត្រីកោណ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "x²-2x+4=0 ⟹ x₁=1+i√3, x₂=1-i√3 ។\nx₁=2(cos π/3 + i sin π/3) ; x₂=2(cos(-π/3)+i sin(-π/3)) ។\nZ=(x₁/x₂)² = [(cos(π/3-(-π/3))+i sin(π/3-(-π/3)))]² = (cos(2π/3)+i sin(2π/3))²\n= cos(4π/3)+i sin(4π/3) ។",
+      "normalizedText": "From x²-2x+4=0 with roots x₁=1+i√3=2(cos π/3+i sin π/3) and x₂=1-i√3=2(cos(-π/3)+i sin(-π/3)). Compute Z=(x₁/x₂)² using trig division then De Moivre. Result: Z=cos(4π/3)+i sin(4π/3).",
+      "problem": {
+        "textKh": "ស្វែង x₂ ឫសទីពីរ ។ គណនា Z=(x₁/x₂)² ជ្រុបទ្រង់ត្រីកោណ",
+        "text": "Find x₂ (other root of x²-2x+4=0) and compute Z=(x₁/x₂)² in trig form.",
+        "latex": "Z = \\left(\\frac{x_1}{x_2}\\right)^2"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "x₂=conjugate(x₁)=1-i√3 ។ ទ្រង់ទ្រាយត្រីកោណ:",
+          "text": "x₂=1-i√3 (conjugate). Trig forms:",
+          "latex": "x_1=2\\!\\left(\\cos\\frac{\\pi}{3}+i\\sin\\frac{\\pi}{3}\\right),\\quad x_2=2\\!\\left(\\cos\\frac{-\\pi}{3}+i\\sin\\frac{-\\pi}{3}\\right)",
+          "explanationKh": "|x₁|=|x₂|=2 ; arg(x₁)=π/3 ; arg(x₂)=-π/3",
+          "explanation": "Both have modulus 2; arguments are ±π/3"
+        },
+        {
+          "textKh": "ចែក x₁/x₂ — ចែក modulus, ដក argument:",
+          "text": "Divide x₁/x₂ (moduli cancel, subtract arguments):",
+          "latex": "\\frac{x_1}{x_2} = \\cos\\!\\left(\\frac{\\pi}{3}-\\frac{-\\pi}{3}\\right)+i\\sin\\!\\left(\\frac{\\pi}{3}-\\frac{-\\pi}{3}\\right) = \\cos\\frac{2\\pi}{3}+i\\sin\\frac{2\\pi}{3}",
+          "explanationKh": "modulus: 2/2=1 ; argument: π/3-(-π/3)=2π/3",
+          "explanation": "Modulus ratio is 1, argument difference is 2π/3"
+        },
+        {
+          "textKh": "De Moivre ដើម្បីការ²:",
+          "text": "Square using De Moivre:",
+          "latex": "Z = \\left(\\cos\\frac{2\\pi}{3}+i\\sin\\frac{2\\pi}{3}\\right)^2 = \\cos\\frac{4\\pi}{3}+i\\sin\\frac{4\\pi}{3}",
+          "explanationKh": "(cosθ+i sinθ)² = cos2θ+i sin2θ",
+          "explanation": "Double the angle"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "x₂=1-i√3 ; Z=cos(4π/3)+i sin(4π/3)",
+        "text": "x₂=1-i√3; Z=cos(4π/3)+i sin(4π/3)",
+        "latex": "x_2=1-i\\sqrt{3}\\;\\;;\\;\\; Z = \\cos\\frac{4\\pi}{3}+i\\sin\\frac{4\\pi}{3}"
+      },
+      "formulas": [
+        {
+          "latex": "\\left(\\frac{r_1(\\cos\\theta_1+i\\sin\\theta_1)}{r_2(\\cos\\theta_2+i\\sin\\theta_2)}\\right)^n = \\left(\\frac{r_1}{r_2}\\right)^n\\!\\bigl(\\cos n(\\theta_1-\\theta_2)+i\\sin n(\\theta_1-\\theta_2)\\bigr)",
+          "meaning": "ការចែក + De Moivre ផ្ដលំនៅ",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["De Moivre", "complex quotient", "trig form", "conjugate", "ទ្រង់ទ្រាយត្រីកោណ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c003",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "limits_indeterminate_0_over_0",
+      "topicKh": "ដែនកំណត់ 0/0 — ចែករ xy ប្រើ lim sin x/x = 1",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា lim_{x→0} (sin x + eˣ - 1)/(x² + x) ។ ទម្រង់ 0/0 ។\nចែក x: = lim_{x→0} [sin x/x + (eˣ-1)/x] / [(x²+x)/x] = lim (sin x/x + (eˣ-1)/x)/(x+1) = (1+1)/(0+1) = 2 ។",
+      "normalizedText": "Limit of (sin x + e^x - 1)/(x²+x) as x→0 is 0/0 form. Divide numerator and denominator by x. Use known limits sin(x)/x→1 and (e^x-1)/x→1 as x→0. Result: 2.",
+      "problem": {
+        "textKh": "គណនា lim_{x→0} (sin x + eˣ - 1)/(x² + x)",
+        "text": "Compute lim_{x→0} (sin x + e^x - 1)/(x²+x)",
+        "latex": "\\lim_{x\\to 0}\\frac{\\sin x + e^x - 1}{x^2+x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ទម្រង់ 0/0 ។ ចែក x ទាំងអ្នកចុងនិងអ្នករាប:",
+          "text": "0/0 form. Divide numerator and denominator by x:",
+          "latex": "= \\lim_{x\\to 0}\\frac{\\dfrac{\\sin x}{x} + \\dfrac{e^x-1}{x}}{\\dfrac{x^2+x}{x}} = \\lim_{x\\to 0}\\frac{\\dfrac{\\sin x}{x}+\\dfrac{e^x-1}{x}}{x+1}",
+          "explanationKh": "x²+x = x(x+1)",
+          "explanation": "Factor x out of denominator: x²+x = x(x+1)"
+        },
+        {
+          "textKh": "ប្រើ lim sin x/x = 1 ; lim (eˣ-1)/x = 1:",
+          "text": "Apply standard limits:",
+          "latex": "= \\frac{1+1}{0+1} = 2",
+          "explanationKh": "sin x/x → 1 ; (eˣ-1)/x → 1 ; x+1 → 1",
+          "explanation": "Both ratios approach 1, denominator approaches 1"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ lim_{x→0} (sin x + eˣ - 1)/(x²+x) = 2",
+        "text": "The limit equals 2",
+        "latex": "\\lim_{x\\to 0}\\frac{\\sin x+e^x-1}{x^2+x} = 2"
+      },
+      "formulas": [
+        {"latex": "\\lim_{x\\to 0}\\frac{\\sin x}{x}=1", "meaning": "ដែនកំណត់ sin(x)/x មូលដ្ឋាន", "confidence": 1.0},
+        {"latex": "\\lim_{x\\to 0}\\frac{e^x-1}{x}=1", "meaning": "ដែនកំណត់ (eˣ-1)/x មូលដ្ឋាន", "confidence": 1.0}
+      ],
+      "keywords": ["limit", "0/0", "sin x/x", "e^x-1/x", "standard limits", "ដែនកំណត់"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c004",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "limits_infinity",
+      "topicKh": "ដែនកំណត់ x→+∞ — ln x/x → 0",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនា lim_{x→+∞} (ln x + 2)/(x + 1) ។\n= lim_{x→+∞} (ln x/x)·(1+2/ln x)/(1+1/x) = 0·1/1 = 0 ។",
+      "normalizedText": "Limit of (ln x+2)/(x+1) as x→+∞. Factor out 1/x and use ln(x)/x→0. Result: 0.",
+      "problem": {
+        "textKh": "គណនា lim_{x→+∞} (ln x + 2)/(x + 1)",
+        "text": "Compute lim_{x→+∞} (ln x+2)/(x+1)",
+        "latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x+2}{x+1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចែក x :",
+          "text": "Divide numerator and denominator by x:",
+          "latex": "= \\lim_{x\\to+\\infty}\\frac{\\ln x}{x}\\cdot\\frac{1+\\frac{2}{\\ln x}}{1+\\frac{1}{x}} = 0 \\cdot \\frac{1}{1} = 0",
+          "explanationKh": "ln x/x → 0 ពេល x→+∞",
+          "explanation": "ln(x)/x → 0 as x→+∞ (exponential grows faster than ln)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ lim_{x→+∞} (ln x+2)/(x+1) = 0",
+        "text": "The limit is 0",
+        "latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x+2}{x+1} = 0"
+      },
+      "formulas": [
+        {"latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x}{x}=0", "meaning": "ln grows slower than x", "confidence": 1.0}
+      ],
+      "keywords": ["limit", "infinity", "ln x", "ដែនកំណត់", "logarithm"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c005",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "combinatorics_counting_digits",
+      "topicKh": "ការរាប់ — ចំនួន ៤ ខ្ទង់ (ទាំងអស់, ខ្ទង់ផ្សេង, ខ្ទង់ដូចគ្នា)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ប្រើលេខ 0-9 ដើម្បីបង្កើតចំនួន 4 ខ្ទង់ ។\n(ក) ចំនួន 4 ខ្ទង់ទាំងអស់: ខ្ទង់ទីមួយ≠0 → 9 ។ ៣ ខ្ទង់ក្រោម → 10 ។ សរុប 9×10×10×10=9000 ។\n(ខ) ចំនួន 4 ខ្ទង់ ខ្ទង់ផ្សេងៗ: 9×9×8×7=4536 ។\n(គ) ចំនួន 4 ខ្ទង់ ខ្ទង់ដូចគ្នា: {1111,2222,...,9999} → 9 ។",
+      "normalizedText": "Count 4-digit numbers from {0-9}. (a) Total: first digit 9 choices (not 0), rest 10 each → 9000. (b) All distinct digits: 9×9×8×7 = 4536. (c) All four digits same: {1111,...,9999} → 9.",
+      "problem": {
+        "textKh": "ប្រើលេខ 0-9 បង្កើតចំនួន 4 ខ្ទង់ ។ (ក) ចំនួនទាំងអស់ (ខ) ខ្ទង់ផ្សេងៗ (គ) ខ្ទង់ដូចគ្នា",
+        "text": "Using digits 0-9: (a) total 4-digit numbers, (b) all digits distinct, (c) all digits identical.",
+        "latex": "\\text{4-digit numbers from } \\{0,1,\\ldots,9\\}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "(ក) ខ្ទង់ទីមួយ: 9 ជ្រើស (1-9) ; ខ្ទង់ ២,៣,៤: 10 ជ្រើស:",
+          "text": "(a) First digit: 9 choices (1-9); remaining 3: 10 each:",
+          "latex": "9\\times10\\times10\\times10 = 9000",
+          "explanationKh": "ខ្ទង់ទីមួយ ≠ 0",
+          "explanation": "First digit cannot be 0"
+        },
+        {
+          "textKh": "(ខ) ខ្ទង់ផ្សេងៗ: ខ្ទង់ ១: 9; ខ្ទង់ ២: 9 (លៃ 0 ក្រៅ); ខ្ទង់ ៣: 8; ខ្ទង់ ៤: 7:",
+          "text": "(b) All distinct: first digit 9, then 9 (can now use 0), 8, 7:",
+          "latex": "9\\times9\\times8\\times7 = 4536",
+          "explanationKh": "ខ្ទង់ ២ = 9 (10-1 ដកខ្ទង់ ១) ; ខ្ទង់ ៣ = 8 ; ខ្ទង់ ៤ = 7",
+          "explanation": "After first digit (9 choices), 2nd has 9 remaining, 3rd has 8, 4th has 7"
+        },
+        {
+          "textKh": "(គ) ខ្ទង់ ៤ ដូចគ្នា: {1111, 2222, ..., 9999}:",
+          "text": "(c) All four digits identical: only 1-9 (not 0 since 0000 is not 4-digit):",
+          "latex": "\\{1111,2222,3333,4444,5555,6666,7777,8888,9999\\} \\Rightarrow 9 \\text{ numbers}",
+          "explanationKh": "0000 មិនជា ចំនួន 4 ខ្ទង់",
+          "explanation": "0000 is not a valid 4-digit number"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "(ក) 9000 (ខ) 4536 (គ) 9",
+        "text": "(a) 9000 total, (b) 4536 with distinct digits, (c) 9 with all same digits",
+        "latex": "9000 \\;\\;;\\;\\; 4536 \\;\\;;\\;\\; 9"
+      },
+      "formulas": [
+        {
+          "latex": "n(S) = d_1 \\times d_2 \\times d_3 \\times d_4",
+          "meaning": "ច្បាប់ គុណ — product rule for counting",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["combinatorics", "counting", "4-digit", "distinct digits", "ការរាប់", "ចំនួន"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c006",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "differential_equations_complex_roots",
+      "topicKh": "ODE ឫសស្មុគស្មាញ — y''-2y'+5y=0 ជាមួយ y(0)=-1, y'(0)=1",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "y''-2y'+5y=0 ; y(0)=-1, y'(0)=1 ។\nសមីការមូលដ្ឋាន: r²-2r+5=0 ។ Δ=-16 ⟹ r=1±2i ។\nចម្លើយទូទៅ: y=eˣ(A cos2x+B sin2x) ។\ny(0)=-1: A=-1 ។ y'(0)=1: A+2B=1 ⟹ -1+2B=1 ⟹ B=1 ។\nចម្លើយ: y=eˣ(-cos2x+sin2x) ។",
+      "normalizedText": "Solve y''-2y'+5y=0 with y(0)=-1, y'(0)=1. Characteristic equation r²-2r+5=0 has complex roots 1±2i. General solution: y=e^x(A cos2x+B sin2x). Apply ICs: A=-1, B=1. Particular solution: y=e^x(-cos2x+sin2x).",
+      "problem": {
+        "textKh": "ដោះស្រាយ y''-2y'+5y=0 ជាមួយ y(0)=-1, y'(0)=1",
+        "text": "Solve y''-2y'+5y=0 with initial conditions y(0)=-1, y'(0)=1",
+        "latex": "y''-2y'+5y=0,\\quad y(0)=-1,\\; y'(0)=1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "សមីការមូលដ្ឋាន r²-2r+5=0:",
+          "text": "Characteristic equation:",
+          "latex": "r^2-2r+5=0 \\Rightarrow \\Delta = 4-20 = -16 \\Rightarrow r = \\frac{2\\pm 4i}{2} = 1\\pm 2i",
+          "explanationKh": "ឫសស្មុគស្មាញ α±βi ; α=1, β=2",
+          "explanation": "Complex roots α±βi with α=1, β=2"
+        },
+        {
+          "textKh": "ចម្លើយទូទៅ y=eˣ(A cos2x+B sin2x) ។ y(0)=-1: A=-1:",
+          "text": "General solution, apply y(0)=-1:",
+          "latex": "y = e^x(A\\cos2x+B\\sin2x) \\Rightarrow y(0)=A=-1",
+          "explanationKh": "eˣ ⟹ e^(α x) ; 2x ⟹ β=2",
+          "explanation": "Standard form for complex roots α±βi"
+        },
+        {
+          "textKh": "y'(0)=1: y'(x)=eˣ(A cos2x+B sin2x)+eˣ(-2A sin2x+2B cos2x) ⟹ y'(0)=A+2B=1:",
+          "text": "Apply y'(0)=1:",
+          "latex": "y'(0) = A+2B = 1 \\Rightarrow -1+2B=1 \\Rightarrow B=1",
+          "explanationKh": "ដេរីវេ y ហើយជំនួស x=0",
+          "explanation": "Differentiate and evaluate at x=0"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: y = eˣ(-cos2x+sin2x)",
+        "text": "Particular solution: y = e^x(-cos 2x + sin 2x)",
+        "latex": "y = e^x(-\\cos2x+\\sin2x)"
+      },
+      "formulas": [
+        {
+          "latex": "\\text{If } r=\\alpha\\pm\\beta i: \\quad y=e^{\\alpha x}(A\\cos\\beta x+B\\sin\\beta x)",
+          "meaning": "ចម្លើយទូទៅ ODE ជាមួយឫសស្មុគស្មាញ",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ODE", "complex roots", "initial conditions", "differential equation", "ឫសស្មុគស្មាញ", "y''"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c007",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "partial_fractions_rational",
+      "topicKh": "ការបំបែកប្រភាគ (2x+1)/(x²(x+1))",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ស្វែងរក a,b,c: (2x+1)/(x²(x+1)) = a/x + b/x² + c/(x+1) ។\n= [ax(x+1)+b(x+1)+cx²]/x²(x+1) = [(a+c)x²+(a+b)x+b]/x²(x+1) ។\na+c=0 (1), a+b=2 (2), b=1 ⟹ b=1, a=1, c=-1 ។",
+      "normalizedText": "Partial fractions (2x+1)/(x²(x+1)) = a/x + b/x² + c/(x+1). Match numerator coefficients: b=1, a=1, c=-1.",
+      "problem": {
+        "textKh": "ស្វែងរក a,b,c: (2x+1)/(x²(x+1)) = a/x + b/x² + c/(x+1)",
+        "text": "Find a, b, c for the partial fraction decomposition of (2x+1)/(x²(x+1)).",
+        "latex": "\\frac{2x+1}{x^2(x+1)} = \\frac{a}{x}+\\frac{b}{x^2}+\\frac{c}{x+1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ធ្វើអ្នករាបដូចគ្នា ហើយប្រៀបធៀបស x², x, x⁰:",
+          "text": "Clear denominator and match coefficients:",
+          "latex": "2x+1 = ax(x+1)+b(x+1)+cx^2 \\Rightarrow \\begin{cases}a+c=0\\\\a+b=2\\\\b=1\\end{cases}",
+          "explanationKh": "ប្រៀបធៀប x², x, constant",
+          "explanation": "Match x², x, constant term coefficients"
+        },
+        {
+          "textKh": "ដោះស្រាយ: b=1 ⟹ a=1 ⟹ c=-1",
+          "text": "Solve: b=1, then a=2-b=1, then c=-a=-1",
+          "latex": "a=1,\\quad b=1,\\quad c=-1",
+          "explanationKh": "ពី b=1: a=2-1=1 ; ពី a+c=0: c=-1",
+          "explanation": "Sequential substitution"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ a=1, b=1, c=-1 ។ f(x)=1/x+1/x²-1/(x+1)",
+        "text": "a=1, b=1, c=-1. So f(x)=1/x+1/x²-1/(x+1).",
+        "latex": "f(x) = \\frac{1}{x}+\\frac{1}{x^2}-\\frac{1}{x+1}"
+      },
+      "formulas": [],
+      "keywords": ["partial fractions", "rational function", "coefficients", "ការបំបែក"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c008",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "integration_definite",
+      "topicKh": "អាំងតេហ្គ្រាលកំណត់ ∫₁² (2x+1)/(x²(x+1)) dx",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "I = ∫₁² (2x+1)/(x²(x+1))dx = ∫₁² (1/x+1/x²-1/(x+1))dx ។\n= [ln|x| - 1/x - ln|x+1|]₁²\n= (ln2 - 1/2 - ln3) - (ln1 - 1 - ln2)\n= 2ln2 - ln3 + 1/2 = ln(4/3) + 1/2 ។",
+      "normalizedText": "Compute I=∫₁² (1/x+1/x²-1/(x+1))dx. Antiderivatives: ln|x|, -1/x, -ln|x+1|. Evaluate: I = ln(4/3)+1/2.",
+      "problem": {
+        "textKh": "គណនា I = ∫₁² (2x+1)/(x²(x+1))dx",
+        "text": "Compute I = ∫₁² (2x+1)/(x²(x+1)) dx",
+        "latex": "I = \\int_1^2\\frac{2x+1}{x^2(x+1)}\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើការបំបែក f(x)=1/x+1/x²-1/(x+1):",
+          "text": "Use partial fraction form:",
+          "latex": "I = \\int_1^2\\!\\left(\\frac{1}{x}+\\frac{1}{x^2}-\\frac{1}{x+1}\\right)dx = \\left[\\ln|x|-\\frac{1}{x}-\\ln|x+1|\\right]_1^2",
+          "explanationKh": "∫1/x²dx=-1/x",
+          "explanation": "∫x⁻² dx = -x⁻¹ = -1/x"
+        },
+        {
+          "textKh": "ជំនួស x=2, x=1 ហើយបង្រួម:",
+          "text": "Evaluate at bounds and simplify:",
+          "latex": "= \\left(\\ln2-\\tfrac{1}{2}-\\ln3\\right)-\\left(0-1-\\ln2\\right) = 2\\ln2-\\ln3+\\tfrac{1}{2} = \\ln\\tfrac{4}{3}+\\tfrac{1}{2}",
+          "explanationKh": "2ln2-ln3=ln(4/3)",
+          "explanation": "2ln2-ln3 = ln4-ln3 = ln(4/3)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូចេ្នះ I = ln(4/3) + 1/2",
+        "text": "I = ln(4/3) + 1/2",
+        "latex": "I = \\ln\\frac{4}{3}+\\frac{1}{2}"
+      },
+      "formulas": [
+        {"latex": "\\int\\frac{1}{x^2}\\,dx = -\\frac{1}{x}+C", "meaning": "អាំងតេហ្គ្រាល 1/x²", "confidence": 1.0}
+      ],
+      "keywords": ["integration", "definite integral", "partial fractions", "ln", "អាំងតេហ្គ្រាល"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c009",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "function_analysis_limits_asymptotes",
+      "topicKh": "ការសិក្សា f(x)=1-ln x/x³ — ដែនកំណត់, អសមតី",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = 1 - ln x/x³, x>0 ។\nlim_{x→+∞} f(x) = 1-0 = 1 ⟹ y=1 ជាអសមតីផ្ដេក ។\nlim_{x→0+} f(x) = 1-(-∞)/0 = 1-(-∞) = +∞ ⟹ x=0 ជាអសមតីឈរ ។",
+      "normalizedText": "f(x)=1-ln(x)/x³ for x>0. As x→+∞: ln(x)/x³→0 so f→1 (horizontal asymptote y=1). As x→0+: ln(x)→-∞ and x³→0 so ln(x)/x³→-∞ giving f→+∞ (vertical asymptote x=0).",
+      "problem": {
+        "textKh": "f(x)=1-ln x/x³, x>0 ។ ដែនកំណត់ x→+∞ និង x→0+ ។ អសមតី",
+        "text": "f(x)=1-ln(x)/x³, x>0. Find limits at +∞ and 0+. Identify asymptotes.",
+        "latex": "f(x)=1-\\frac{\\ln x}{x^3},\\quad x>0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "lim_{x→+∞}: ln x/x³ → 0 (ln ធំតូចជាង x³):",
+          "text": "As x→+∞, ln(x)/x³→0:",
+          "latex": "\\lim_{x\\to+\\infty}f(x) = 1-0 = 1 \\Rightarrow \\text{horizontal asymptote } y=1",
+          "explanationKh": "ln x ធំតូចជាង polynomial",
+          "explanation": "ln(x) grows slower than any power of x"
+        },
+        {
+          "textKh": "lim_{x→0+}: ln x → -∞, x³→0+ ⟹ ln x/x³ → -∞:",
+          "text": "As x→0+, ln x→-∞ and x³→0+, so ln(x)/x³→-∞:",
+          "latex": "\\lim_{x\\to0^+}f(x) = 1-(-\\infty) = +\\infty \\Rightarrow \\text{vertical asymptote } x=0",
+          "explanationKh": "1 - (-∞) = +∞",
+          "explanation": "Subtracting -∞ gives +∞"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "y=1 ជាអសមតីផ្ដេក ; x=0 ជាអសមតីឈរ",
+        "text": "Horizontal asymptote y=1; vertical asymptote x=0",
+        "latex": "\\text{y=1 (horizontal)},\\quad x=0 \\text{ (vertical)}"
+      },
+      "formulas": [
+        {"latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x}{x^n}=0,\\; n>0", "meaning": "ln grows slower than any power", "confidence": 1.0}
+      ],
+      "keywords": ["asymptote", "limit", "ln x", "function analysis", "ដែនកំណត់", "អសមតី"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p001-c010",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "function_analysis_derivative_minimum",
+      "topicKh": "f'(x) — អប្បបរមា នៅ x=∛e",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = 1-ln x/x³ ។\nf'(x) = -(ln x/x³)' = -[(1/x)·x³ - 3x²·ln x]/x⁶ = -(x²-3x²ln x)/x⁶ = (-1+3ln x)/x⁴ ។\nf'(x)=0 ⟺ 3ln x=1 ⟺ x=e^(1/3)=∛e ។\nf ចុះ (0,∛e) ; f កើន (∛e,+∞) ⟹ f(∛e) = 1-1/(3e) ≈ 0.88 ជាអប្បបរមា ។",
+      "normalizedText": "Derivative f'(x)=(-1+3ln x)/x⁴ using quotient rule on ln(x)/x³. f'=0 at x=∛e. Decreasing on (0,∛e), increasing on (∛e,+∞). Global minimum f(∛e)=1-1/(3e)≈0.88.",
+      "problem": {
+        "textKh": "f(x)=1-ln x/x³ ។ គណនា f'(x) ។ បញ្ជាក់ f មានអប្បបរមា x=∛e",
+        "text": "Find f'(x) for f(x)=1-ln(x)/x³ and show f has minimum at x=∛e.",
+        "latex": "f'(x) = \\,?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើ quotient rule លើ ln x/x³:",
+          "text": "Differentiate using quotient rule on ln(x)/x³:",
+          "latex": "f'(x) = -\\left(\\frac{\\ln x}{x^3}\\right)' = -\\frac{\\frac{1}{x}\\cdot x^3 - 3x^2\\ln x}{x^6} = \\frac{-1+3\\ln x}{x^4}",
+          "explanationKh": "(u/v)' = (u'v-uv')/v² ; u=ln x, v=x³",
+          "explanation": "Quotient rule with u=ln x, v=x³"
+        },
+        {
+          "textKh": "f'(x)=0 ⟺ -1+3ln x=0 ⟺ ln x=1/3 ⟺ x=∛e:",
+          "text": "f'(x)=0 when ln x=1/3, i.e. x=e^(1/3)=∛e:",
+          "latex": "f'(x)=0 \\Leftrightarrow \\ln x = \\frac{1}{3} \\Leftrightarrow x = e^{1/3} = \\sqrt[3]{e}",
+          "explanationKh": "x⁴>0 ∀x>0, ដូចេ្នះ sign f'(x) = sign(-1+3ln x)",
+          "explanation": "Since x⁴>0, sign of f' depends on -1+3ln x"
+        },
+        {
+          "textKh": "f(∛e) = 1 - (ln ∛e)/(∛e)³ = 1 - (1/3)/e = 1 - 1/(3e) ≈ 0.88:",
+          "text": "Minimum value:",
+          "latex": "f\\!\\left(\\sqrt[3]{e}\\right) = 1-\\frac{\\ln\\sqrt[3]{e}}{(\\sqrt[3]{e})^3} = 1-\\frac{1/3}{e} = 1-\\frac{1}{3e} \\approx 0.88",
+          "explanationKh": "ln(e^(1/3))=1/3 ; (e^(1/3))³=e",
+          "explanation": "ln(∛e)=1/3 and (∛e)³=e"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f'(x)=(-1+3ln x)/x⁴ ; f ចុះ (0,∛e) ; f(∛e)=1-1/(3e)≈0.88 ជាអប្បបរមា",
+        "text": "f'(x)=(-1+3ln x)/x⁴; f decreasing on (0,∛e), increasing on (∛e,+∞); minimum f(∛e)=1-1/(3e)≈0.88",
+        "latex": "f'(x)=\\frac{-1+3\\ln x}{x^4}\\;\\;;\\;\\; f\\!\\left(\\sqrt[3]{e}\\right)=1-\\frac{1}{3e}"
+      },
+      "formulas": [
+        {
+          "latex": "\\left(\\frac{\\ln x}{x^n}\\right)' = \\frac{1-n\\ln x}{x^{n+1}}",
+          "meaning": "ដេរីវេ ln(x)/xⁿ — quotient rule",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["derivative", "minimum", "variation table", "ln x", "function analysis", "∛e"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p002-c001",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 7,
+      "topic": "function_analysis_tangent_k_values",
+      "topicKh": "ចំណុច M(1,1), tangent T: y=-x+2 ; k < 0.88",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x)=1-ln x/x³, C ។\n(ក) C∩{y=1}: 1-ln x/x³=1 ⟺ ln x=0 ⟺ x=1 ⟹ M(1,1) ។\nf'(1)=(-1+3·0)/1=-1 ⟹ (T): y=-1(x-1)+1=-x+2 ។\n(ខ) 1-ln x/x³>k ⟺ f(x)>k ។ ជំហ f(∛e)≈0.88 ⟹ k<0.88 ។",
+      "normalizedText": "C meets y=1 when ln x=0, x=1 → M(1,1). Tangent at M: f'(1)=-1, so T: y=-x+2. For f(x)>k to have solutions above C entirely, need k less than minimum of f: k<0.88.",
+      "problem": {
+        "textKh": "ស្វែងរក M ចំណុច C ជ្រាប y=1 ។ Tangent T ។ ស្វែងរក k ណែ 1-ln x/x³>k",
+        "text": "Find M where C meets y=1; tangent T at M. Find k for which 1-ln(x)/x³>k has solutions for all x>0.",
+        "latex": "f(x) = 1 \\Rightarrow M=?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f(x)=1 ⟺ ln x=0 ⟺ x=1 ⟹ M(1,1):",
+          "text": "Solve f(x)=1:",
+          "latex": "1-\\frac{\\ln x}{x^3}=1 \\Rightarrow \\ln x=0 \\Rightarrow x=1 \\Rightarrow M(1,1)",
+          "explanationKh": "ln 1=0",
+          "explanation": "ln(1)=0"
+        },
+        {
+          "textKh": "f'(1)=(-1+3ln1)/1⁴=-1 ⟹ (T): y=-x+2:",
+          "text": "Tangent slope at M:",
+          "latex": "f'(1) = \\frac{-1+3\\ln1}{1} = -1 \\Rightarrow (T):\\; y=-(x-1)+1=-x+2",
+          "explanationKh": "y=f'(x₀)(x-x₀)+f(x₀)",
+          "explanation": "Tangent formula at (1,1) with slope -1"
+        },
+        {
+          "textKh": "k < min f = f(∛e) ≈ 0.88:",
+          "text": "For f(x)>k to hold — need k below the minimum of f:",
+          "latex": "k < f\\!\\left(\\sqrt[3]{e}\\right) = 1-\\frac{1}{3e} \\approx 0.88",
+          "explanationKh": "f(x)>k ⟺ C នៅលើ y=k ⟺ k < min f",
+          "explanation": "C stays entirely above y=k iff k is less than the global minimum of f"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "M(1,1) ; (T): y=-x+2 ; k < 0.88",
+        "text": "M(1,1); tangent T: y=-x+2; f(x)>k for all x>0 iff k<0.88",
+        "latex": "M(1,1)\\;\\;;\\;\\;(T):\\;y=-x+2\\;\\;;\\;\\; k<0.88"
+      },
+      "formulas": [],
+      "keywords": ["tangent", "intersection", "minimum", "k values", "ចំណុច M", "ខ្សែប៉ះ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p002-c002",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 7,
+      "topic": "vectors_3d_point_plane",
+      "topicKh": "ស្វែងរក B ហើយ យន្តហោះ (P) ⊥ AB⃗ ជ្រាប A",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(1,0,1) ; AB⃗=(-1,2,1) ។\nB = A+AB⃗ = (1-1, 0+2, 1+1) = (0,2,2) ។\n(P) ជ្រាប A(1,0,1) ⊥ AB⃗=(-1,2,1):\n-1(x-1)+2(y-0)+1(z-1)=0 ⟹ -x+2y+z=0 ។",
+      "normalizedText": "Given A(1,0,1) and AB=(-1,2,1). Find B: B=A+AB=(0,2,2). Plane P through A perpendicular to AB: normal vector is AB. Equation: -x+2y+z=0.",
+      "problem": {
+        "textKh": "A(1,0,1), AB⃗=(-1,2,1) ។ ស្វែងរក B ។ ស្វែងរក (P) ជ្រាប A ⊥ AB⃗",
+        "text": "A(1,0,1), AB=(-1,2,1). Find B. Find plane P through A normal to AB.",
+        "latex": "A(1,0,1),\\quad \\overrightarrow{AB}=(-1,2,1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "B = A + AB⃗ = (1+(-1), 0+2, 1+1) = (0,2,2):",
+          "text": "Find B by adding AB to A:",
+          "latex": "B = (1-1,\\;0+2,\\;1+1) = (0,2,2)",
+          "explanationKh": "B = A + AB⃗",
+          "explanation": "B = A + vector AB"
+        },
+        {
+          "textKh": "(P) ⊥ AB⃗ ⟹ normal = AB⃗=(-1,2,1) ។ (P) ជ្រាប A(1,0,1):",
+          "text": "Plane normal = AB=(-1,2,1), passes through A(1,0,1):",
+          "latex": "-1(x-1)+2(y-0)+1(z-1)=0 \\Rightarrow -x+2y+z=0",
+          "explanationKh": "a(x-x₀)+b(y-y₀)+c(z-z₀)=0",
+          "explanation": "Standard plane equation through A with normal AB"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "B(0,2,2) ; (P): -x+2y+z=0",
+        "text": "B(0,2,2); plane P: -x+2y+z=0",
+        "latex": "B(0,2,2)\\;\\;;\\;\\;(P):\\;-x+2y+z=0"
+      },
+      "formulas": [],
+      "keywords": ["plane", "normal vector", "3D", "point", "perpendicular", "យន្តហោះ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p002-c003",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "vectors_3d_dot_product_rectangle",
+      "topicKh": "AB⃗·AC⃗=0 — ABDC ជ្រុងកែង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(1,0,1), B(0,2,2), C(2,1,0), D(1,3,1) ។\nAC⃗=(1,1,-1) ; CD⃗=(-1,2,1) ។\nAB⃗·AC⃗=(-1)(1)+(2)(1)+(1)(-1)=-1+2-1=0 ⟹ AB⃗⊥AC⃗ ។\nAB⃗=(-1,2,1)=CD⃗ ⟹ ABDC ជ្ជ្រុងស្មើ ។\nAB⃗⊥AC⃗ + AB⃗=CD⃗ ⟹ ABDC ជ្រុងកែង ។",
+      "normalizedText": "A(1,0,1), B(0,2,2), C(2,1,0), D(1,3,1). AC=(1,1,-1), CD=(-1,2,1)=AB. Dot product AB·AC=0 so AB⊥AC. Since AB=CD (parallelogram) and AB⊥AC (right angle): ABDC is a rectangle.",
+      "problem": {
+        "textKh": "C(2,1,0), D(1,3,1) ។ ស្វែងរក AC⃗, CD⃗ ។ AB⃗·AC⃗ ។ បញ្ជាក់ ABDC ជ្រុងកែង",
+        "text": "Given C(2,1,0), D(1,3,1). Find AC, CD, dot product AB·AC. Prove ABDC is rectangle.",
+        "latex": "\\overrightarrow{AB}\\cdot\\overrightarrow{AC}=?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "AC⃗=(2-1,1-0,0-1)=(1,1,-1) ; CD⃗=(1-2,3-1,1-0)=(-1,2,1):",
+          "text": "Compute vectors:",
+          "latex": "\\overrightarrow{AC}(1,1,-1)\\;\\;;\\;\\;\\overrightarrow{CD}(-1,2,1)=\\overrightarrow{AB}",
+          "explanationKh": "CD⃗=AB⃗ ⟹ ABDC parallelogram",
+          "explanation": "CD=AB means ABDC is a parallelogram"
+        },
+        {
+          "textKh": "AB⃗·AC⃗=(-1)(1)+(2)(1)+(1)(-1)=0:",
+          "text": "Dot product:",
+          "latex": "\\overrightarrow{AB}\\cdot\\overrightarrow{AC}=(-1)(1)+(2)(1)+(1)(-1)=0",
+          "explanationKh": "ផលគុណ dot = 0 ⟹ ⊥",
+          "explanation": "Zero dot product means perpendicular"
+        },
+        {
+          "textKh": "AB⃗⊥AC⃗ (1) + CD⃗=AB⃗ (2) ⟹ ABDC ជ្រុងកែង:",
+          "text": "Parallelogram with a right angle is a rectangle:",
+          "latex": "\\overrightarrow{AB}\\perp\\overrightarrow{AC} \\text{ and } \\overrightarrow{AB}=\\overrightarrow{CD} \\Rightarrow ABDC \\text{ is rectangle}",
+          "explanationKh": "Parallelogram + ជ្រុងកែង = rectangle",
+          "explanation": "A parallelogram with one right angle is a rectangle"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "AB⃗·AC⃗=0 ; ABDC ជ្រុងកែង",
+        "text": "AB·AC=0; ABDC is a rectangle",
+        "latex": "\\overrightarrow{AB}\\cdot\\overrightarrow{AC}=0\\;\\;;\\;\\; ABDC \\text{ rectangle}"
+      },
+      "formulas": [
+        {"latex": "\\vec{u}\\cdot\\vec{v}=u_1v_1+u_2v_2+u_3v_3", "meaning": "ផលគុណ dot ក្នុងអវកាស", "confidence": 1.0}
+      ],
+      "keywords": ["dot product", "rectangle", "perpendicular", "parallelogram", "3D", "ជ្រុងកែង"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-p002-c004",
+      "sourceId": "math-12-exam-202225-set6",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "vectors_3d_cross_product_volume_distance",
+      "topicKh": "AB⃗×AC⃗ — ផ្ទៃក្រឡា ABDC, ប្រឹម OABC, ចំងាយ O ទៅ (ABC)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "AB⃗=(-1,2,1), AC⃗=(1,1,-1) ។\nAB⃗×AC⃗=det|i j k; -1 2 1; 1 1 -1|=(−2−1)i⃗−(1−1)j⃗+(−1−2)k⃗=−3i⃗+0j⃗−3k⃗ ។\nS_ABDC=|AB⃗×AC⃗|=√(9+0+9)=3√2 ។\nV_OABC=(1/6)|AB⃗×AC⃗|·AO ; AO=√2 ⟹ V=(1/6)·3√2·√2=1 ។\nd(O,(ABC))=3V/S_△ABC=3·1/(3√2/2)=2/√2=√2 ។",
+      "normalizedText": "Cross product AB×AC = -3i+0j-3k. Area of rectangle ABDC = |AB×AC| = 3√2. Volume of tetrahedron OABC = (1/6)|AB×AC|·|AO| = 1. Distance from O to plane (ABC) = 3V/S_triangle = √2.",
+      "problem": {
+        "textKh": "AB⃗=(-1,2,1), AC⃗=(1,1,-1) ។ គណនា AB⃗×AC⃗, S_ABDC, V_OABC, d(O,(ABC))",
+        "text": "Compute cross product AB×AC, area of ABDC, volume of tetrahedron OABC, and distance from O to plane (ABC).",
+        "latex": "\\overrightarrow{AB}\\times\\overrightarrow{AC}=?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ផលគុណខ្វែង:",
+          "text": "Cross product:",
+          "latex": "\\overrightarrow{AB}\\times\\overrightarrow{AC}=\\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\-1&2&1\\\\1&1&-1\\end{vmatrix}=-3\\vec{i}+0\\vec{j}-3\\vec{k}",
+          "explanationKh": "i:(2×(-1)-1×1)=-3 ; j:-((-1)(-1)-1×1)=0 ; k:((-1)×1-2×1)=-3",
+          "explanation": "Expand determinant: i=(-2-1)=-3, j=-(1-1)=0, k=(-1-2)=-3"
+        },
+        {
+          "textKh": "S_ABDC=|AB⃗×AC⃗|=√(9+0+9)=3√2:",
+          "text": "Area of rectangle ABDC:",
+          "latex": "S_{ABDC}=|\\overrightarrow{AB}\\times\\overrightarrow{AC}|=\\sqrt{9+9}=3\\sqrt{2}",
+          "explanationKh": "ផ្ទៃក្រឡា parallelogram = |u×v|",
+          "explanation": "Area of parallelogram (= rectangle here) = |cross product|"
+        },
+        {
+          "textKh": "V_OABC=(1/6)|AB⃗×AC⃗|·|AO⃗| ; AO⃗=O-A=(-1,0,-1), |AO|=√2:",
+          "text": "Volume of tetrahedron OABC:",
+          "latex": "V_{OABC}=\\frac{1}{6}\\cdot3\\sqrt{2}\\cdot\\sqrt{2}=\\frac{1}{6}\\cdot6=1",
+          "explanationKh": "V=1/6·|base cross product|·height component",
+          "explanation": "Tetrahedron volume = (1/6)|AB×AC|·|AO|"
+        },
+        {
+          "textKh": "d(O,(ABC)) = 3V/S_△ABC ; S_△ABC=(1/2)·3√2=3√2/2:",
+          "text": "Distance from O to plane (ABC):",
+          "latex": "d(O,(ABC))=\\frac{3V}{S_{\\triangle ABC}}=\\frac{3\\times1}{\\frac{3\\sqrt{2}}{2}}=\\frac{2}{\\sqrt{2}}=\\sqrt{2}",
+          "explanationKh": "V_tetra=(1/3)S_triangle·h ⟹ h=3V/S",
+          "explanation": "From V=(1/3)S·h, solve for h=3V/S"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "AB⃗×AC⃗=-3i⃗-3k⃗ ; S_ABDC=3√2 ; V_OABC=1 ; d(O,(ABC))=√2",
+        "text": "AB×AC=-3i-3k; area ABDC=3√2; volume OABC=1; distance O to (ABC)=√2",
+        "latex": "\\overrightarrow{AB}\\times\\overrightarrow{AC}=-3\\vec{i}-3\\vec{k}\\;\\;;\\;\\; S=3\\sqrt{2}\\;\\;;\\;\\; V=1\\;\\;;\\;\\; d=\\sqrt{2}"
+      },
+      "formulas": [
+        {
+          "latex": "V_{\\text{tetra}}=\\frac{1}{6}\\left|\\vec{u}\\times\\vec{v}\\right|\\cdot|\\vec{w}|",
+          "meaning": "ប្រឹមត្រីជ្រុង — 1/6 |cross|·height",
+          "confidence": 0.9
+        },
+        {
+          "latex": "d(O,\\text{plane})=\\frac{3V}{S_{\\triangle}}",
+          "meaning": "ចំងាយ O ទៅយន្តហោះ — ពី V=1/3·S·h",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["cross product", "volume", "tetrahedron", "distance", "area", "ប្រឹម", "ចំងាយ", "3D"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

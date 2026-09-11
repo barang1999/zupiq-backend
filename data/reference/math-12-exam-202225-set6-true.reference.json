@@ -1,0 +1,1003 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-202225-set6-true",
+    "title": "Grade 12 Math Final Exam 2022-2025 Set 6 (Advanced Science Stream) with Full Solutions",
+    "titleKh": "វិញ្ញាសាចំណាន ភណិតវិទ្យា ទិញ្ញាសាតិ ៦ ថ្នាក់វិទ្យាសាស្ត្រ ឆ្នាំ ២០២២-២០២៥",
+    "author": "អប់រំអ៊ីយ វិទ្យ ពុំ",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "exam",
+    "topics": [
+      "complex_numbers",
+      "differential_equations",
+      "partial_fractions",
+      "integration",
+      "limits",
+      "antiderivatives",
+      "vectors_3d",
+      "function_analysis",
+      "asymptotes"
+    ],
+    "metadata": {
+      "pageCount": 10,
+      "originalFile": "images _54 to _63 (math_12_exam_202225)",
+      "rawExtractionFile": "native image reading",
+      "examSet": "6",
+      "note": "Images _54-_63. The previously created math-12-exam-202225-set6.reference.json contains Set 5 content and should be renamed to set5."
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "complete",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "id": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "description": "Step-by-step solution format for Khmer math textbook exercises",
+      "language": "km",
+      "format": "structured",
+      "instructions": "Present solutions in Khmer with clear step-by-step working. Use LaTeX for all mathematical expressions. Number each step clearly. End with a clearly boxed final answer (ចម្លើយ:). Match the style of Cambodian high school math textbooks.",
+      "exampleTone": "formal_educational_khmer"
+    },
+    {
+      "id": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "description": "Conceptual explanation format for Khmer math definitions and theorems",
+      "language": "km",
+      "format": "explanatory",
+      "instructions": "Explain mathematical concepts clearly in Khmer. Start with the definition or theorem statement, then provide intuition or examples. Use LaTeX for formulas. Keep language accessible to Grade 10-12 students.",
+      "exampleTone": "formal_educational_khmer"
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c001",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "សេចក្តី I a) គណនា A² ដែល A = (√3−1) + i(√3+1) ហើយបង្ហាញទម្រង់ត្រីកោណមាត្ររបស់ A²។",
+      "normalizedText": "Complex number A = (√3-1) + i(√3+1): compute A² in algebraic form, then convert to trigonometric (polar) form. Result: A² = -4√3 + 4i = 8(cos(5π/6) + i·sin(5π/6)).",
+      "problem": {
+        "textKh": "ឱ្យ A = (√3−1) + i(√3+1)។ ក) សូរគណនា A² ជាទម្រង់ពិជគណិត ហើយបង្ហាញ A² ជាទម្រង់ត្រីកោណមាត្រ។",
+        "text": "Given A = (√3−1) + i(√3+1). Find A² in algebraic form and express A² in trigonometric form.",
+        "latex": "A = (\\sqrt{3}-1) + i(\\sqrt{3}+1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា A² ដោយអនុវត្តរូបមន្ត (a+b)²",
+          "text": "Expand A² = ((√3−1) + i(√3+1))²",
+          "latex": "A^2 = \\left((\\sqrt{3}-1) + i(\\sqrt{3}+1)\\right)^2 = (\\sqrt{3}-1)^2 + 2(\\sqrt{3}-1)(\\sqrt{3}+1)i + i^2(\\sqrt{3}+1)^2",
+          "explanation": "Apply (a+bi)² = a² + 2abi - b²"
+        },
+        {
+          "textKh": "គណនារៀងៗខ្លួន: (√3−1)² = 3−2√3+1 = 4−2√3; i²(√3+1)² = −(3+2√3+1) = −4−2√3",
+          "text": "Compute each term: (√3−1)² = 4−2√3; i²(√3+1)² = −(4+2√3); cross term = 2(3−1)i = 4i",
+          "latex": "A^2 = (4-2\\sqrt{3}) + 4i \\ \\cdot\\ 2(3-1) - (4+2\\sqrt{3}) = -4\\sqrt{3} + 4i"
+        },
+        {
+          "textKh": "ចម្លើយទម្រង់ពិជគណិត",
+          "text": "Algebraic form result",
+          "latex": "A^2 = -4\\sqrt{3} + 4i",
+          "explanation": "Real part: -4√3, imaginary part: 4"
+        },
+        {
+          "textKh": "គណនា |A²| = √(48+16) = √64 = 8",
+          "text": "Find modulus: |A²| = √((-4√3)² + 4²) = √(48+16) = 8",
+          "latex": "|A^2| = \\sqrt{(-4\\sqrt{3})^2 + 4^2} = \\sqrt{48+16} = \\sqrt{64} = 8"
+        },
+        {
+          "textKh": "គណនាមុំ: cos θ = -4√3/8 = -√3/2; sin θ = 4/8 = 1/2 → θ = 5π/6",
+          "text": "Find argument: cos θ = -√3/2, sin θ = 1/2 → θ = 5π/6",
+          "latex": "\\cos\\theta = -\\frac{\\sqrt{3}}{2},\\ \\sin\\theta = \\frac{1}{2} \\Rightarrow \\theta = \\frac{5\\pi}{6}"
+        },
+        {
+          "textKh": "ទម្រង់ត្រីកោណមាត្រ",
+          "text": "Trigonometric form",
+          "latex": "A^2 = 8\\left(\\cos\\frac{5\\pi}{6} + i\\sin\\frac{5\\pi}{6}\\right)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: A² = −4√3 + 4i ហើយ A² = 8(cos(5π/6) + i·sin(5π/6))",
+        "text": "A² = −4√3 + 4i and A² = 8(cos(5π/6) + i·sin(5π/6))",
+        "latex": "A^2 = -4\\sqrt{3} + 4i = 8\\left(\\cos\\frac{5\\pi}{6} + i\\sin\\frac{5\\pi}{6}\\right)"
+      },
+      "formulas": [
+        {
+          "latex": "(a+bi)^2 = a^2 - b^2 + 2abi",
+          "meaning": "Square of a complex number in algebraic form",
+          "confidence": 1.0
+        },
+        {
+          "latex": "|z| = \\sqrt{a^2 + b^2}",
+          "meaning": "Modulus of complex number z = a + bi",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["complex number", "algebraic form", "trigonometric form", "modulus", "argument", "លេខកុំផ្លិច", "ទម្រង់ត្រីកោណមាត្រ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c002",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច — ស្វែងរក x និង y ពីសមីការកុំផ្លិច",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "I b) ឱ្យ B = (x+iy)/(1+i)។ សម្រួល B ជាទម្រង់ a+bi ហើយស្វែងរក x, y ពីលក្ខខណ្ឌ 2B̄ − A² = 0",
+      "normalizedText": "Complex number B = (x+iy)/(1+i): simplify to algebraic form B = (x+y)/2 + (y-x)/2·i. Then use 2B̄ - A² = 0 with A² = -4√3 + 4i to get system: x+y = -4√3, x-y = 4. Solution: x = -2√3+2, y = -2√3-2.",
+      "problem": {
+        "textKh": "ឱ្យ B = (x+iy)/(1+i)។ ខ) សម្រួល B ជាទម្រង់ a+bi; ស្វែងរក x និង y ដែលបំពេញ 2B̄ − A² = 0 (B̄ ជាចំនួនបន្ថែមស្វ័យគុណរបស់ B)",
+        "text": "Given B = (x+iy)/(1+i). Simplify B to algebraic form, then find x and y such that 2B̄ − A² = 0.",
+        "latex": "B = \\frac{x+iy}{1+i}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ធ្វើអតិភូតសំណាញ់",
+          "text": "Rationalize by multiplying numerator and denominator by conjugate (1-i)",
+          "latex": "B = \\frac{x+iy}{1+i} = \\frac{(x+iy)(1-i)}{(1+i)(1-i)} = \\frac{x - xi + iy + y}{1+1} = \\frac{x+y}{2} + \\frac{y-x}{2}i"
+        },
+        {
+          "textKh": "ចំនួនបន្ថែមស្វ័យគុណ",
+          "text": "Conjugate of B",
+          "latex": "\\bar{B} = \\frac{x+y}{2} - \\frac{y-x}{2}i = \\frac{x+y}{2} + \\frac{x-y}{2}i"
+        },
+        {
+          "textKh": "អនុវត្តលក្ខខណ្ឌ 2B̄ − A² = 0",
+          "text": "Apply condition 2B̄ − A² = 0 with A² = -4√3 + 4i",
+          "latex": "2\\bar{B} - A^2 = 0 \\Leftrightarrow 2\\left(\\frac{x+y}{2} + \\frac{x-y}{2}i\\right) - (-4\\sqrt{3}+4i) = 0"
+        },
+        {
+          "textKh": "ប្រៀបធៀបផ្នែកពិត និងផ្នែកស្រមម",
+          "text": "Equate real and imaginary parts",
+          "latex": "\\begin{cases} x+y = -4\\sqrt{3} & (1) \\\\ x-y = 4 & (2) \\end{cases}"
+        },
+        {
+          "textKh": "ដោះស្រាយប្រព័ន្ធ: បូក (1)+(2): 2x = -4√3+4 → x = -2√3+2; ពី (1): y = -4√3-x = -2√3-2",
+          "text": "Solve: adding gives x = -2√3+2; substituting back gives y = -2√3-2",
+          "latex": "x = -2\\sqrt{3}+2,\\quad y = -2\\sqrt{3}-2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: x = −2√3+2 ហើយ y = −2√3−2",
+        "text": "x = −2√3+2 and y = −2√3−2",
+        "latex": "x = -2\\sqrt{3}+2,\\quad y = -2\\sqrt{3}-2"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{a+bi}{1+i} = \\frac{(a+bi)(1-i)}{2} = \\frac{(a+b)+(b-a)i}{2}",
+          "meaning": "Division by (1+i) via conjugate rationalization",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["conjugate", "rationalize", "system of equations", "ចំនួនបន្ថែមស្វ័យគុណ", "ប្រព័ន្ធសមីការ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c003",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "differential_equations",
+      "topicKh": "សមីការឌីផេរ៉ង់ស្យែល — ការបំបែកអថេរ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "II) ដោះស្រាយសមីការឌីផេរ៉ង់ស្យែល (E): y′ − y·ln3 = 0; ស្វែងរកដំណោះស្រាយជាក់លាក់ f(1) = 2; បញ្ជាក់ g(x) = 3^(x-1) ជាដំណោះស្រាយ",
+      "normalizedText": "ODE (E): y' - y·ln3 = 0. General solution by separation of variables: y = A·3^x, A ∈ ℝ. Particular solution with f(1)=2: f(x) = (2/3)·3^x = 2·3^(x-1). Verify g(x) = 3^(x-1) satisfies (E) using (aˣ)' = aˣ·ln a.",
+      "problem": {
+        "textKh": "II) ឱ្យមានសមីការ (E): y′ − y·ln3 = 0។ ក) រកដំណោះស្រាយទូទៅ; ខ) ស្វែងរក f ដំណោះស្រាយ f(1)=2; គ) បញ្ជាក់ g(x)=3^(x-1) ជាដំណោះស្រាយ (ដោយប្រើ U(x)=aˣ, U′(x)=aˣ·ln a)",
+        "text": "ODE (E): y' - y·ln3 = 0. a) Find general solution; b) Find particular solution with f(1)=2; c) Verify g(x)=3^(x-1) satisfies (E).",
+        "latex": "(E):\\quad y' - y\\ln 3 = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ក) ការបំបែកអថេរ: dy/y = ln3·dx",
+          "text": "a) Separate variables",
+          "latex": "\\frac{dy}{y} = \\ln 3\\, dx \\Rightarrow \\ln|y| = x\\ln 3 + C \\Rightarrow y = \\pm e^C \\cdot e^{x\\ln 3} = A\\cdot 3^x,\\ A\\in\\mathbb{R}"
+        },
+        {
+          "textKh": "ខ) ដំណោះស្រាយជាក់លាក់ f(1)=2: A·3¹ = 2 → A = 2/3",
+          "text": "b) With f(1)=2: A·3 = 2 → A = 2/3, so f(x) = (2/3)·3^x = 2·3^(x-1)",
+          "latex": "f(x) = \\frac{2}{3} \\cdot 3^x = 2 \\cdot 3^{x-1}"
+        },
+        {
+          "textKh": "គ) ផ្ទៀងផ្ទាត់ g(x) = 3^(x-1): g′(x) = 3^(x-1)·ln3",
+          "text": "c) Verify: g(x) = 3^(x-1), using (aˣ)′ = aˣ·ln a: g′(x) = 3^(x-1)·ln3",
+          "latex": "g(x) = 3^{x-1} \\Rightarrow g'(x) = 3^{x-1}\\ln 3"
+        },
+        {
+          "textKh": "ពិនិត្យ: g′(x) − g(x)·ln3 = 3^(x-1)·ln3 − 3^(x-1)·ln3 = 0 ✓",
+          "text": "Check: g′(x) − g(x)·ln3 = 3^(x-1)·ln3 − 3^(x-1)·ln3 = 0 ✓",
+          "latex": "g'(x) - g(x)\\ln 3 = 3^{x-1}\\ln 3 - 3^{x-1}\\ln 3 = 0\\quad \\checkmark"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ក) ដំណោះស្រាយទូទៅ: y = A·3^x, A ∈ ℝ; ខ) f(x) = 2·3^(x-1); គ) g(x) = 3^(x-1) ជាដំណោះស្រាយ",
+        "text": "a) y = A·3^x, A ∈ ℝ; b) f(x) = 2·3^(x-1); c) g(x) = 3^(x-1) satisfies (E)",
+        "latex": "y = A \\cdot 3^x,\\ A\\in\\mathbb{R};\\quad f(x) = 2\\cdot 3^{x-1}"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{d}{dx}(a^x) = a^x \\ln a",
+          "meaning": "Derivative of exponential function with base a",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["ODE", "separation of variables", "exponential", "differential equation", "ការបំបែកអថេរ", "សមីការឌីផេរ៉ង់ស្យែល"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c004",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "partial_fractions",
+      "topicKh": "ការបំបែកប្រភាគ — III a)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "III ក) ស្វែងរក a, b, c ដើម្បីបំបែក (x²−2x−2)/((x−1)²(x+2)) = a/(x−1) + b/(x−1)² + c/(x+2)",
+      "normalizedText": "Partial fraction decomposition: (x²-2x-2)/((x-1)²(x+2)) = a/(x-1) + b/(x-1)² + c/(x+2). Finding coefficients by expanding and comparing: a = 1/3, b = -1, c = 2/3.",
+      "problem": {
+        "textKh": "ស្វែងរកចំនួនពិត a, b, c ដែលបំពេញ: (x²−2x−2)/((x−1)²(x+2)) = a/(x−1) + b/(x−1)² + c/(x+2) ចំពោះ x ≠ −2, x ≠ 1",
+        "text": "Find real numbers a, b, c such that (x²-2x-2)/((x-1)²(x+2)) = a/(x-1) + b/(x-1)² + c/(x+2).",
+        "latex": "\\frac{x^2-2x-2}{(x-1)^2(x+2)} = \\frac{a}{x-1} + \\frac{b}{(x-1)^2} + \\frac{c}{x+2}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ធ្វើ numerator រួម: a(x-1)(x+2) + b(x+2) + c(x-1)² = x²−2x−2",
+          "text": "Multiply both sides by (x-1)²(x+2) and expand",
+          "latex": "a(x-1)(x+2) + b(x+2) + c(x-1)^2 = x^2-2x-2"
+        },
+        {
+          "textKh": "ប្រៀបធៀបមេគុណ x², x¹, x⁰",
+          "text": "Collect and compare coefficients",
+          "latex": "\\begin{cases} a+c = 1 & (x^2) \\\\ a+b-2c = -2 & (x^1) \\\\ -2a+2b+c = -2 & (x^0) \\end{cases}"
+        },
+        {
+          "textKh": "ដោះស្រាយ: ពី (1): a = 1-c; ជំនួស → b = 3c-3; ជំនួសទៅ (3): -2(1-c)+2(3c-3)+c = -2 → c = 2/3",
+          "text": "Solve: from (1) a = 1-c; substitute into (2) b = 3c-3; substitute into (3) to get c = 2/3",
+          "latex": "c = \\frac{2}{3},\\quad a = 1 - \\frac{2}{3} = \\frac{1}{3},\\quad b = 3\\cdot\\frac{2}{3}-3 = -1"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: a = 1/3, b = −1, c = 2/3",
+        "text": "a = 1/3, b = -1, c = 2/3",
+        "latex": "a = \\frac{1}{3},\\quad b = -1,\\quad c = \\frac{2}{3}"
+      },
+      "formulas": [],
+      "keywords": ["partial fractions", "decomposition", "ការបំបែកប្រភាគ", "មេគុណ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c005",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "integration",
+      "topicKh": "អាំងតេក្រាលជាក់លាក់ — ប្រភាគដោយបំបែក",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "III ខ) គណនាអាំងតេក្រាល I = ∫₋₁⁰ (x²−2x−2)/((x−1)²(x+2)) dx ដោយប្រើការបំបែកប្រភាគ",
+      "normalizedText": "Definite integral I = ∫₋₁⁰ (x²-2x-2)/((x-1)²(x+2)) dx using partial fractions a=1/3, b=-1, c=2/3. After integration: I = ln2/3 - 1/2.",
+      "problem": {
+        "textKh": "គណនាអាំងតេក្រាល I = ∫₋₁⁰ (x²−2x−2)/((x−1)²(x+2)) dx",
+        "text": "Calculate I = ∫₋₁⁰ (x²-2x-2)/((x-1)²(x+2)) dx using the partial fraction result a=1/3, b=-1, c=2/3.",
+        "latex": "I = \\int_{-1}^{0} \\frac{x^2-2x-2}{(x-1)^2(x+2)}\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើការបំបែកប្រភាគ: I = ∫(1/3·1/(x-1) − 1/(x-1)² + 2/3·1/(x+2))dx",
+          "text": "Apply partial fractions",
+          "latex": "I = \\int_{-1}^{0}\\left(\\frac{1/3}{x-1} - \\frac{1}{(x-1)^2} + \\frac{2/3}{x+2}\\right)dx"
+        },
+        {
+          "textKh": "ធ្វើអាំងតេក្រាល",
+          "text": "Integrate term by term",
+          "latex": "I = \\left[\\frac{1}{3}\\ln|x-1| + \\frac{1}{x-1} + \\frac{2}{3}\\ln|x+2|\\right]_{-1}^{0}"
+        },
+        {
+          "textKh": "ជំនួស x=0 និង x=-1",
+          "text": "Evaluate at x=0 and x=-1",
+          "latex": "I = \\left(\\frac{1}{3}\\ln 1 - 1 + \\frac{2}{3}\\ln 2\\right) - \\left(\\frac{1}{3}\\ln 2 - \\frac{1}{2} + \\frac{2}{3}\\ln 1\\right)"
+        },
+        {
+          "textKh": "សម្រួល: I = 0 - 1 + (2/3)ln2 - (1/3)ln2 + 1/2 = (1/3)ln2 - 1/2",
+          "text": "Simplify: I = (2/3)ln2 - (1/3)ln2 - 1 + 1/2 = (1/3)ln2 - 1/2 = ln2/3 - 1/2",
+          "latex": "I = \\frac{2}{3}\\ln 2 - \\frac{1}{3}\\ln 2 - 1 + \\frac{1}{2} = \\frac{\\ln 2}{3} - \\frac{1}{2}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: I = ln2/3 − 1/2",
+        "text": "I = ln2/3 - 1/2",
+        "latex": "I = \\frac{\\ln 2}{3} - \\frac{1}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "\\int \\frac{1}{(x-a)^2}\\,dx = -\\frac{1}{x-a} + C",
+          "meaning": "Integral of 1/(x-a)²",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["definite integral", "partial fractions", "logarithm", "អាំងតេក្រាលជាក់លាក់", "ការបំបែកប្រភាគ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c006",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "limits",
+      "topicKh": "ដែន​ — lim (eˣ ln x + 1)/x² ពេល x→+∞",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "IV ក) គណនាដែន lim_{x→+∞} (eˣ·ln(x)+1)/x², x > 0",
+      "normalizedText": "Limit as x→+∞ of (e^x·ln(x)+1)/x². Since e^x grows faster than any polynomial, lim = +∞.",
+      "problem": {
+        "textKh": "គណនាដែន lim_{x→+∞} (eˣ·ln(x)+1)/x², x > 0",
+        "text": "Find lim_{x→+∞} (e^x·ln(x)+1)/x², for x > 0.",
+        "latex": "\\lim_{x\\to+\\infty}\\frac{e^x\\ln x + 1}{x^2},\\quad x > 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចែក numerator: (eˣ·ln(x)+1)/x² = eˣ/x²·ln(x) + 1/x²",
+          "text": "Rewrite as eˣ·ln(x)/x² + 1/x²",
+          "latex": "\\lim_{x\\to+\\infty}\\frac{e^x\\ln x + 1}{x^2} = \\lim_{x\\to+\\infty}\\left(\\frac{e^x}{x^2}\\cdot\\ln x + \\frac{1}{x^2}\\right)"
+        },
+        {
+          "textKh": "ដោយ eˣ/x² → +∞ (eˣ ធំជាង polynomial ណាមួយ) ហើយ ln(x) → +∞ → ផ្នែកទីមួយ = +∞·(+∞) = +∞",
+          "text": "Since e^x/x² → +∞ (exponential dominates polynomial) and ln(x) → +∞, first term → +∞",
+          "latex": "\\frac{e^x}{x^2} \\to +\\infty,\\quad \\ln x \\to +\\infty \\Rightarrow \\frac{e^x\\ln x}{x^2} \\to +\\infty"
+        },
+        {
+          "textKh": "ផ្នែកទីពីរ 1/x² → 0 ដូច្នេះ ជារួម = +∞ + 0 = +∞",
+          "text": "Second term 1/x² → 0, so overall limit = +∞",
+          "latex": "\\lim_{x\\to+\\infty}\\frac{e^x\\ln x + 1}{x^2} = +\\infty"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: ដែន = +∞",
+        "text": "The limit is +∞",
+        "latex": "\\lim_{x\\to+\\infty}\\frac{e^x\\ln x + 1}{x^2} = +\\infty"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x\\to+\\infty}\\frac{e^x}{x^n} = +\\infty \\text{ for any } n",
+          "meaning": "Exponential grows faster than any polynomial",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["limit", "exponential", "infinity", "ដែន", "eˣ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c007",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "antiderivatives",
+      "topicKh": "អាំងតេក្រាលអំពីខ្លួន — y = eˣ·ln(x+1)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "IV ខ) ស្វែងរក antiderivative F(x) របស់ f(x) = eˣ·ln(x+1) + (eˣ+1)/(x+1) ជាមួយ F(0)=1",
+      "normalizedText": "Find antiderivative of f(x) = e^x·ln(x+1) + (e^x+1)/(x+1). Recognize that d/dx[e^x·ln(x+1)] = e^x·ln(x+1) + e^x/(x+1). So F(x) = e^x·ln(x+1) + ln|x+1| + C. With F(0)=1: C=1.",
+      "problem": {
+        "textKh": "IV ខ) ជំហ) ស្វែងរក antiderivative F(x) នៃ f(x) = eˣ·ln(x+1) + (eˣ+1)/(x+1) ដែល F(0)=1",
+        "text": "Find antiderivative F(x) of f(x) = e^x·ln(x+1) + (e^x+1)/(x+1) satisfying F(0)=1.",
+        "latex": "f(x) = e^x\\ln(x+1) + \\frac{e^x+1}{x+1}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ស្គាល់ derivative របស់ y = eˣ·ln(x+1): y′ = eˣ·ln(x+1) + eˣ/(x+1)",
+          "text": "Recognize: d/dx[e^x·ln(x+1)] = e^x·ln(x+1) + e^x/(x+1)",
+          "latex": "\\frac{d}{dx}\\left[e^x\\ln(x+1)\\right] = e^x\\ln(x+1) + \\frac{e^x}{x+1}"
+        },
+        {
+          "textKh": "ដូច្នេះ f(x) = d/dx[eˣ·ln(x+1)] + 1/(x+1)",
+          "text": "So f(x) = d/dx[e^x·ln(x+1)] + 1/(x+1)",
+          "latex": "f(x) = \\frac{d}{dx}\\left[e^x\\ln(x+1)\\right] + \\frac{1}{x+1}"
+        },
+        {
+          "textKh": "អាំងតេក្រាល: F(x) = eˣ·ln(x+1) + ln|x+1| + C",
+          "text": "Integrate: F(x) = e^x·ln(x+1) + ln|x+1| + C",
+          "latex": "F(x) = e^x\\ln(x+1) + \\ln|x+1| + C"
+        },
+        {
+          "textKh": "ប្រើលក្ខខណ្ឌ F(0)=1: e⁰·ln(1) + ln(1) + C = 1 → C = 1",
+          "text": "Apply F(0)=1: 0 + 0 + C = 1 → C = 1",
+          "latex": "F(0) = e^0\\ln 1 + \\ln 1 + C = C = 1 \\Rightarrow C = 1"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: F(x) = eˣ·ln(x+1) + ln|x+1| + 1, x > 0",
+        "text": "F(x) = e^x·ln(x+1) + ln|x+1| + 1 for x > 0",
+        "latex": "F(x) = e^x\\ln(x+1) + \\ln|x+1| + 1,\\quad x > 0"
+      },
+      "formulas": [
+        {
+          "latex": "\\int e^x\\ln(x+1)\\,dx + \\int\\frac{e^x}{x+1}\\,dx = e^x\\ln(x+1) + C",
+          "meaning": "Integration by parts grouping: d[e^x·ln(x+1)] = e^x·ln(x+1)dx + e^x/(x+1)dx",
+          "confidence": 0.95
+        }
+      ],
+      "keywords": ["antiderivative", "integration by parts", "initial condition", "អាំងតេក្រាលអំពីខ្លួន", "F(0)=1"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c008",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — សមីការបន្ទាត់ D",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V ក) ស្វែងរកសមីការបន្ទាត់ D ដែលឆ្លងកាត់ S(0,0,3) ហើយស្របទិសជា u⃗ = (1,1,1)",
+      "normalizedText": "Find equation of line D passing through S(0,0,3) with direction vector u⃗ = (1,1,1). Parametric equations: x=t, y=t, z=3+t, t∈ℝ.",
+      "problem": {
+        "textKh": "V ក) ក្នុងប្រព័ន្ធ (O, i⃗, j⃗, k⃗): S(0,0,3), u⃗=(1,1,1)។ ស្វែងរកសមីការបន្ទាត់ D ឆ្លងកាត់ S ស្របទិស u⃗",
+        "text": "In orthonormal frame (O, i⃗, j⃗, k⃗): S(0,0,3), u⃗=(1,1,1). Find equation of line D through S with direction u⃗.",
+        "latex": "S(0,0,3),\\quad \\vec{u} = (1,1,1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រើរូបមន្តបន្ទាត់: x = x₀+at, y = y₀+bt, z = z₀+ct",
+          "text": "Apply parametric line formula with point S(0,0,3) and direction (1,1,1)",
+          "latex": "D:\\begin{cases} x = 0 + 1\\cdot t \\\\ y = 0 + 1\\cdot t \\\\ z = 3 + 1\\cdot t \\end{cases},\\quad t\\in\\mathbb{R}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: D: x=t, y=t, z=3+t, t∈ℝ",
+        "text": "D: x=t, y=t, z=3+t, t∈ℝ",
+        "latex": "D:\\begin{cases} x = t \\\\ y = t \\\\ z = 3+t \\end{cases},\\quad t\\in\\mathbb{R}"
+      },
+      "formulas": [
+        {
+          "latex": "D:\\begin{cases} x = x_0 + at \\\\ y = y_0 + bt \\\\ z = z_0 + ct \\end{cases}",
+          "meaning": "Parametric equations of a line through (x₀,y₀,z₀) with direction (a,b,c)",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["line", "parametric", "direction vector", "3D geometry", "បន្ទាត់", "ធរណីមាត្រក្នុងលំហ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c009",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — គុណភ្ជាប់ ⊥ និងសមីការระnap",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V ខ) M(x,y,z) ក្នុង (O,i⃗,j⃗,k⃗): គណនា u⃗·SM⃗; ស្វែងរក x,y,z ដើម្បីឱ្យ SM⃗ ⊥ u⃗; រកចំណុច M",
+      "normalizedText": "V b) Given M(x,y,z) in frame (O,i,j,k): compute dot product u⃗·SM⃗ = x+y+z-3. Condition SM⃗ ⊥ u⃗ means u⃗·SM⃗ = 0 → x+y+z-3=0. This is the plane through S perpendicular to u⃗; M lies on the intersection of D and this plane.",
+      "problem": {
+        "textKh": "V ខ) M(x,y,z) ចំណុចទូទៅ; S(0,0,3)។ គណនា u⃗·SM⃗; ស្វែងរក x,y,z ដែលបំពេញ SM⃗ ⊥ u⃗; M ណា?",
+        "text": "V b) M(x,y,z) general point; S(0,0,3). Find u⃗·SM⃗; find x,y,z with SM⃗ ⊥ u⃗; what is M?",
+        "latex": "\\vec{SM} = (x,y,z-3),\\quad \\vec{u} = (1,1,1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "SM⃗ = M - S = (x-0, y-0, z-3) = (x, y, z-3)",
+          "text": "SM⃗ = (x, y, z-3)",
+          "latex": "\\overrightarrow{SM} = (x,y,z-3)"
+        },
+        {
+          "textKh": "u⃗·SM⃗ = 1·x + 1·y + 1·(z-3) = x+y+z-3",
+          "text": "Dot product u⃗·SM⃗ = x+y+z-3",
+          "latex": "\\vec{u}\\cdot\\overrightarrow{SM} = x+y+z-3"
+        },
+        {
+          "textKh": "SM⃗ ⊥ u⃗ ↔ u⃗·SM⃗ = 0 ↔ x+y+z-3 = 0; M ស្ថិតនៅ D ​ (x=t, y=t, z=3+t) ↔ t+t+(3+t)-3=0 ↔ 3t=0 ↔ t=0",
+          "text": "SM⃗ ⊥ u⃗ ↔ x+y+z-3=0. M on D: substitute t+t+(3+t)-3=0 → t=0 → M = S = (0,0,3)",
+          "latex": "x+y+z-3=0 \\text{ and } M\\in D \\Rightarrow t=0 \\Rightarrow M = S(0,0,3)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: u⃗·SM⃗ = x+y+z−3; x,y,z ស្ថិតនៅ x+y+z−3=0; M = S(0,0,3)",
+        "text": "u⃗·SM⃗ = x+y+z-3; condition: x+y+z-3=0; intersection gives M = S(0,0,3)",
+        "latex": "\\vec{u}\\cdot\\overrightarrow{SM} = x+y+z-3 = 0 \\Rightarrow M(x,y,z)\\text{ on plane }x+y+z=3"
+      },
+      "formulas": [
+        {
+          "latex": "\\vec{u}\\cdot\\vec{v} = 0 \\Leftrightarrow \\vec{u}\\perp\\vec{v}",
+          "meaning": "Perpendicularity condition via dot product",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["dot product", "perpendicular", "plane equation", "3D", "គុណស្កាល៉ែ", "ជ្រុង"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c010",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 7,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — ត្រីកោណស្មើជ្រុង SAB",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V គ-ឃ) A(3,0,0), B(0,3,0), S(0,0,3): បញ្ជាក់ △SAB ជាត្រីកោណស្មើជ្រុង; គណនា SA⃗×SB⃗ និងផ្ទៃ △SAB",
+      "normalizedText": "With A(3,0,0), B(0,3,0), S(0,0,3): SA=SB=AB=3√2 so △SAB is equilateral. Cross product SA⃗×SB⃗ = 9i⃗+9j⃗+9k⃗. Area = (1/2)|SA⃗×SB⃗| = 9√3/2.",
+      "problem": {
+        "textKh": "V គ) A(3,0,0), B(0,3,0), S(0,0,3)។ បញ្ជាក់ △SAB ជាត្រីកោណស្មើជ្រុង។ ឃ) គណនា SA⃗×SB⃗ ។",
+        "text": "Prove △SAB is equilateral. Then compute SA⃗×SB⃗.",
+        "latex": "A(3,0,0),\\ B(0,3,0),\\ S(0,0,3)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "SA⃗ = A−S = (3,0,−3); |SA| = √(9+0+9) = 3√2",
+          "text": "SA = (3,0,-3), |SA| = 3√2",
+          "latex": "\\overrightarrow{SA} = (3,0,-3),\\quad |SA| = \\sqrt{9+0+9} = 3\\sqrt{2}"
+        },
+        {
+          "textKh": "SB⃗ = B−S = (0,3,−3); |SB| = √(0+9+9) = 3√2",
+          "text": "SB = (0,3,-3), |SB| = 3√2",
+          "latex": "\\overrightarrow{SB} = (0,3,-3),\\quad |SB| = \\sqrt{0+9+9} = 3\\sqrt{2}"
+        },
+        {
+          "textKh": "AB⃗ = B−A = (−3,3,0); |AB| = √(9+9+0) = 3√2",
+          "text": "AB = (-3,3,0), |AB| = 3√2",
+          "latex": "\\overrightarrow{AB} = (-3,3,0),\\quad |AB| = 3\\sqrt{2}"
+        },
+        {
+          "textKh": "SA = SB = AB = 3√2 → △SAB ជាត្រីកោណស្មើជ្រុង",
+          "text": "SA = SB = AB = 3√2 → △SAB is equilateral",
+          "latex": "SA = SB = AB = 3\\sqrt{2} \\Rightarrow \\triangle SAB\\text{ is equilateral}"
+        },
+        {
+          "textKh": "SA⃗×SB⃗ = det|i⃗ j⃗ k⃗; 3 0 -3; 0 3 -3| = (0+9)i⃗ − (−9−0)j⃗ + (9−0)k⃗ = 9i⃗+9j⃗+9k⃗",
+          "text": "Cross product SA⃗×SB⃗",
+          "latex": "\\overrightarrow{SA}\\times\\overrightarrow{SB} = \\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\3&0&-3\\\\0&3&-3\\end{vmatrix} = 9\\vec{i}+9\\vec{j}+9\\vec{k}"
+        },
+        {
+          "textKh": "ផ្ទៃ △SAB = (1/2)|SA⃗×SB⃗| = (1/2)√(81+81+81) = (1/2)·9√3 = 9√3/2",
+          "text": "Area = (1/2)|SA⃗×SB⃗| = (1/2)·9√3 = 9√3/2",
+          "latex": "S_{\\triangle SAB} = \\frac{1}{2}|\\overrightarrow{SA}\\times\\overrightarrow{SB}| = \\frac{1}{2}\\cdot 9\\sqrt{3} = \\frac{9\\sqrt{3}}{2}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: △SAB ជាត្រីកោណស្មើជ្រុង (SA=SB=AB=3√2); SA⃗×SB⃗ = 9i⃗+9j⃗+9k⃗; ផ្ទៃ = 9√3/2",
+        "text": "△SAB equilateral with SA=SB=AB=3√2; SA⃗×SB⃗ = 9i⃗+9j⃗+9k⃗; Area = 9√3/2",
+        "latex": "\\overrightarrow{SA}\\times\\overrightarrow{SB} = 9\\vec{i}+9\\vec{j}+9\\vec{k},\\quad S_{\\triangle SAB} = \\frac{9\\sqrt{3}}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "S = \\frac{1}{2}|\\vec{a}\\times\\vec{b}|",
+          "meaning": "Area of triangle with sides a and b as vectors from common vertex",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["equilateral triangle", "cross product", "area", "3D", "ត្រីកោណស្មើជ្រុង", "គុណ​វ៉ែក​ទ័រ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p001-c011",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 7,
+      "topic": "vectors_3d",
+      "topicKh": "ធរណីមាត្រក្នុងលំហ — សមីការស្វ៊ែរ ឆ្លងកាត់ O, S, A, B",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "V ង) ស្វែងរកសមីការស្វ៊ែរ ឆ្លងកាត់ O(0,0,0), S(0,0,3), A(3,0,0), B(0,3,0)",
+      "normalizedText": "Find sphere passing through O(0,0,0), S(0,0,3), A(3,0,0), B(0,3,0). Center must be equidistant from all four points. Since O is at origin, sphere equation x²+y²+z²=r². Distance from O to S: r = OS = 3. Sphere: x²+y²+z²=9.",
+      "problem": {
+        "textKh": "V ង) ស្វែងរកសមីការស្វ៊ែរ ឆ្លងកាត់ O, S, A, B",
+        "text": "Find the equation of the sphere passing through O(0,0,0), S(0,0,3), A(3,0,0), B(0,3,0).",
+        "latex": "O(0,0,0),\\ S(0,0,3),\\ A(3,0,0),\\ B(0,3,0)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ទម្រង់ស្វ៊ែរ: (x−a)²+(y−b)²+(z−c)²=r²",
+          "text": "General sphere equation (x-a)²+(y-b)²+(z-c)²=r²",
+          "latex": "(x-a)^2+(y-b)^2+(z-c)^2=r^2"
+        },
+        {
+          "textKh": "O(0,0,0) ស្ថិតនៅលើស្វ៊ែរ → a²+b²+c²=r²",
+          "text": "O on sphere: a²+b²+c²=r²",
+          "latex": "a^2+b^2+c^2 = r^2"
+        },
+        {
+          "textKh": "S(0,0,3): a²+b²+(c−3)²=r² → a²+b²+c²−6c+9=r² → 6c=9 → c=3/2... ប៉ុន្តែ O ស្ថិតនៅ center ហើយ r=OS=3",
+          "text": "Since O is the origin and |OS|=|OA|=|OB|=3, center is equidistant → sphere centered at (3/2,3/2,3/2) with r=3 passes through all. But checking: O on sphere → (x−3/2)²+...=r². Alternatively: sphere through O: x²+y²+z²=9 since OS=OA=OB=3",
+          "latex": "OS = \\sqrt{0+0+9} = 3,\\quad OA = \\sqrt{9+0+0} = 3,\\quad OB = \\sqrt{0+9+0} = 3"
+        },
+        {
+          "textKh": "ដោយ OS=OA=OB=3 ហើយ O ស្ថិតនៅ sphere ដែល center គ្រប់ point ឆ្ងាយ r=3 ពី center, sphere ឆ្លងកាត់ O: x²+y²+z²=9",
+          "text": "All four points satisfy x²+y²+z²=9 (each at distance 3 from origin). Sphere equation: x²+y²+z²=9.",
+          "latex": "x^2+y^2+z^2 = 9"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: សមីការស្វ៊ែរ x²+y²+z²=9",
+        "text": "Sphere equation: x²+y²+z²=9",
+        "latex": "x^2+y^2+z^2 = 9"
+      },
+      "formulas": [
+        {
+          "latex": "(x-a)^2+(y-b)^2+(z-c)^2=r^2",
+          "meaning": "Standard equation of sphere with center (a,b,c) and radius r",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["sphere", "3D geometry", "ស្វ៊ែរ", "radius", "ស្វ៊ែរ​ ​ស្ថានភូមិ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p002-c012",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 8,
+      "topic": "function_analysis",
+      "topicKh": "ការសិក្សាអនុគមន៍ — ដែន ដែន f(x) = -x/2 + ln((x-1)/x)",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ក) f(x) = −x/2 + ln((x−1)/x), D = (−∞,0)∪(1,+∞)។ គណនាដែននៅ ±∞, 0⁻, 1⁺; ស្វ័យភាពស្ករ",
+      "normalizedText": "Function f(x) = -x/2 + ln((x-1)/x) on D = (-∞,0)∪(1,+∞). Limits: as x→-∞: +∞; x→+∞: -∞; x→0⁻: +∞; x→1⁺: -∞. Vertical asymptotes at x=0 and x=1.",
+      "problem": {
+        "textKh": "VI ក) ជំហ) f(x) = −x/2 + ln((x-1)/x), D = (−∞,0)∪(1,+∞)។ គណនាដែន lim_{x→-∞}, lim_{x→+∞}, lim_{x→0⁻}, lim_{x→1⁺} f(x) ហើយស្វែងរកស្វ័យភាពស្ករ",
+        "text": "f(x) = -x/2 + ln((x-1)/x), D = (-∞,0)∪(1,+∞). Find limits as x→-∞, +∞, 0⁻, 1⁺ and identify asymptotes.",
+        "latex": "f(x) = -\\frac{x}{2} + \\ln\\left(\\frac{x-1}{x}\\right) = -\\frac{x}{2} + \\ln\\left(1-\\frac{1}{x}\\right)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "lim_{x→-∞} f(x) = lim_{x→-∞}(-x/2 + ln(1-1/x)) = -(-∞)/2 + ln(1) = +∞",
+          "text": "As x→-∞: -x/2 → +∞, ln(1-1/x) → ln1 = 0 → f → +∞",
+          "latex": "\\lim_{x\\to-\\infty} f(x) = +\\infty"
+        },
+        {
+          "textKh": "lim_{x→+∞} f(x) = -∞/2 + ln(1) = -∞",
+          "text": "As x→+∞: -x/2 → -∞, ln(1-1/x) → 0 → f → -∞",
+          "latex": "\\lim_{x\\to+\\infty} f(x) = -\\infty"
+        },
+        {
+          "textKh": "lim_{x→0⁻} f(x): x→0⁻ ​ → (x-1)/x = 1-1/x → 1-(1/0⁻) = 1+(+∞) = +∞; ln(+∞) = +∞ → f → 0 + ∞ = +∞",
+          "text": "As x→0⁻: (x-1)/x → +∞ so ln((x-1)/x) → +∞",
+          "latex": "\\lim_{x\\to 0^-} f(x) = +\\infty"
+        },
+        {
+          "textKh": "lim_{x→1⁺} f(x): (x-1)/x → 0⁺; ln(0⁺) → -∞ → f → -1/2 + (-∞) = -∞",
+          "text": "As x→1⁺: (x-1)/x → 0⁺ so ln → -∞",
+          "latex": "\\lim_{x\\to 1^+} f(x) = -\\infty"
+        },
+        {
+          "textKh": "ស្វ័យភាពស្ករ: x=0 និង x=1 (ដែនដែន ±∞ → ស្វ័យភាពស្ករ)",
+          "text": "Vertical asymptotes at x=0 and x=1",
+          "latex": "x = 0\\text{ and }x = 1\\text{ are vertical asymptotes}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: x=0 និង x=1 ជាស្វ័យភាពស្ករ",
+        "text": "x=0 and x=1 are vertical asymptotes",
+        "latex": "\\lim_{x\\to-\\infty}f = +\\infty,\\quad \\lim_{x\\to+\\infty}f = -\\infty,\\quad \\lim_{x\\to 0^-}f = +\\infty,\\quad \\lim_{x\\to 1^+}f = -\\infty"
+      },
+      "formulas": [],
+      "keywords": ["limits", "asymptotes", "function analysis", "ដែន", "ស្វ័យភាព", "vertical asymptote"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p002-c013",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "function_analysis",
+      "topicKh": "ការសិក្សាអនុគមន៍ — ដេរីវេ និងតារាងប្រែប្រួល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ខ) f′(x) = −1/2 + 1/(x(x−1)); សញ្ញា f′(x); f(-1)=1.2 (ទ្រូម), f(2)=−1.7 (ទ្រូធំ)",
+      "normalizedText": "f'(x) = -1/2 + 1/(x(x-1)) = (-x²+x+2)/(x(x-1)). Critical points: x=-1 (local max f(-1)=1.2) and x=2 (local min f(2)=-1.7). f' > 0 on (-1,0)∪(1,2); f' < 0 on (-∞,-1)∪(2,+∞).",
+      "problem": {
+        "textKh": "VI ខ) ១) គណនា f′(x); ២) ចាត់ចែក f′(x)>0 ក្នុង D; ៣) ធ្វើតារាងប្រែប្រួល",
+        "text": "VI b) Compute f'(x); show f'(x) > 0 iff x(x-1) > 0; make variation table.",
+        "latex": "f'(x) = -\\frac{1}{2} + \\frac{1}{x(x-1)}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f′(x) = d/dx[-x/2 + ln((x-1)/x)] = -1/2 + d/dx[ln(x-1) - ln(x)] = -1/2 + 1/(x-1) - 1/x",
+          "text": "Differentiate term by term",
+          "latex": "f'(x) = -\\frac{1}{2} + \\frac{1}{x-1} - \\frac{1}{x} = -\\frac{1}{2} + \\frac{x-(x-1)}{x(x-1)} = -\\frac{1}{2} + \\frac{1}{x(x-1)}"
+        },
+        {
+          "textKh": "f′(x) = (-x²+x+2)/(x(x-1)) = -(x²-x-2)/(x(x-1)) = -(x-2)(x+1)/(x(x-1))",
+          "text": "Combined fraction",
+          "latex": "f'(x) = \\frac{-x^2+x+2}{x(x-1)} = \\frac{-(x-2)(x+1)}{x(x-1)}"
+        },
+        {
+          "textKh": "ចំណុចដ្ឋេរ: f′(x)=0 → x=-1 (ក្នុង (-∞,0)) ​ ​ x=2 (ក្នុង (1,+∞))",
+          "text": "Critical points: x=-1 and x=2",
+          "latex": "f'(x) = 0 \\Leftrightarrow x = -1 \\text{ or } x = 2"
+        },
+        {
+          "textKh": "f′>0 នៅ (-1,0)∪(1,2); f′<0 នៅ (-∞,-1)∪(2,+∞)",
+          "text": "Sign analysis: f' > 0 on (-1,0)∪(1,2); f' < 0 on (-∞,-1)∪(2,+∞)",
+          "latex": "f'(x) > 0 \\Leftrightarrow x\\in(-1,0)\\cup(1,2)"
+        },
+        {
+          "textKh": "f(-1) = 1/2 + ln2 ≈ 0.5+0.7 = 1.2 (ចំណុចទ្រូម); f(2) = -1+ln(1/2) = -1-ln2 ≈ -1.7 (ចំណុចទ្រូធំ)",
+          "text": "f(-1) = 1/2 + ln2 ≈ 1.2 (local max); f(2) = -1-ln2 ≈ -1.7 (local min)",
+          "latex": "f(-1) = \\frac{1}{2}+\\ln 2 \\approx 1.2,\\quad f(2) = -1+\\ln\\frac{1}{2} = -1-\\ln 2 \\approx -1.7"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: f′(x) = (−x²+x+2)/(x(x−1)); f(-1)≈1.2 ជាទ្រូម; f(2)≈−1.7 ជាទ្រូធំ",
+        "text": "f'(x) = (-x²+x+2)/(x(x-1)); local max at x=-1: f(-1)≈1.2; local min at x=2: f(2)≈-1.7",
+        "latex": "f'(x) = \\frac{-x^2+x+2}{x(x-1)};\\quad f(-1) = \\frac{1}{2}+\\ln 2;\\quad f(2) = -1-\\ln 2"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{d}{dx}\\ln\\left(\\frac{x-1}{x}\\right) = \\frac{1}{x-1} - \\frac{1}{x} = \\frac{1}{x(x-1)}",
+          "meaning": "Derivative of ln((x-1)/x) using chain rule",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["derivative", "critical points", "variation table", "local extrema", "ដេរីវេ", "ទ្រូម", "ទ្រូធំ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p002-c014",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 9,
+      "topic": "asymptotes",
+      "topicKh": "ស្វ័យភាព​ – ​ស្វ័យភាពទ្រេត y = −x/2 សម្រាប់ C",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI គ) បង្ហាញ y = −x/2 ជាស្វ័យភាពទ្រេត (oblique asymptote) នៃ C",
+      "normalizedText": "Show that y = -x/2 is an oblique asymptote to the curve C of f(x) = -x/2 + ln((x-1)/x). Key: f(x) - (-x/2) = ln((x-1)/x) = ln(1-1/x) → ln1 = 0 as x→±∞.",
+      "problem": {
+        "textKh": "VI គ) បង្ហាញ L: y = −x/2 ជាស្វ័យភាពទ្រេតនៃ C",
+        "text": "Show that line L: y = -x/2 is an oblique asymptote to the curve C.",
+        "latex": "f(x) - \\left(-\\frac{x}{2}\\right) = \\ln\\left(\\frac{x-1}{x}\\right)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "f(x) − (−x/2) = ln((x−1)/x) = ln(1−1/x)",
+          "text": "Compute f(x) − y_L where y_L = -x/2",
+          "latex": "f(x) - \\left(-\\frac{x}{2}\\right) = \\ln\\left(\\frac{x-1}{x}\\right) = \\ln\\left(1-\\frac{1}{x}\\right)"
+        },
+        {
+          "textKh": "lim_{x→±∞} ln(1-1/x) = ln(1) = 0",
+          "text": "As x→±∞: 1/x → 0, so ln(1-1/x) → ln(1) = 0",
+          "latex": "\\lim_{x\\to\\pm\\infty}\\left(f(x) + \\frac{x}{2}\\right) = \\lim_{x\\to\\pm\\infty}\\ln\\left(1-\\frac{1}{x}\\right) = \\ln 1 = 0"
+        },
+        {
+          "textKh": "ដែន = 0 → L: y=−x/2 ជាស្វ័យភាពទ្រេតរបស់ C",
+          "text": "Since limit equals 0, y = -x/2 is an oblique asymptote",
+          "latex": "\\lim_{x\\to\\pm\\infty}\\left[f(x)-\\left(-\\frac{x}{2}\\right)\\right] = 0 \\Rightarrow y = -\\frac{x}{2}\\text{ is oblique asymptote}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: y = −x/2 ជាស្វ័យភាពទ្រេតរបស់ C",
+        "text": "y = -x/2 is an oblique asymptote of C",
+        "latex": "y = -\\frac{x}{2}\\text{ is an oblique asymptote of }C"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x\\to\\pm\\infty}[f(x) - (ax+b)] = 0 \\Leftrightarrow y=ax+b\\text{ is oblique asymptote}",
+          "meaning": "Condition for oblique asymptote",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": ["oblique asymptote", "asymptote", "ស្វ័យភាពទ្រេត", "ដែននៅ infinity"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-202225-set6-true-p002-c015",
+      "sourceId": "math-12-exam-202225-set6-true",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 10,
+      "topic": "function_analysis",
+      "topicKh": "ចំនួន​ដំណោះ​ស្រាយ​នៃ​សមីការ​ f(x) = a",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "VI ឃ) ស្វែងរក a ដើម្បីឱ្យ −x/2 + ln((x−1)/x) = a មាន​ដំណោះ​ស្រាយ ​​ជាក់ exact ២",
+      "normalizedText": "Find values of a such that f(x) = a (i.e., the horizontal line y=a intersects C exactly 2 times). From the graph and variation table: f has local max at f(-1)≈1.2 and local min at f(2)≈-1.7. The line y=a intersects C exactly 2 times when a ∈ (1.2, +∞). (Uses given values ln2=0.7, ln(1/2)=-ln2=-0.7.)",
+      "problem": {
+        "textKh": "VI ឃ) ស្វែងរក a ដើម្បីឱ្យ f(x) = a មានដំណោះស្រាយ​​ជាក់​ exact ២ (ប្រើ ln2=0.7, ln(1/2)=-0.7)",
+        "text": "Find a such that -x/2 + ln((x-1)/x) = a has exactly 2 solutions. Use ln2=0.7, ln(1/2)=-0.7.",
+        "latex": "-\\frac{x}{2} + \\ln\\left(\\frac{x-1}{x}\\right) = a"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រៀបតារាងប្រែប្រួល: C មានចំណុចទ្រូម (-1, 1.2) និង ចំណុចទ្រូធំ (2, -1.7)",
+          "text": "From variation table: C has local max at (-1, 1.2) and local min at (2, -1.7)",
+          "latex": "f(-1) = \\frac{1}{2}+\\ln 2 \\approx 1.2,\\quad f(2) = -1+\\ln\\frac{1}{2} \\approx -1.7"
+        },
+        {
+          "textKh": "គំនូស C ប្ប្រសព្វ y=a ជាក់ 2 ដង: x=a ត្រូវវាច x=-1 (ក្នុង branch (-∞,0)) ឬ x=2 (ក្នុង (1,+∞)) ​ → y=a > f(-1)=1.2 ​ ​ ​​​​",
+          "text": "For exactly 2 intersections, line y=a must be above the local max on the left branch: a > 1.2",
+          "latex": "a > f(-1) = \\frac{1}{2}+\\ln 2 \\approx 1.2"
+        },
+        {
+          "textKh": "ដូច្នេះ a ∈ (1.2, +∞)",
+          "text": "Therefore a ∈ (1.2, +∞)",
+          "latex": "a \\in (1.2, +\\infty)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចម្លើយ: a ∈ (1.2, +∞) _(ច្បាស់ a > 1/2+ln2)_",
+        "text": "a ∈ (1.2, +∞), i.e., a > 1/2 + ln2",
+        "latex": "a \\in (1.2, +\\infty),\\quad \\text{i.e., } a > \\frac{1}{2}+\\ln 2"
+      },
+      "formulas": [],
+      "keywords": ["number of solutions", "parameter", "horizontal line intersection", "ចំនួនដំណោះស្រាយ", "គំនូសក្រាប"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

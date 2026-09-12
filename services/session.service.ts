@@ -989,6 +989,39 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
   return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
 }
 
+// ─── Accumulate token usage on a session (fire-and-forget safe) ──────────────
+
+/**
+ * Increments a session's lifetime token counters without a permission check.
+ * Called internally from AI routes after consumeTokenBudget — the auth check
+ * already happened at the route level. Errors are swallowed so they never
+ * block the response.
+ */
+export async function addSessionTokenUsage(
+  sessionId: string,
+  add: { promptTokens: number | null; completionTokens: number | null; totalTokens: number; aiCostUsd: number },
+): Promise<void> {
+  if (!sessionId || !add.totalTokens) return;
+  try {
+    const db = getSupabaseAdmin();
+    const { data: row } = await db
+      .from("study_sessions")
+      .select("prompt_tokens, completion_tokens, total_tokens, ai_cost_usd")
+      .eq("id", sessionId)
+      .single();
+
+    const cur = row as { prompt_tokens?: number | null; completion_tokens?: number | null; total_tokens?: number | null; ai_cost_usd?: number | string | null } | null;
+    await db.from("study_sessions").update({
+      prompt_tokens:     (cur?.prompt_tokens     ?? 0) + (add.promptTokens     ?? 0),
+      completion_tokens: (cur?.completion_tokens ?? 0) + (add.completionTokens ?? 0),
+      total_tokens:      (cur?.total_tokens      ?? 0) + add.totalTokens,
+      ai_cost_usd:       +((parseFloat(String(cur?.ai_cost_usd ?? 0)) + add.aiCostUsd).toFixed(6)),
+    }).eq("id", sessionId);
+  } catch {
+    // Non-critical — never block the response for token bookkeeping
+  }
+}
+
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function updateSession(id: string, userId: string, updates: UpdateSessionDTO): Promise<StudySession> {

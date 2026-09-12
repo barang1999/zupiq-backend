@@ -18,6 +18,7 @@ import {
   requiresVisualTable,
   generateVisualTable,
   generateDiagramBlocksForSession,
+  sanitizeBreakdownNode,
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
 import { segmentMathContent } from "../../utils/math-segmenter.js";
@@ -42,7 +43,7 @@ import { buildReferenceContext } from "../../services/reference-corpus.service.j
 import { extractWithMathpix } from "../../services/ai/mathpix.service.js";
 import { readUploadAsBase64 } from "../../services/upload.service.js";
 import { logger } from "../../utils/logger.js";
-import { createSession, getSessionById, updateSession } from "../../services/session.service.js";
+import { createSession, getSessionById, updateSession, addSessionTokenUsage } from "../../services/session.service.js";
 import { logActivity } from "../../services/activity-log.service.js";
 import { registerProgressClient, emitProgress } from "../../services/progress.service.js";
 import { verifyWithWolfram } from "../../services/ai/wolfram.service.js";
@@ -253,19 +254,25 @@ function isSolutionFirstPayload(payload: any): boolean {
 function attachRenderBlocksToNode(node: any): any {
   if (!node || typeof node !== "object") return node;
 
-  const label = String(node.label || node.title || "").trim();
-  const description = String(node.description || node.why || "").trim();
-  const mathContent = String(node.mathContent || node.math || node.keyFormula || "").trim();
+  // Fresh AI output (expandNode, regenerateBranchNode) — run full sanitization pipeline
+  // (Thai stripping, CR/escape repair, $$→$ demotion, bare-math wrapping, etc.).
+  // Already-processed nodes (cached subSteps, re-served sessions) have typed block arrays —
+  // those get enriched instead to avoid double-processing.
+  const hasExistingBlocks =
+    Array.isArray(node.labelBlocks) ||
+    Array.isArray(node.descriptionBlocks) ||
+    Array.isArray(node.mathBlocks);
 
-  if (label && !Array.isArray(node.labelBlocks)) node.labelBlocks = buildRenderBlocks(label);
-  else if (Array.isArray(node.labelBlocks)) node.labelBlocks = enrichRenderBlocks(node.labelBlocks);
-  if (description && !Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = buildRenderBlocks(description);
-  else if (Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = enrichRenderBlocks(node.descriptionBlocks);
-  // Use buildRenderBlocks so mixed prose+math mathContent keeps its text blocks.
-  if (mathContent && !Array.isArray(node.mathBlocks)) node.mathBlocks = buildRenderBlocks(mathContent, { defaultDisplay: true });
-  else if (Array.isArray(node.mathBlocks)) node.mathBlocks = enrichRenderBlocks(node.mathBlocks);
+  if (!hasExistingBlocks) {
+    const fields = sanitizeBreakdownNode(node);
+    Object.assign(node, fields);
+  } else {
+    if (Array.isArray(node.labelBlocks)) node.labelBlocks = enrichRenderBlocks(node.labelBlocks);
+    if (Array.isArray(node.descriptionBlocks)) node.descriptionBlocks = enrichRenderBlocks(node.descriptionBlocks);
+    if (Array.isArray(node.mathBlocks)) node.mathBlocks = enrichRenderBlocks(node.mathBlocks);
+  }
+
   if (Array.isArray(node.subSteps)) node.subSteps = node.subSteps.map(attachRenderBlocksToNode);
-
   return node;
 }
 
@@ -731,6 +738,16 @@ router.post(
         source: chatResult.usage.source,
         model: chatResult.usage.model,
       });
+
+      // Accumulate on the session record (fire-and-forget)
+      if (session_id) {
+        addSessionTokenUsage(session_id, {
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.consumedTokens,
+          aiCostUsd: usage.ai_cost_usd,
+        });
+      }
 
       console.log("[ChatDebug] sending response to client:", {
         elapsedMs: Date.now() - requestStartedAt,
@@ -1235,6 +1252,13 @@ router.post(
         model: explanationUsage.model ?? aiOptions.aiModel ?? null,
       });
 
+      addSessionTokenUsage(session.id, {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.consumedTokens,
+        aiCostUsd: usage.ai_cost_usd,
+      });
+
       res.json({
         session: updatedSession,
         explanation: { nodes: explanationNodes },
@@ -1681,6 +1705,13 @@ router.post(
         model: expandUsage.model ?? aiOptions.aiModel ?? null,
       });
 
+      addSessionTokenUsage(session.id, {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.consumedTokens,
+        aiCostUsd: usage.ai_cost_usd,
+      });
+
       res.json({
         session: updatedSession,
         node: targetNode,
@@ -1912,6 +1943,13 @@ router.post(
         completionTokens: diagramUsage.completionTokens,
         source: diagramUsage.source,
         model: diagramUsage.model ?? env.GEMINI_SIMPLE_MODEL,
+      });
+
+      addSessionTokenUsage(session.id, {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.consumedTokens,
+        aiCostUsd: usage.ai_cost_usd,
       });
 
       res.json({ diagram_blocks: mergedBlocks, session: updatedSession, usage, cached: false });

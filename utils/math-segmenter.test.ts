@@ -60,3 +60,49 @@ describe("isProseMisclassifiedAsMath downgrade — readable text fallback", () =
     expect(segments[0].content).not.toMatch(/\bge\b/);
   });
 });
+
+describe("repairDanglingEscapedDelimiter — mismatched \\(...\\)/\\[...\\] pairs", () => {
+  // Real observed case: a model meaning "\(...\)" LaTeX delimiters drops
+  // just the CLOSING backslash — "\(g(x) = A e^{-2x})" (escaped open, bare
+  // close). Left alone, MATH_TOKEN_REGEX requires both ends escaped, so the
+  // whole span was invisible to it and leaked verbatim as plain text with
+  // nothing extracted — a tree-leaf "description" field showing the raw
+  // "\(...)" characters to the user instead of rendered math.
+  it("recovers math from an escaped-open/bare-close mismatch, even with function-notation parens inside", () => {
+    const segments = segmentMathContent("ជំនួស \\(g(x) = A e^{-2x}) ដែលទើបរកឃើញ");
+    expect(segments).toEqual([
+      { type: "text", content: "ជំនួស " },
+      { type: "math", content: "g(x) = A e^{-2x}", display: false },
+      { type: "text", content: " ដែលទើបរកឃើញ" },
+    ]);
+  });
+
+  it("does the same for a \\[...] display-math mismatch", () => {
+    const segments = segmentMathContent("សមីការ \\[x^2 + 1 = 0] ត្រូវដោះស្រាយ");
+    expect(segments).toEqual([
+      { type: "text", content: "សមីការ " },
+      { type: "math", content: "x^2 + 1 = 0", display: true },
+      { type: "text", content: " ត្រូវដោះស្រាយ" },
+    ]);
+  });
+
+  it("resolves against the delimiter's own true close even with nested parens inside (paren-depth tracking)", () => {
+    const segments = segmentMathContent("តម្លៃ \\(h(g(x)) = A e^{-2x}) ដែលទើបរកឃើញ");
+    expect(segments[1]).toEqual({ type: "math", content: "h(g(x)) = A e^{-2x}", display: false });
+  });
+
+  it("leaves a fully well-formed pair untouched (no double-repair)", () => {
+    const segments = segmentMathContent("ជំនួស \\(g(x) = A e^{-2x}\\) ដែលទើបរកឃើញ");
+    expect(segments[1]).toEqual({ type: "math", content: "g(x) = A e^{-2x}", display: false });
+  });
+
+  it("does not touch two independent, genuinely well-formed spans in the same string", () => {
+    const segments = segmentMathContent("លីមីត \\(f(x)\\) និង \\(g(x)\\) ត្រូវគណនា");
+    expect(segments.filter((s) => s.type === "math").map((s) => s.content)).toEqual(["f(x)", "g(x)"]);
+  });
+
+  it("never mistakes an ordinary, fully-unescaped parenthetical remark for math", () => {
+    const segments = segmentMathContent("តម្លៃនេះត្រូវបានប្រហែល (សម្រាប់ភាពងាយស្រួល) មិនមែនជាតម្លៃពិតប្រាកដ");
+    expect(segments.every((s) => s.type === "text")).toBe(true);
+  });
+});

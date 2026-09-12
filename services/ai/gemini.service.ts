@@ -53,6 +53,21 @@ function addUsage(a: ChatUsage, b: ChatUsage): ChatUsage {
   };
 }
 
+/**
+ * Strips per-user context fields (referenceContext, userKnowledgeContext, stepContext)
+ * from AI options before passing to sub-calls that don't benefit from them.
+ *
+ * These contexts are large (reference: up to ~1,300 tokens, knowledge: ~500 tokens)
+ * and are only meaningful for the PRIMARY user-facing call (Phase 1 solve, chat reply).
+ * Injecting them into every downstream call — metadata extraction, diagram extraction,
+ * breakdown, expandNode — wastes ~1,800 tokens per call with no quality improvement,
+ * because those calls consume structured input, not curriculum prose.
+ */
+function withoutContext(options: AIRequestOptions): AIRequestOptions {
+  const { referenceContext: _r, userKnowledgeContext: _k, stepContext: _s, ...rest } = options;
+  return rest;
+}
+
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
 function coerceTokenCount(value: unknown): number | null {
@@ -368,6 +383,13 @@ interface JsonGenerationConfig<T> {
   noJsonMime?: boolean;
   /** Optional JSON Schema passed to responseSchema for constrained structured output */
   responseSchema?: object;
+  /**
+   * When true, disable the model's internal reasoning/thinking pass (thinkingBudget=0).
+   * Use for pure extraction/classification tasks where deep reasoning adds no value but
+   * thinking tokens still get billed at the full output rate (e.g. $9/M on gemini-3.5-flash).
+   * Do NOT set for creative/math-reasoning tasks (solve, breakdown) where thinking matters.
+   */
+  noThinking?: boolean;
 }
 
 type StructuredJsonSource = "parsed" | "recovered" | "none";
@@ -663,7 +685,17 @@ function sanitizeSolutionText(raw: string): string {
 // between a \begin{aligned} and its matching \end{aligned} collapses the
 // block back into the single coherent span it was always meant to be.
 export function repairNestedDollarsInsideAligned(input: string): string {
-  return input.replace(/\\begin\{aligned\}[\s\S]*?\\end\{aligned\}/g, (block) => block.replace(/\$\$/g, ""));
+  // Strip $$ and $...$ delimiters inside any \begin{env}...\end{env} block.
+  // Flash-lite models sometimes wrap individual lines inside cases/aligned/matrix
+  // environments with inline-math delimiters, e.g. "$y = \frac{9}{5} \\$" which
+  // breaks rendering. Unwrap them to bare math content.
+  return input.replace(
+    /\\begin\{[a-zA-Z*]+\}[\s\S]*?\\end\{[a-zA-Z*]+\}/g,
+    (block) =>
+      block
+        .replace(/\$\$/g, "")           // remove $$ (was already handled for aligned)
+        .replace(/\$([^$]*)\$/g, "$1"), // unwrap $...$ → content only
+  );
 }
 
 function repairGeneratedMathText(input: string): string {
@@ -4940,6 +4972,7 @@ ${DIAGRAM_SPEC_GUIDE}`,
     maxOutputTokens: 4096,
     taskName: "extractDiagramBlocksForSolution",
     maxAttempts: 2,
+    noThinking: true, // diagram classification is deterministic JSON extraction — thinking adds no value
     recoverFromRaw: (raw) => {
       // Salvage truncated diagram JSON responses. The AI frequently truncates after
       // emitting featurePoints but before closing braces (token-limit cutoff).
@@ -5180,10 +5213,12 @@ export async function generateDiagramBlocksForSession(
   options: AIRequestOptions,
 ): Promise<{ blocks: RenderBlock[]; usage: ChatUsage }> {
   const usageOut = { current: zeroUsage() };
+  // Diagram extraction is structured JSON output — curriculum reference/knowledge
+  // context adds no value here and wastes ~1,800 tokens per call.
   const blocks = await extractDiagramBlocksForSolution(
     problem,
     solutionText,
-    options,
+    withoutContext(options),
     finalAnswer,
     undefined,
     usageOut,
@@ -5227,6 +5262,9 @@ async function generateRawSolution(
       systemInstruction: buildSystemInstruction(options),
       temperature: 0.1,
       maxOutputTokens: 8192,
+      // Cap thinking at 1024 tokens — enough for high-school math reasoning
+      // without the model spending 2000-3000 tokens on internal deliberation.
+      thinkingConfig: { thinkingBudget: 1024 },
       safetySettings: [
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
@@ -5246,6 +5284,21 @@ async function generateRawSolution(
   const usage: ChatUsage = providerUsage
     ? { ...providerUsage, source: "provider", model: modelName }
     : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate", model: modelName };
+
+  if (providerUsage) {
+    const pt = providerUsage.promptTokens ?? 0;
+    const ct = providerUsage.completionTokens ?? 0;
+    const total = providerUsage.totalTokens ?? 0;
+    const thinkingTokens = Math.max(0, total - pt - ct);
+    console.log(`💰 [token-task] generateRawSolution noThinking=false`, {
+      prompt: pt,
+      completion: ct,
+      thinking: thinkingTokens,
+      billableOutput: ct + thinkingTokens,
+      total,
+    });
+  }
+
   return { text: (response.text ?? "").trim(), usage };
 }
 
@@ -5263,96 +5316,53 @@ interface SolutionMetadata {
  * Phase 2: Extract compact metadata from a raw solution text.
  * Only short string fields — output is always <512 tokens, never truncates.
  */
-async function extractSolutionMetadata(
+const VALID_SUBJECTS = ["Math", "Physics", "Chemistry"];
+const VALID_TOPICS = [
+  "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
+  "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
+  "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry",
+];
+
+/**
+ * Extract solution metadata from Phase 1 free-form output using regex on the
+ * terminal marker lines (**Title:**, **Subject:**, **Topic:**, **Problem Intent:**,
+ * **Final Answer:**). No AI call needed — markers are embedded in the Phase 1 prompt.
+ */
+function extractMetadataFromPhase1(
   rawSolution: string,
   problemHint: string,
   options: AIRequestOptions,
   includeProblemText = false,
-): Promise<SolutionMetadata> {
-  const schemaProperties: Record<string, object> = {
-    title: { type: Type.STRING },
-    subject: { type: Type.STRING, enum: ["Math", "Physics", "Chemistry"] },
-    topic: {
-      type: Type.STRING,
-      enum: [
-        "algebra", "geometry", "calculus", "probability-stats", "arithmetic",
-        "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics",
-        "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry"
-      ]
-    },
-    problemIntent: {
-      type: Type.STRING,
-      enum: ["average-rate", "point-membership", "range", "integral", "function-value", "variation", "other"],
-    },
-    problem: { type: Type.STRING },
-    finalAnswer: { type: Type.STRING },
-  };
-  const requiredFields = ["title", "subject", "topic", "problemIntent", "problem", "finalAnswer"];
+): SolutionMetadata {
+  const get = (marker: string) =>
+    rawSolution.match(new RegExp(`\\*\\*${marker}:\\*\\*\\s*(.+?)(?:\\n|$)`, "i"))?.[1]?.trim() ?? "";
 
-  if (includeProblemText) {
-    (schemaProperties as any).problemText = { type: Type.STRING };
-    requiredFields.push("problemText");
-  }
-
-  const problemTextInstruction = includeProblemText
-    ? "\n- problemText: the original problem as extracted from the image, with proper LaTeX"
-    : "";
-
-  const prompt = `Extract metadata from this math solution.
-
-SOLUTION:
-${rawSolution.slice(0, 4000)}
-
-PROBLEM HINT: "${problemHint.slice(0, 200)}"
-
-Return JSON with:
-- title: short descriptive title specifically for the math/science problem itself (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar. Describe the specific problem (e.g. "គណនាលំដាប់ស៊េរីតេឡេស្កូប", "Evaluate rational integral", "Difference of squares").
-- subject: Must be strictly one of: "Math", "Physics", "Chemistry" (and nothing else! No subtopics, no other languages).
-- topic: Must be the closest matching sub-subject/topic slug. Read this list carefully and choose the most relevant one:
-  * For Math: "algebra" (equations, polynomials, sequences, series), "geometry" (shapes, coordinates, trig), "calculus" (limits, derivatives, integrals), "probability-stats", "arithmetic" (basic numbers, roots, fractions).
-  * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
-  * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
-- problemIntent: classify the requested task, not the formula. Use exactly one of:
-  * "average-rate" when solving average rate of change / secant slope over an interval.
-  * "point-membership" when checking whether a coordinate point lies on a graph.
-  * "range" when finding the range/image of a function on an interval.
-  * "integral" when evaluating an integral or area under a curve.
-  * "function-value" when evaluating f(a) or substituting one input.
-  * "variation" when studying increasing/decreasing behavior, extrema, or monotonicity.
-  * "other" only when none of the above fit.
-- problem: the problem statement with proper LaTeX math notation
-- finalAnswer: only the final result (e.g. "x = 3", "$v = 12\\ \\text{m/s}$")${problemTextInstruction}`;
-
-  const { data } = await generateStructuredJson<SolutionMetadata>({
-    prompt,
-    options,
-    temperature: 0.1,
-    maxOutputTokens: 1536,
-    taskName: "extractSolutionMetadata",
-    maxAttempts: 2,
-    responseSchema: {
-      type: Type.OBJECT,
-      properties: schemaProperties,
-      required: requiredFields,
-    },
-  });
+  const rawTitle = get("Title");
+  const rawSubject = get("Subject");
+  const rawTopic = get("Topic");
+  const rawProblemIntent = get("Problem Intent");
+  const rawFinalAnswer = get("Final Answer");
+  const rawProblemText = includeProblemText ? get("Problem") : "";
 
   const fallbackTitle = toPlainTitleText(problemHint) || "New Solution";
+  const title = toPlainTitleText(rawTitle) || fallbackTitle;
+  const subject = VALID_SUBJECTS.includes(rawSubject) ? rawSubject : (options.subject || "Math");
+  const topic = VALID_TOPICS.includes(rawTopic) ? rawTopic : "algebra";
+
   const structuredProblemIntent = problemIntentFromStructuredHint(problemHint);
-  const extractedProblemIntent = structuredProblemIntent
-    || (isProblemIntent((data as any)?.problemIntent) && (data as any).problemIntent !== "other"
-      ? (data as any).problemIntent
+  const problemIntent: ProblemIntent = structuredProblemIntent
+    || (isProblemIntent(rawProblemIntent) && rawProblemIntent !== "other"
+      ? rawProblemIntent as ProblemIntent
       : problemIntentFromStructuredHint(`${problemHint}\n${rawSolution}`) || "other");
+
   return {
-    title: toPlainTitleText(data?.title) || fallbackTitle,
-    subject: `${data?.subject ?? ""}`.trim() || options.subject || "Math",
-    topic: `${data?.topic ?? ""}`.trim() || "algebra",
-    problemIntent: extractedProblemIntent,
-    problem: `${data?.problem ?? ""}`.trim() || problemHint,
-    finalAnswer: `${data?.finalAnswer ?? ""}`.trim() || "",
-    ...(includeProblemText
-      ? { problemText: `${(data as any)?.problemText ?? ""}`.trim() || problemHint }
-      : {}),
+    title,
+    subject,
+    topic,
+    problemIntent,
+    problem: problemHint,
+    finalAnswer: rawFinalAnswer,
+    ...(includeProblemText ? { problemText: rawProblemText || problemHint } : {}),
   };
 }
 
@@ -5404,9 +5414,12 @@ Requirements:
 - Do NOT repeat or restate the problem. Begin directly with the solution.
 - No "Step 1:", "Step 2:" headers. Let equations flow naturally.
 - No internal reasoning or self-corrections. Output only the final polished derivation.
-- End with:
+- End with these lines (each on its own line, after the solution):
+**Title:** [short descriptive title for this specific problem, max 70 chars, plain text only — no LaTeX, no backslashes, no "$". Describe the specific problem, e.g. "Evaluate rational integral", "Geometric sequence sum". Do NOT use generic words like "Math", "Mathematics", "Physics", "គណិតវិទ្យា", "លំហាត់"]
+**Subject:** [exactly one of: Math | Physics | Chemistry]
+**Topic:** [exactly one of: algebra | geometry | calculus | probability-stats | arithmetic | mechanics | electromagnetism | thermodynamics | optics-waves | modern-physics | general-chemistry | organic-chemistry | inorganic-chemistry | physical-chemistry | biochemistry]
 **Problem Intent:** [average-rate | point-membership | range | integral | function-value | variation | other]
-**Final Answer:** [result]`;
+**Final Answer:** [result — wrap every math expression in "$...$", even each fact of a multi-part answer separately, e.g. "$x=3$" or "$\\lim_{x\\to0^+}f(x)=-\\infty$, $A(1,1)$, $(L):y=2x-1$" — never leave any part as bare, undelimited LaTeX]`;
 
   let rawSolution = "";
   let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
@@ -5421,21 +5434,15 @@ Requirements:
   }
 
   if (rawSolution && !isFallbackContent(rawSolution)) {
-    const metadata = await extractSolutionMetadata(rawSolution, problem, { ...options, subject });
+    // Sub-calls get stripped options — reference/knowledge context only helps the
+    // primary solve; sending it to metadata extraction or diagram extraction wastes
+    // ~1,800 tokens per call with no quality benefit.
+    // Metadata extracted from Phase 1 terminal markers — no extra AI call needed.
+    const metadata = extractMetadataFromPhase1(rawSolution, problem, { ...options, subject });
     if (!isFallbackContent(metadata.finalAnswer)) {
       verifyConstantSolvingFinalAnswer(problem, metadata.finalAnswer);
       verifyExtremaValueClaims(problem, rawSolution);
       verifySolutionCompleteness(rawSolution, metadata.finalAnswer);
-      const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-        await extractDiagramBlocksForSolution(problem, rawSolution, { ...options, subject }, metadata.finalAnswer, metadata.problemIntent).catch((err) => {
-          logger.warn("[solveProblemSolutionFirst] diagram extraction failed", {
-            err: err instanceof Error ? err.message : String(err),
-          });
-          return [];
-        }),
-        rawSolution,
-        metadata.finalAnswer,
-      );
       return normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -5448,7 +5455,7 @@ Requirements:
           finalAnswer: metadata.finalAnswer,
           solutionText: rawSolution,
           solutionFormat: "markdown-latex",
-          diagramBlocks,
+          diagramBlocks: [], // generated on-demand via /api/ai/session-diagram
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
@@ -5473,7 +5480,7 @@ Rules:
 3. solutionText should look like a clean, professional, A+ student-written solution.
 4. solutionText should be mostly equations and short labels. Avoid explanatory sentences.
 5. Use KaTeX-friendly LaTeX for math. For multi-line math, make solutionText one display block like "$$\\begin{aligned} ... \\end{aligned}$$". For a monotonicity/variation table or sign table, ALWAYS use a single LaTeX array in one display block — NEVER a markdown pipe table ("| ... | ... |"): "$$\\begin{array}{|c|ccccc|}\\hline x & 0 & & e & & +\\infty \\\\ \\hline f'(x) & & + & 0 & - & \\\\ \\hline f(x) & & \\nearrow & \\text{max} & \\searrow & \\\\ & -\\infty & & & & 1 \\\\ \\hline \\end{array}$$". If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞, explicitly state BOTH asymptote equations even if the problem only asks about one direction — a graph of the curve needs both.
-6. finalAnswer must be the final answer only.
+6. finalAnswer must be the final answer only. Wrap every math expression inside it in "$...$" — including each fact separately when the answer has several, comma-separated (one per sub-question). Never leave any part as bare, undelimited LaTeX.
 7. explanationStatus must be "not_generated" and explanation must be null.
 8. Use exact LaTeX commands: \\frac{numerator}{denominator}, \\sqrt{value}, \\pm, x_1, x_2.
 9. Never output placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
@@ -5571,19 +5578,8 @@ Rules:
     // pass genuinely fails (network/parse error) — a `null` sentinel from the
     // catch distinguishes that from the pass correctly deciding no diagram is
     // needed, which must NOT fall back to a possibly-stale joint-call diagram.
-    const normalizedDiagramBlocks = normalizeDiagramBlocks(primary.data.diagramBlocks);
-    const extractedDiagramBlocks = await extractDiagramBlocksForSolution(problem, `${primary.data.solutionText}\n${primary.data.finalAnswer}`, { ...options, subject: primary.data.subject }, primary.data.finalAnswer, primary.data.problemIntent).catch((err) => {
-      logger.warn("[solveProblemSolutionFirst] dedicated diagram extraction failed, falling back to joint-call diagramBlocks", {
-        err: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    });
-    const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-      extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
-      primary.data.solutionText,
-      primary.data.finalAnswer,
-    );
-    return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks, _usage: primary.usage }, problem, subject);
+    // Diagram generation deferred to /api/ai/session-diagram (on-demand)
+    return normalizeSolutionFirstPayload({ ...primary.data, diagramBlocks: [], _usage: primary.usage }, problem, subject);
   }
 
   const recovery = await generateStructuredJson<ProblemSolutionFirst>({
@@ -5641,10 +5637,13 @@ Solution format:
 - Use exact LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - No internal reasoning, no self-corrections. Output only the final polished derivation.
 
-End your response with:
+End your response with these lines (each on its own line):
 **Problem:** [the extracted problem statement with LaTeX]
+**Title:** [short descriptive title for this specific problem, max 70 chars, plain text only — no LaTeX, no backslashes, no "$". Do NOT use generic words like "Math", "Mathematics", "Physics", "គណិតវិទ្យា", "លំហាត់"]
+**Subject:** [exactly one of: Math | Physics | Chemistry]
+**Topic:** [exactly one of: algebra | geometry | calculus | probability-stats | arithmetic | mechanics | electromagnetism | thermodynamics | optics-waves | modern-physics | general-chemistry | organic-chemistry | inorganic-chemistry | physical-chemistry | biochemistry]
 **Problem Intent:** [average-rate | point-membership | range | integral | function-value | variation | other]
-**Final Answer:** [the final result]`;
+**Final Answer:** [the final result — wrap every math expression in "$...$", even each fact of a multi-part answer separately, e.g. "$x=3$" or "$\\lim_{x\\to0^+}f(x)=-\\infty$, $A(1,1)$, $(L):y=2x-1$" — never leave any part as bare, undelimited LaTeX]`;
 
   let rawSolution = "";
   let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
@@ -5662,7 +5661,8 @@ End your response with:
     const problemTextMatch = rawSolution.match(/\*\*Problem:\*\*\s*(.+?)(?:\n|$)/i);
     const extractedHint = problemTextMatch?.[1]?.trim() || "";
 
-    const metadata = await extractSolutionMetadata(rawSolution, extractedHint, options, true);
+    // Metadata extracted from Phase 1 terminal markers — no extra AI call needed.
+    const metadata = extractMetadataFromPhase1(rawSolution, extractedHint, options, true);
     const finalProblemText = (metadata.problemText || extractedHint || "").trim();
 
     if (finalProblemText && !isFallbackContent(finalProblemText)) {
@@ -5676,16 +5676,6 @@ End your response with:
       verifyConstantSolvingFinalAnswer(finalProblemText, resolvedFinalAnswer);
       verifyExtremaValueClaims(finalProblemText, rawSolution);
       verifySolutionCompleteness(rawSolution, resolvedFinalAnswer);
-      const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-        await extractDiagramBlocksForSolution(finalProblemText, rawSolution, { ...options, subject: metadata.subject }, resolvedFinalAnswer, metadata.problemIntent).catch((err) => {
-          logger.warn("[solveFromImageDirect] diagram extraction failed", {
-            err: err instanceof Error ? err.message : String(err),
-          });
-          return [];
-        }),
-        rawSolution,
-        resolvedFinalAnswer,
-      );
       const solution = normalizeSolutionFirstPayload(
         {
           version: 2,
@@ -5698,7 +5688,7 @@ End your response with:
           finalAnswer: resolvedFinalAnswer,
           solutionText: rawSolution,
           solutionFormat: "markdown-latex",
-          diagramBlocks,
+          diagramBlocks: [], // generated on-demand via /api/ai/session-diagram
           explanationStatus: "not_generated",
           explanation: null,
           insights: { simpleBreakdown: "", keyFormula: "" },
@@ -5730,7 +5720,7 @@ Rules for solutionText:
 - If the function has a DIFFERENT oblique/horizontal asymptote as x→-∞ versus x→+∞, explicitly state BOTH asymptote equations even if the problem only asks about one direction — a graph of the curve needs both.
 - Use exact KaTeX LaTeX: \\frac{a}{b}, \\sqrt{x}, \\pm, x_1, x_2
 - Do not use placeholder boxes, "extpm", "extradical", "/frac", "/sqrt", or standalone "$" lines.
-- finalAnswer must be the final answer only.
+- finalAnswer must be the final answer only. Wrap every math expression inside it in "$...$" — including each fact separately when the answer has several, comma-separated (one per sub-question). Never leave any part as bare, undelimited LaTeX.
 - explanationStatus must be "not_generated", explanation must be null.
 - title: Must be a short descriptive title specifically for this problem (max 70 chars). Plain text only — NEVER include LaTeX syntax, "$" delimiters, or backslash commands (e.g. \frac, \sqrt). DO NOT use generic words like "Math", "Mathematics", "Physics", "Chemistry", "គណិតវិទ្យា", "រូបវិទ្យា", "គីមីវិទ្យា", "លំហាត់", "លំហាត់គណិតវិទ្យា" or similar.
 - subject: Must be strictly one of: "Math", "Physics", "Chemistry". No subtopics, no other languages, no other subjects.
@@ -5830,20 +5820,9 @@ Return a single JSON object only.`;
     verifySolutionCompleteness(data.solutionText, data.finalAnswer);
     // Same "prefer the dedicated, solution-grounded pass" priority as
     // solveProblemSolutionFirst above — see the comment there.
-    const normalizedDiagramBlocks = normalizeDiagramBlocks(data.diagramBlocks);
-    const extractedDiagramBlocks = await extractDiagramBlocksForSolution(extractedProblemText, `${data.solutionText}\n${data.finalAnswer}`, { ...options, subject: data.subject }, data.finalAnswer, data.problemIntent).catch((err) => {
-      logger.warn("[solveFromImageDirect] dedicated diagram extraction failed, falling back to joint-call diagramBlocks", {
-        err: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    });
-    const diagramBlocks = verifyDiagramBlocksAgainstSolution(
-      extractedDiagramBlocks !== null ? extractedDiagramBlocks : normalizedDiagramBlocks,
-      data.solutionText,
-      data.finalAnswer,
-    );
+    // Diagram generation deferred to /api/ai/session-diagram (on-demand)
     const solution = normalizeSolutionFirstPayload(
-      { ...data, diagramBlocks, _usage: fallbackUsage },
+      { ...data, diagramBlocks: [], _usage: fallbackUsage },
       extractedProblemText,
       data.subject ?? "General"
     );
@@ -5982,6 +5961,7 @@ Rules:
     maxAttempts: 3,
     imagePart,
     responseSchema: schema,
+    noThinking: true, // structuring existing solution into nodes — no deep reasoning needed
   });
 
   if (isUsableProblemBreakdown(primary.data)) {
@@ -6000,6 +5980,7 @@ Return ONE complete JSON object only. Ensure every branch includes concrete math
     maxAttempts: 2,
     imagePart,
     noJsonMime: true,
+    noThinking: true,
   });
 
   const combinedUsage = addUsage(primary.usage, recovery.usage);
@@ -6244,7 +6225,16 @@ function demoteNonLatinTextCommands(raw: string): string {
 }
 
 function normalizeNodeMathContent(raw: string): string {
-  let text = normalizeMathExpression(stripLatexTabularEnv(stripRepeatedTextSpacePadding(raw ?? "")));
+  // Repair JSON-escape corruption first: \r/\n/\t/\f/\b inside LaTeX command names
+  // get interpreted as control characters when the model emits them without double-escaping.
+  // e.g. \rightarrow stored as \r + "ightarrow" → repair before anything else touches it.
+  const repaired = (raw ?? "")
+    .replace(/\r(ight|ho)\b/g, "\\r$1")      // \rightarrow, \rho
+    .replace(/\n(otin|umber|ame|ew|eigh)\b/g, "\\n$1") // \notin, \number, \new…
+    .replace(/\t(ext|heta|imes|an|o|ilde)\b/g, "\\t$1") // \text, \theta, \times…
+    .replace(/\f(rac)\b/g, "\\f$1")           // \frac
+    .replace(/\b(eta)\b/g, "\\b$1");          // \beta (bare "eta" after \b eaten)
+  let text = normalizeMathExpression(stripLatexTabularEnv(stripRepeatedTextSpacePadding(repaired)));
   if (!text) return "";
 
   // Demote \text{non-Latin} commands BEFORE delimiter wrapping so KaTeX never
@@ -6277,6 +6267,49 @@ function normalizeNodeMathContent(raw: string): string {
   return normalizeMathSegments(text);
 }
 
+/**
+ * Normalizes a single breakdown node's text fields (label, description, mathContent,
+ * keyFormula) and builds render blocks. Used by both sanitizeBreakdownNodes (breakdown
+ * path) and attachRenderBlocksToNode (expandNode / regenerate paths) so ALL AI-generated
+ * node content goes through the same repair pipeline regardless of which route produced it.
+ */
+export function sanitizeBreakdownNode(node: {
+  label?: string; title?: string;
+  description?: string; why?: string;
+  mathContent?: string; math?: string;
+  keyFormula?: string;
+}): {
+  label: string;
+  description: string;
+  mathContent: string | undefined;
+  keyFormula: string;
+  labelBlocks: ReturnType<typeof buildRenderBlocks>;
+  descriptionBlocks: ReturnType<typeof buildRenderBlocks>;
+  mathBlocks: ReturnType<typeof buildRenderBlocks>;
+} {
+  const rawLabel = String(node.label ?? node.title ?? "");
+  const rawDescription = String(node.description ?? node.why ?? "");
+  const rawMath = node.mathContent ?? node.math;
+
+  const normalizedLabel = deepNormalizeMathProse(stripLatexTabularEnv(rawLabel));
+  const normalizedDescription = normalizeDescriptionText(stripLatexTabularEnv(rawDescription));
+  const normalizedMathContent = rawMath ? normalizeNodeMathContent(rawMath) : rawMath;
+  const normalizedKeyFormula = normalizeNodeKeyFormula(
+    String(node.keyFormula ?? ""),
+    normalizedMathContent || normalizedLabel || "",
+  );
+
+  return {
+    label: normalizedLabel,
+    description: normalizedDescription,
+    mathContent: normalizedMathContent,
+    keyFormula: normalizedKeyFormula,
+    labelBlocks: buildRenderBlocks(normalizedLabel),
+    descriptionBlocks: buildRenderBlocks(normalizedDescription),
+    mathBlocks: buildRenderBlocks(normalizedMathContent || normalizedKeyFormula, { defaultDisplay: true }),
+  };
+}
+
 function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
   const nodes = Array.isArray(bd?.nodes) ? bd.nodes : [];
   logger.info(`[DEBUG:AI:BEFORE_SANITIZE] Task: breakdown`, {
@@ -6286,32 +6319,12 @@ function sanitizeBreakdownNodes(bd: ProblemBreakdown): ProblemBreakdown {
   const sanitized = {
     ...bd,
     nodes: nodes.map((node) => {
-      const normalizedLabel = deepNormalizeMathProse(stripLatexTabularEnv(node.label ?? ""));
-      const normalizedDescription = normalizeDescriptionText(stripLatexTabularEnv(node.description ?? ""));
-      const normalizedMathContent = node.mathContent ? normalizeNodeMathContent(node.mathContent) : node.mathContent;
-      const normalizedKeyFormula = normalizeNodeKeyFormula(
-        node.keyFormula ?? "",
-        normalizedMathContent || normalizedLabel || ""
-      );
-
+      const fields = sanitizeBreakdownNode(node);
       // Infer missing type: recovery responses often omit it.
       const inferredType: BreakdownNode["type"] =
         node.type ||
         (node.id === "root" || node.parentId == null ? "root" : "branch");
-
-      return {
-        ...node,
-        type: inferredType,
-        label: normalizedLabel,
-        description: normalizedDescription,
-        mathContent: normalizedMathContent,
-        keyFormula: normalizedKeyFormula,
-        labelBlocks: buildRenderBlocks(normalizedLabel),
-        descriptionBlocks: buildRenderBlocks(normalizedDescription),
-        // Use buildRenderBlocks (not buildMathBlocks) so that mixed prose+math mathContent
-        // (e.g. "ដឺក្រេ $n = 3$ (ចំនួនSES)") keeps its text blocks instead of filtering them out.
-        mathBlocks: buildRenderBlocks(normalizedMathContent || normalizedKeyFormula, { defaultDisplay: true }),
-      };
+      return { ...node, type: inferredType, ...fields };
     }),
   };
 
@@ -6398,13 +6411,16 @@ Rules:
 - Labels must be short action phrases (3-5 words), such as "Substitute known values" or "Cancel common factor"
 - Descriptions must explain why that one small calculation move is valid`;
 
+  // expandNode embeds all relevant context (fullSolution, previous/next step) directly
+  // in the prompt. Reference/knowledge contexts add no value and waste ~1,800 tokens.
   const result = await generateStructuredJson<Omit<BreakdownNode, "parentId">[]>({
     prompt,
-    options,
+    options: withoutContext(options),
     temperature: 0.2,
     maxOutputTokens: 4096,
     taskName: "expandNode",
     maxAttempts: 2,
+    noThinking: true, // follows a strict schema from embedded context — no open-ended reasoning
   });
 
   return { nodes: Array.isArray(result.data) ? result.data : [], usage: result.usage };
@@ -6462,6 +6478,7 @@ Rules:
     maxOutputTokens: 1024,
     taskName: "regenerateBranchNode",
     maxAttempts: 2,
+    noThinking: true, // rewriting one node to a fixed schema — pattern-following, not deep reasoning
   });
 
   const regenData = regenResult.data;
@@ -6560,6 +6577,39 @@ function fixKhmerSpacingArtifacts(text: string): string {
   return out;
 }
 
+const KHMER_RANGE_RE = /[\u1780-\u17FF]/;
+const THAI_RANGE_RE = /[\u0E00-\u0E7F]/g;
+
+/**
+ * Strips Thai characters from strings that contain Khmer text.
+ * Flash-lite occasionally outputs Thai words (e.g. เทียบ = "compare") in place of
+ * their Khmer equivalents. Since this app is Khmer-focused, any Thai char in a
+ * Khmer-dominant string is an error.
+ */
+function stripThaiFromKhmer(text: string): string {
+  if (!KHMER_RANGE_RE.test(text)) return text; // not a Khmer string — leave untouched
+  return text.replace(THAI_RANGE_RE, "").replace(/\s{2,}/g, " ").trim();
+}
+
+// Khmer math term corrections: flash-lite consistently mis-transliterates these.
+// Keys are the wrong form the model produces; values are the standard textbook form.
+// Only add entries where the wrong form is unambiguous (won't corrupt real words).
+const KHMER_MATH_TERM_CORRECTIONS: Record<string, string> = {
+  "អាស៊ីបទូត": "អាស៊ូមតូត",     // Asymptote
+  "អាស៊ីតូត": "អាស៊ូមតូត",      // Asymptote (another variant)
+  "ដេរីវ៉េ": "ដេរីវេ",           // Derivative (wrong tone mark)
+  "ដេរីវ៉": "ដេរីវេ",            // Derivative (truncated)
+  "អាំងតេក្រាល": "អាំងតេក្រាល",  // Integral (already correct, no-op guard)
+};
+
+function repairKhmerMathTerms(text: string): string {
+  let out = stripThaiFromKhmer(text);
+  for (const [wrong, correct] of Object.entries(KHMER_MATH_TERM_CORRECTIONS)) {
+    if (wrong !== correct) out = out.split(wrong).join(correct);
+  }
+  return out;
+}
+
 function countMathSegments(text: string): number {
   return (text.match(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g) ?? []).length;
 }
@@ -6615,8 +6665,20 @@ function wrapBareMathInDelimiters(input: string): string {
 /**
  * Entry point for "deep" normalization of math/prose mixed strings.
  */
+/**
+ * Converts display-math $$...$$ delimiters to inline $...$ for label/description
+ * prose fields where block-level math is never appropriate. Flash-lite frequently
+ * wraps individual expressions in $$ even inside prose strings.
+ */
+function inlineDisplayMathInProse(text: string): string {
+  return text.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => `$${inner.trim()}$`);
+}
+
 function deepNormalizeMathProse(input: string): string {
-  let text = repairBareMath(input);
+  // Labels are never display-math contexts. Convert $$...$$ → $...$ so flash-lite's
+  // display-math habit in label fields doesn't produce block-level math in inline slots.
+  let text = inlineDisplayMathInProse(repairKhmerMathTerms(input));
+  text = repairBareMath(text);
   text = wrapBareMathInDelimiters(text);
   return normalizeMathSegments(text);
 }
@@ -6637,7 +6699,8 @@ function deepNormalizeMathProse(input: string): string {
  *      (not "The $2 \times 2$ \matrix is...")
  */
 function normalizeDescriptionText(input: string): string {
-  const text = String(input || "").trim();
+  // Descriptions are prose — $$...$$ display math is out of place. Demote to inline.
+  const text = inlineDisplayMathInProse(String(input || "").trim());
   if (!text) return text;
 
   const DELIM_RE = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/;
@@ -6650,7 +6713,7 @@ function normalizeDescriptionText(input: string): string {
         return normalizeMathSegments(part);
       }
       // Prose segment — minimal, non-destructive cleanup only
-      return part
+      return repairKhmerMathTerms(part)
         .replace(/\\([a-zA-Z]+)/g, "$1")   // strip any stray \word (e.g. \matrix → matrix)
         .replace(/[−–]/g, "-")              // normalize unicode minus/dash
         .replace(/[\u200B\u200C\u200D\uFEFF]/g, "") // strip zero-width artifacts
@@ -7131,6 +7194,7 @@ Return ONLY this JSON:
     maxOutputTokens: isKidLevel ? 1024 : 1024,
     taskName: "getNodeInsight",
     maxAttempts: 3,
+    noThinking: true, // insight summarization follows a fixed schema — no open-ended reasoning needed
     recoverFromRaw: (raw) => recoverNodeInsightFromPartialJson(raw),
   });
   const { data, source } = insightResult;
@@ -7315,6 +7379,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     maxOutputTokens: 4096,
     taskName: "generateVisualTable",
     maxAttempts: 3,
+    noThinking: true, // structured table extraction — deterministic, no reasoning needed
     imagePart: imagePart ?? undefined,
     responseSchema: visualTableSchema,
   });
@@ -7989,6 +8054,10 @@ async function generateStructuredJson<T>(
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
           ] as any,
+          // Disable thinking for pure extraction tasks — thinking tokens are billed at the
+          // same rate as output tokens ($9/M on gemini-3.5-flash) but add no value when the
+          // task is deterministic structured extraction rather than open-ended reasoning.
+          ...(config.noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           ...(config.responseSchema ? { responseSchema: config.responseSchema } : {}),
         },
         contents: [{
@@ -8015,6 +8084,22 @@ async function generateStructuredJson<T>(
       ? { ...providerUsage, source: "provider", model: modelName }
       : { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate", model: modelName };
     accUsage = mergeUsage(accUsage, callUsage);
+
+    // Per-task token log — lets you see which sub-call dominates cost and verify
+    // that noThinking tasks actually have zero thinking tokens.
+    if (providerUsage) {
+      const pt = providerUsage.promptTokens ?? 0;
+      const ct = providerUsage.completionTokens ?? 0;
+      const total = providerUsage.totalTokens ?? 0;
+      const thinkingTokens = Math.max(0, total - pt - ct);
+      console.log(`💰 [token-task] ${config.taskName} attempt=${attempt} noThinking=${!!config.noThinking}`, {
+        prompt: pt,
+        completion: ct,
+        thinking: thinkingTokens,
+        billableOutput: ct + thinkingTokens,
+        total,
+      });
+    }
 
     const raw = response.text ?? "";
     lastRaw = raw;

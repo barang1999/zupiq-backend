@@ -105,8 +105,8 @@ export interface BuildReferenceContextOptions {
   limit?: number;
 }
 
-const DEFAULT_REFERENCE_LIMIT = 5;
-const MAX_REFERENCE_CONTEXT_CHARS = 5200;
+const DEFAULT_REFERENCE_LIMIT = 3;      // was 5 — 3 chunks is enough signal; saves ~500 tokens per primary call
+const MAX_REFERENCE_CONTEXT_CHARS = 3500; // was 5200 — trim long chunks; saves ~400 tokens when corpus is verbose
 
 let cachedCorpus: ReferenceCorpusFile[] | null = null;
 

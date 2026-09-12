@@ -133,3 +133,58 @@ describe("enrichRenderBlocks preserves paragraph-break whitespace across a re-se
     expect(blocks.some((b) => b.type === "text" && b.content.includes("តម្លៃគឺ"))).toBe(true);
   });
 });
+
+describe("splitUndelimitedMathClauses — a long, all-LaTeX finalAnswer with no '$' at all", () => {
+  // Real observed case: a finalAnswer with zero "$" delimiters anywhere —
+  // "\lim_{x\to0^+}f(x)=-\infty, \lim_{x\to+\infty}f(x)=1, f'(x)=2(...),
+  // A(1,1), (L):y=2x-1" — five comma-separated clauses summarizing a
+  // multi-part problem. looksLikeBareMath's own single-block check rejects
+  // it purely for being long (over its 15-word cap), even though it's 100%
+  // math with zero prose mixed in anywhere, so it fell through to the naive
+  // fallback and rendered as one raw, completely unformatted line of
+  // backslash-command text.
+  it("wraps each comma-separated clause as its own math block, keeping the separators as plain text", () => {
+    const finalAnswer = "\\lim_{x \\to 0^+} f(x) = -\\infty, \\lim_{x \\to +\\infty} f(x) = 1, f'(x) = 2\\left(\\frac{1 - \\ln x}{x^2}\\right), A(1, 1), (L): y = 2x - 1";
+    const blocks = buildRenderBlocks(finalAnswer, { defaultDisplay: false });
+    expect(blocks.filter((b) => b.type === "math").map((b) => (b.type === "math" ? b.latex : ""))).toEqual([
+      "\\lim_{x \\to 0^+} f(x) = -\\infty",
+      "\\lim_{x \\to +\\infty} f(x) = 1",
+      "f'(x) = 2\\left(\\frac{1 - \\ln x}{x^2}\\right)",
+      "A(1, 1)",
+      "(L): y = 2x - 1",
+    ]);
+    // No leftover block still carries the whole undivided blob as raw text.
+    expect(blocks.every((b) => b.type !== "text" || b.content.length < 20)).toBe(true);
+  });
+
+  it("never splits inside a clause's own nested parens/braces/brackets", () => {
+    // Long enough (>15 space-separated tokens) to also exceed
+    // looksLikeBareMath's own pre-existing single-block word cap, so this
+    // actually reaches splitUndelimitedMathClauses rather than the
+    // already-adequate single-block path handling it directly.
+    const raw = "\\lim_{x \\to 0} f(x) = A(1, 2), \\lim_{x \\to 1} g(x) = \\frac{1, 2}{3, 4}, h(x) = B(5, 6)";
+    const blocks = buildRenderBlocks(raw, { defaultDisplay: false });
+    expect(blocks.filter((b) => b.type === "math").map((b) => (b.type === "math" ? b.latex : ""))).toEqual([
+      "\\lim_{x \\to 0} f(x) = A(1, 2)",
+      "\\lim_{x \\to 1} g(x) = \\frac{1, 2}{3, 4}",
+      "h(x) = B(5, 6)",
+    ]);
+  });
+
+  it("does not wrap ordinary English prose with one stray unescaped command as math", () => {
+    const raw = "Since x slowly and steadily approaches positive infinity in the long run, \\infty is therefore the correct final limit value, and we ultimately conclude the function clearly diverges forever";
+    const blocks = buildRenderBlocks(raw);
+    expect(blocks.every((b) => b.type === "text")).toBe(true);
+  });
+
+  it("leaves genuine Khmer prose with commas completely untouched", () => {
+    const blocks = buildRenderBlocks("យើងបានចម្លើយ A, B, និង C ត្រឹមត្រូវ");
+    expect(blocks.every((b) => b.type === "text")).toBe(true);
+  });
+
+  it("still uses the original single-block path when there are no top-level commas at all", () => {
+    const blocks = buildRenderBlocks("\\frac{1}{2} + \\frac{1}{3}", { defaultDisplay: false });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("math");
+  });
+});

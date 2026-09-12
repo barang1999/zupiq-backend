@@ -80,6 +80,9 @@ function buildProseRenderBlocks(content: string, options: { defaultDisplay?: boo
     return [buildMathBlock(raw, options.defaultDisplay ?? true)];
   }
 
+  const clauseBlocks = splitUndelimitedMathClauses(raw);
+  if (clauseBlocks) return clauseBlocks;
+
   return raw
     .split(/\n{2,}/)
     .map((part) => buildTextBlock(part.trim(), options.lang))
@@ -418,6 +421,80 @@ function looksLikeBareMath(input: string): boolean {
   }
 
   return false;
+}
+
+// Splits on a "," or ";" only when it sits OUTSIDE any {}/()/[] nesting —
+// e.g. the comma inside "A(1, 1)" or "\frac{1, 2}{3}" never counts as a
+// clause boundary, only a comma directly between two top-level clauses
+// does. Each returned clause carries the separator that followed it (empty
+// for the last one) so callers can splice it back in as plain text.
+function splitTopLevelClauses(raw: string): Array<{ text: string; separator: string }> {
+  const clauses: Array<{ text: string; separator: string }> = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "{" || ch === "(" || ch === "[") {
+      depth += 1;
+    } else if (ch === "}" || ch === ")" || ch === "]") {
+      depth = Math.max(0, depth - 1);
+    } else if (depth === 0 && (ch === "," || ch === ";")) {
+      const text = raw.slice(start, i).trim();
+      let separatorEnd = i + 1;
+      while (separatorEnd < raw.length && /\s/.test(raw[separatorEnd])) separatorEnd += 1;
+      if (text) clauses.push({ text, separator: raw.slice(i, separatorEnd) });
+      start = separatorEnd;
+    }
+  }
+
+  const lastText = raw.slice(start).trim();
+  if (lastText) clauses.push({ text: lastText, separator: "" });
+  return clauses;
+}
+
+// A permissive "is this clause pure math notation" check, deliberately
+// looser than looksLikeBareMath's own word-count cap — used only once the
+// caller has already confirmed the WHOLE string is Khmer-free and contains
+// at least one real LaTeX command somewhere, so the only thing left to rule
+// out per-clause is ordinary English prose sneaking in via a stray comma
+// (e.g. "Since x approaches infinity, \infty is the limit" must NOT get
+// every clause wrapped as math). A bare labeled point like "A(1, 1)" or an
+// annotation like "(L): y = 2x - 1" has no operator symbol at all and would
+// fail looksLikeBareMath's own final check, but is obviously meant as math
+// in this context.
+function looksLikeMathClause(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/[ក-៿]/.test(trimmed)) return false;
+  if (!/^[A-Za-z0-9\\{}[\]_^+\-*/=().,:'’\s]+$/.test(trimmed)) return false;
+  // Any run of 3+ letters that ISN'T immediately preceded by a backslash is
+  // an ordinary English word (a command name always starts with "\", and a
+  // bare math variable/label is 1-2 letters at most in this notation).
+  return !/(?<!\\)\b[A-Za-z]{3,}\b/.test(trimmed);
+}
+
+// A finalAnswer-shaped string can be ALL LaTeX with zero Khmer/English prose
+// mixed in, but still miss looksLikeBareMath's single-block check purely
+// because it's long — several comma-separated clauses each summarizing one
+// part of a multi-part problem (a real observed case: a finalAnswer that
+// never used "$" delimiters at all, reading
+// "\lim_{x\to0^+}f(x)=-\infty, \lim_{x\to+\infty}f(x)=1, f'(x)=2(...),
+// A(1,1), (L):y=2x-1" — one unbroken line of raw backslash-command text).
+// Splitting on top-level commas/semicolons and wrapping each clause as its
+// own math block (with the original separator kept as plain text between
+// them) recovers this without ever touching genuinely mixed prose+math text
+// (segmentMathContent/hasMathDelimiters already handle that earlier).
+function splitUndelimitedMathClauses(raw: string): RenderBlock[] | null {
+  if (/[ក-៿]/.test(raw) || !LATEX_COMMAND_REGEX.test(raw)) return null;
+
+  const clauses = splitTopLevelClauses(raw);
+  if (clauses.length <= 1 || !clauses.every(({ text }) => looksLikeMathClause(text))) return null;
+
+  return clauses.flatMap(({ text, separator }) => [
+    buildMathBlock(text, false),
+    ...(separator ? [buildTextBlock(separator)] : []),
+  ]);
 }
 
 function getLatexWarnings(latex: string): string[] {

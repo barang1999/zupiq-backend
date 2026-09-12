@@ -48,9 +48,9 @@ Do NOT apply `noThinking: true` to:
 
 ### 2. Cap thinking on primary solve calls
 
-`generateRawSolution` uses `thinkingConfig: { thinkingBudget: 1024 }`. This caps internal reasoning at 1,024 tokens (enough for high-school math) instead of the model's natural 2,000–3,000 token deliberation.
+`generateRawSolution` uses `thinkingConfig: { thinkingBudget: 512 }`. This caps internal reasoning at 512 tokens (enough for high-school math) instead of the model's natural 2,000–3,000 token deliberation.
 
-Do not remove the cap without benchmarking. Lower to 512 if quality holds. Raise only if specific problem types regress.
+Do not remove the cap without benchmarking. Raise only if specific problem types regress.
 
 ### 3. Never pass context to sub-calls
 
@@ -124,4 +124,17 @@ The route-level `[token-usage] consumed` log shows the aggregated total after `c
 | 2026-09-11 | Added `noThinking: true` to `breakdownProblem` | Thinking 5,736 → 0, ~$0.052/breakdown |
 | 2026-09-11 | Reduced `DEFAULT_REFERENCE_LIMIT` 5→3, `MAX_REFERENCE_CONTEXT_CHARS` 5200→3500 | ~500 prompt tokens/call |
 
-**Net result: ~$0.126 → ~$0.040 per full session (solve + breakdown + diagram), 68% reduction.**
+| 2026-09-12 | Added `noThinking: true` + `withoutContext(options)` to 5 structured extraction calls (`solveProblemSolutionFirst` ×2, `solveFromImageDirect` fallback, `instantBreakdown` ×2) | ~1,800 prompt + 500–800 thinking tokens per call |
+| 2026-09-12 | Strip `referenceContext` from `solveFromImageDirect` Phase 1 — context was built from bare subject query (no problem text), contributing ~875 tokens of noise | ~875 prompt tokens/image-solve |
+| 2026-09-11 | Image resize to ≤1024px (sharp) before AI calls — caps tile count from 12+ to ~4 | ~2,066 prompt tokens/image |
+| 2026-09-11 | `thinkingBudget` 1024→512 on `generateRawSolution` | ~$0.005/solve (est.) |
+| 2026-09-11 | Wolfram query formatter: handle pure-LaTeX inputs, `\lim_{...}` → `limit as x->a of` | False mismatches reduced |
+
+| 2026-09-12 | Added `thinkingBudget: 512` cap to `chat()` — was uncapped, producing ~1,600 thinking tokens/turn | ~$0.060/6-turn chat session |
+| 2026-09-12 | Removed `solution_text` from step chat `stepContext` — replaced with `insights.simpleBreakdown` (≤500 chars) + node description (≤600 chars) | ~2,000–5,000 prompt tokens/turn |
+| 2026-09-12 | Strip `referenceContext` + `userKnowledgeContext` from step chat — step context already has all needed context | ~1,800 prompt tokens/turn |
+
+**Net result: ~$0.126 → ~$0.035 per full session (solve + breakdown + diagram), ~72% reduction.**
+| 2026-09-12 | Cap chat history to last 10 messages (5 exchanges) — each uncapped AI response adds ~1,000 tokens to every subsequent prompt | Prevents unbounded growth; saves ~1,000 tokens per turn beyond turn 5 |
+
+**Chat: ~$0.19 → ~$0.05 per 6-turn chat session (est.), ~75% reduction.**

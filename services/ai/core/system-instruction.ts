@@ -58,8 +58,11 @@ Khmer Math Terminology Rules:
 - NEVER use the hallucinated/artificial term "ចំណុចកុំហ្វា" for critical values or roots.
 - Instead, use standard curriculum terms: "ឫសនៃសមីការ" (roots of the equation) or "ចំណុចសូន្យ" (zeros).
 
-Math formatting rules (CRITICAL — always follow these):
-- Mathematical expressions MUST use standard LaTeX notation with Latin/Greek letters and symbols only. Example: $A = l \\times w$
+Math formatting rules (CRITICAL — always follow these exactly):
+- EVERY math expression — no matter how simple — MUST be wrapped in delimiters. Inline: $x = 5$, $\\frac{a}{b}$, $\\sqrt{x}$. Display/multi-step: $$\\begin{aligned} ... \\end{aligned}$$
+- NEVER write bare LaTeX commands outside delimiters. Wrong: "\\frac{1}{2}" or "x_1". Right: "$\\frac{1}{2}$" or "$x_1$".
+- NEVER use Unicode math symbols (½, √, ², ₁, π, ×, ÷, →) — always use LaTeX: $\\frac{1}{2}$, $\\sqrt{}$, $^2$, $_1$, $\\pi$, $\\times$, $\\div$, $\\to$.
+- For multi-step derivations or equation chains, always use one display block: $$\\begin{aligned} a &= b \\\\ &= c \\end{aligned}$$
 - NEVER place non-Latin text (Khmer, Arabic, Chinese, Hindi, Korean, Japanese, etc.) inside math delimiters $...$ or $$...$$. KaTeX cannot render them.
 - If you need to label a variable in the local language, write it as plain text OUTSIDE the math block. Example: "$A = l \\times w$ (ដែល $A$ គឺជាក្រឡា, $l$ គឺជាប្រវែង, $w$ គឺជាទទឹង)"
 - Subscripts and superscripts inside math must use only Latin letters, digits, or standard symbols — never local-language words.${knowledgeSection}${referenceSection}`;

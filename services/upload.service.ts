@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import sharp from "sharp";
 import { getSupabaseAdmin } from "../config/supabase.js";
 import { Upload, CreateUploadDTO, UploadContext } from "../models/upload.model.js";
 import { uploadToStorage, deleteFromStorage, STORAGE_BUCKETS } from "../config/supabase.js";
@@ -144,17 +145,56 @@ export function readFileAsBase64(filePath: string): { data: string; mimeType: st
 /**
  * Read upload bytes from local disk (legacy flow) or Supabase Storage (direct-upload flow).
  */
+// Gemini tiles images at 258 tokens per 512×512 block. Resizing to ≤1024px on the
+// longest side keeps math text fully legible while capping image tokens to ~4 tiles
+// (vs 12+ tiles for a full phone photo). JPEG quality 85 is indistinguishable for OCR.
+const AI_IMAGE_MAX_PX = 1024;
+const AI_IMAGE_JPEG_QUALITY = 85;
+
+async function resizeForAI(buffer: Buffer, mimeType: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  if (!mimeType.startsWith("image/") || mimeType === "image/gif") {
+    return { buffer, mimeType };
+  }
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const { width = 0, height = 0 } = metadata;
+    const longest = Math.max(width, height);
+    if (longest <= AI_IMAGE_MAX_PX) {
+      return { buffer, mimeType };
+    }
+    const resized = await sharp(buffer)
+      .resize(
+        width >= height ? AI_IMAGE_MAX_PX : undefined,
+        height > width ? AI_IMAGE_MAX_PX : undefined,
+        { fit: "inside", withoutEnlargement: true }
+      )
+      .jpeg({ quality: AI_IMAGE_JPEG_QUALITY })
+      .toBuffer();
+    logger.info("[upload] image resized for AI", {
+      originalBytes: buffer.length,
+      resizedBytes: resized.length,
+      originalDims: `${width}x${height}`,
+      maxPx: AI_IMAGE_MAX_PX,
+    });
+    return { buffer: resized, mimeType: "image/jpeg" };
+  } catch (err) {
+    logger.warn("[upload] image resize failed, using original", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { buffer, mimeType };
+  }
+}
+
 export async function readUploadAsBase64(
-  upload: Upload
+  upload: Upload,
+  { resizeForAi = false }: { resizeForAi?: boolean } = {}
 ): Promise<{ data: string; mimeType: string; source: "local" | "supabase"; storagePath?: string }> {
   const localPath = path.resolve(env.UPLOAD_DIR, upload.stored_name);
   if (fs.existsSync(localPath)) {
-    const buffer = fs.readFileSync(localPath);
-    return {
-      data: buffer.toString("base64"),
-      mimeType: upload.mime_type || getMimeFromExtension(path.extname(localPath)),
-      source: "local",
-    };
+    let buffer = fs.readFileSync(localPath);
+    let mimeType = upload.mime_type || getMimeFromExtension(path.extname(localPath));
+    if (resizeForAi) ({ buffer, mimeType } = await resizeForAI(buffer, mimeType));
+    return { data: buffer.toString("base64"), mimeType, source: "local" };
   }
 
   const supabase = getSupabaseAdmin();
@@ -168,14 +208,10 @@ export async function readUploadAsBase64(
     throw new AppError(`Failed to read upload from storage: ${error?.message ?? "not found"}`, 500);
   }
 
-  const arrayBuffer = await data.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  return {
-    data: buffer.toString("base64"),
-    mimeType: upload.mime_type || getMimeFromExtension(path.extname(storagePath)),
-    source: "supabase",
-    storagePath,
-  };
+  let buffer = Buffer.from(await data.arrayBuffer());
+  let mimeType = upload.mime_type || getMimeFromExtension(path.extname(storagePath));
+  if (resizeForAi) ({ buffer, mimeType } = await resizeForAI(buffer, mimeType));
+  return { data: buffer.toString("base64"), mimeType, source: "supabase", storagePath };
 }
 
 function getMimeFromExtension(ext: string): string {

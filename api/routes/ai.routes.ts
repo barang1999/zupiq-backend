@@ -157,26 +157,20 @@ async function resolveAIOptions(
           
           if (node) {
             console.log(`[DEBUG] Found matching node: ${node.label || node.title}`);
-            aiOptions.stepContext = `CRITICAL TUTORING CONTEXT:
-The student is currently working on this overall problem:
-"${session.problem}"
+            const solutionOverview = (breakdown as any)?.insights?.simpleBreakdown
+              ? String((breakdown as any).insights.simpleBreakdown).slice(0, 500)
+              : null;
+            aiOptions.stepContext = `TUTORING CONTEXT:
+Problem: "${session.problem}"
+Final Answer: ${(session as any).final_answer || "Not available"}
+${solutionOverview ? `Solution Overview: ${solutionOverview}` : ""}
 
-FULL SOLUTION REFERENCE:
-${(session as any).solution_text || "Not available"}
+Current Step (the student is asking about this):
+Title: ${node.label || node.title || "Untitled Step"}
+Formula: ${node.mathContent || "None"}
+Description: ${String(node.description || "").slice(0, 600)}
 
-FINAL ANSWER:
-${(session as any).final_answer || "Not available"}
-
-CURRENT FOCUS AREA (The student is specifically asking about this part):
-STEP TITLE: ${node.label || node.title || "Untitled Step"}
-SPECIFIC FORMULA/MATH: ${node.mathContent || "None"}
-STEP DESCRIPTION: ${node.description || "No description available."}
-
-INSTRUCTION: 
-1. Your primary focus is to explain the "CURRENT FOCUS AREA" while staying consistent with the "FULL SOLUTION REFERENCE".
-2. If the student refers to "this step", "the formula", or "this part", they are strictly talking about the math shown in the FOCUS AREA above.
-3. Use the FULL SOLUTION context to explain WHY this step exists and HOW it leads to the FINAL ANSWER.
-4. DO NOT tell the student you don't know the problem or solution. You have everything you need above.`;
+Focus on explaining this specific step. Stay consistent with the final answer above.`;
           } else {
             console.log(`[DEBUG] No node found matching id: ${step_id}. Available IDs: ${nodes.map((n: any) => n.id).join(', ')}`);
           }
@@ -682,13 +676,26 @@ router.post(
       if (upload_id) {
         const upload = await getUploadById(upload_id);
         if (upload && upload.user_id === userId && upload.mime_type.startsWith("image/")) {
-          const read = await readUploadAsBase64(upload);
+          const read = await readUploadAsBase64(upload, { resizeForAi: true });
           imagePart = { data: read.data, mimeType: read.mimeType };
         }
       }
 
+      // Strip reference corpus and user knowledge context — the step context already has
+      // the problem, formula, and solution overview. Corpus lookups add ~1,800 tokens of
+      // noise per turn with no quality benefit for step-specific Q&A.
+      const { referenceContext: _rc, userKnowledgeContext: _kc, ...chatAiOptions } = aiOptions;
+
+      // Cap history to the last 10 messages (5 exchanges). Each AI response is ~1,000 tokens;
+      // an uncapped 10-turn history alone adds ~5,000 prompt tokens to every subsequent call.
+      // Always keep the final user message (last element) + up to 9 prior messages.
+      const CHAT_HISTORY_LIMIT = 10;
+      const cappedMessages = messages.length > CHAT_HISTORY_LIMIT
+        ? [...messages.slice(-(CHAT_HISTORY_LIMIT))]
+        : messages;
+
       console.log("[ChatDebug] calling chat()...", { elapsedMs: Date.now() - requestStartedAt });
-      const chatResult = await chat(messages, aiOptions, imagePart);
+      const chatResult = await chat(cappedMessages, chatAiOptions, imagePart);
       console.log("[ChatDebug] chat() returned:", {
         elapsedMs: Date.now() - requestStartedAt,
         textLength: chatResult.text.length,
@@ -698,30 +705,37 @@ router.post(
         usage: chatResult.usage,
       });
       const aiSegments = segmentMathContent(chatResult.text);
+      let aiBlocks: ReturnType<typeof buildRenderBlocks> | undefined;
+      try {
+        const built = buildRenderBlocks(chatResult.text);
+        aiBlocks = await enrichRenderBlocks(built);
+      } catch {
+        aiBlocks = undefined;
+      }
 
       // Persist last user message and AI response
       const sid = session_id ?? generateId();
       const lastUserMsg = lastUserMessage;
       const db = getSupabaseAdmin();
       await db.from("chat_messages").insert([
-        { 
-          id: generateId(), 
-          user_id: userId, 
-          session_id: sid, 
+        {
+          id: generateId(),
+          user_id: userId,
+          session_id: sid,
           step_id: step_id ?? null,
-          role: "user", 
+          role: "user",
           content: { text: lastUserMsg.content, segments: segmentMathContent(lastUserMsg.content) },
-          subject: subject ?? null, 
-          created_at: nowISO() 
+          subject: subject ?? null,
+          created_at: nowISO()
         },
-        { 
-          id: generateId(), 
-          user_id: userId, 
-          session_id: sid, 
+        {
+          id: generateId(),
+          user_id: userId,
+          session_id: sid,
           step_id: step_id ?? null,
-          role: "model", 
-          content: { text: chatResult.text, segments: aiSegments },
-          subject: subject ?? null, 
+          role: "model",
+          content: { text: chatResult.text, segments: aiSegments, ...(aiBlocks?.length ? { blocks: aiBlocks } : {}) },
+          subject: subject ?? null,
           created_at: nowISO(),
           metadata: {
             visualTable: chatResult.visualTable ?? null
@@ -755,6 +769,7 @@ router.post(
       });
       res.json({
         response: chatResult.text,
+        blocks: aiBlocks?.length ? aiBlocks : undefined,
         session_id: sid,
         usage,
         finish_reason: chatResult.finishReason,
@@ -949,7 +964,7 @@ router.post(
       });
 
       stage = "read:file";
-      const imagePartRead = await readUploadAsBase64(upload);
+      const imagePartRead = await readUploadAsBase64(upload, { resizeForAi: true });
       const imagePart = {
         data: imagePartRead.data,
         mimeType: imagePartRead.mimeType,
@@ -1099,7 +1114,7 @@ router.post(
       if (upload_id) {
         const upload = await getUploadById(upload_id);
         if (upload && upload.user_id === req.user!.sub && upload.mime_type.startsWith("image/")) {
-          const read = await readUploadAsBase64(upload);
+          const read = await readUploadAsBase64(upload, { resizeForAi: true });
           imagePart = { data: read.data, mimeType: read.mimeType };
         }
       }
@@ -1406,7 +1421,7 @@ router.post(
             return;
           }
           stage = "read:file";
-          const imagePartRead = await readUploadAsBase64(uploadRecord);
+          const imagePartRead = await readUploadAsBase64(uploadRecord, { resizeForAi: true });
           imagePart = { data: imagePartRead.data, mimeType: imagePartRead.mimeType } as { data: string; mimeType: string };
           logger.info("[instant-session] using upload", {
             traceId, uploadId: upload_id, source: imagePartRead.source,

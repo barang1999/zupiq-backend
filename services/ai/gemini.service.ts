@@ -159,6 +159,9 @@ export async function chat(
       systemInstruction: buildSystemInstruction(options),
       temperature: 0.7,
       maxOutputTokens: 8192,
+      // Cap thinking: chat explanations need some reasoning but not uncapped deliberation.
+      // 512 tokens matches the cap used on generateRawSolution.
+      ...(!modelName.includes("lite") ? { thinkingConfig: { thinkingBudget: 512 } } : {}),
     },
     history,
   });
@@ -4339,6 +4342,14 @@ export function extractAnchorClaims(solutionText: string, functionName: string =
   const pattern = new RegExp(`${escapedName}\\s*\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\)\\s*(?:=|\\\\approx|\\\\thickapprox)\\s*(-?\\d+(?:\\.\\d+)?)`, "g");
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(solutionText)) !== null) {
+    // If the character immediately after the captured y-number is a math
+    // continuation operator, the y-value is part of a compound expression
+    // (e.g. "f(-1) = -1 \cdot e^{-1}" or "f(-1) = -1/e") — the regex
+    // captured only the leading digit, not the full value. Skip to avoid
+    // a false mismatch in verifyDiagramBlocksAgainstSolution.
+    const afterMatch = solutionText.slice(match.index + match[0].length).trimStart();
+    if (/^[\\\/^*×÷]|^e\^/.test(afterMatch)) continue;
+
     const x = Number(match[1]);
     const y = Number(match[2]);
     if (Number.isFinite(x) && Number.isFinite(y)) anchors.push({ x, y });
@@ -5262,9 +5273,9 @@ async function generateRawSolution(
       systemInstruction: buildSystemInstruction(options),
       temperature: 0.1,
       maxOutputTokens: 8192,
-      // Cap thinking at 1024 tokens — enough for high-school math reasoning
+      // Cap thinking at 512 tokens — enough for high-school math reasoning
       // without the model spending 2000-3000 tokens on internal deliberation.
-      thinkingConfig: { thinkingBudget: 1024 },
+      thinkingConfig: { thinkingBudget: 512 },
       safetySettings: [
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
@@ -5555,13 +5566,14 @@ Rules:
 
   const primary = await generateStructuredJson<ProblemSolutionFirst>({
     prompt: `${prompt}\n${DIAGRAM_SPEC_GUIDE}`,
-    options,
+    options: withoutContext(options),
     temperature: 0.15,
     maxOutputTokens: 8192,
     taskName: "solveProblemSolutionFirst",
     maxAttempts: 2,
     imagePart,
     responseSchema: schema,
+    noThinking: true,
   });
 
   if (isUsableProblemSolutionFirst(primary.data)) {
@@ -5586,13 +5598,14 @@ Rules:
     prompt: `${prompt}
 
 Return ONE complete JSON object only. Keep it compact and include a usable solutionText.`,
-    options,
+    options: withoutContext(options),
     temperature: 0.1,
     maxOutputTokens: 8192,
     taskName: "solveProblemSolutionFirstRecovery",
     maxAttempts: 1,
     imagePart,
     noJsonMime: true,
+    noThinking: true,
   });
 
   if (isUsableProblemSolutionFirst(recovery.data)) {
@@ -5648,7 +5661,11 @@ End your response with these lines (each on its own line):
   let rawSolution = "";
   let phase1Usage: ChatUsage = { promptTokens: null, completionTokens: null, totalTokens: 0, source: "estimate" };
   try {
-    const phase1Result = await generateRawSolution(phase1Prompt, options, imagePart);
+    // Strip referenceContext for the vision Phase 1: the problem text is unknown until the model
+    // reads the image, so any reference corpus was built from a bare subject query ("Math") —
+    // a weak match that adds ~875 tokens with no targeting benefit.
+    const { referenceContext: _rc, ...phase1Options } = options;
+    const phase1Result = await generateRawSolution(phase1Prompt, phase1Options, imagePart);
     rawSolution = phase1Result.text;
     phase1Usage = phase1Result.usage;
   } catch (err) {
@@ -5799,7 +5816,7 @@ Return a single JSON object only.`;
 
   const result = await generateStructuredJson<{ problemText: string } & ProblemSolutionFirst>({
     prompt,
-    options,
+    options: withoutContext(options),
     temperature: 0.1,
     maxOutputTokens: 16384,
     taskName: "solveFromImageDirect",
@@ -5807,6 +5824,7 @@ Return a single JSON object only.`;
     imagePart,
     noJsonMime: true,
     responseSchema: fallbackSchema,
+    noThinking: true,
   });
 
   const data = result.data;
@@ -5894,7 +5912,7 @@ export async function breakdownProblem(
 ${solutionContext}`
     : "";
 
-  const prompt = `${imageContext}Analyze and break down this problem into a detailed concept tree (5-8 nodes).
+  const prompt = `${imageContext}Analyze and break down this problem into a concept tree (4-6 nodes).
   
 Problem: "${problem}"${solutionRef}
 
@@ -5937,8 +5955,8 @@ Rules:
       nodes: {
         type: Type.ARRAY,
         items: nodeSchema,
-        minItems: 5,
-        description: "List of at least 5 nodes covering the full solution"
+        minItems: 4,
+        description: "List of 4-6 nodes covering the full solution"
       },
       insights: {
         type: Type.OBJECT,
@@ -5954,7 +5972,7 @@ Rules:
 
   const primary = await generateStructuredJson<ProblemBreakdown>({
     prompt,
-    options,
+    options: withoutContext(options),
     temperature: 0.2,
     maxOutputTokens: 8192,
     taskName: "breakdownProblem",
@@ -5973,7 +5991,7 @@ Rules:
     prompt: `${prompt}
 
 Return ONE complete JSON object only. Ensure every branch includes concrete math transformations for this exact problem.`,
-    options,
+    options: withoutContext(options),
     temperature: 0.15,
     maxOutputTokens: 8192,
     taskName: "breakdownProblemRecovery",
@@ -6060,13 +6078,14 @@ export async function instantBreakdown(
 
   const primary = await generateStructuredJson<ProblemBreakdown & { problemText: string }>({
     prompt,
-    options,
+    options: withoutContext(options),
     temperature: 0.1,
     maxOutputTokens: 8192,
     taskName: "instantBreakdown",
     maxAttempts: 2,
     imagePart,
     responseSchema: schema,
+    noThinking: true,
   });
 
   if (primary.data && isUsableProblemBreakdown(primary.data)) {
@@ -6078,13 +6097,14 @@ export async function instantBreakdown(
     prompt: `${prompt}
 
 Return ONE complete JSON object only. Ensure all steps are concrete to the extracted problem.`,
-    options,
+    options: withoutContext(options),
     temperature: 0.1,
     maxOutputTokens: 8192,
     taskName: "instantBreakdownRecovery",
     maxAttempts: 2,
     imagePart,
     noJsonMime: true,
+    noThinking: true,
   });
 
   if (recovery.data && isUsableProblemBreakdown(recovery.data)) {
@@ -8057,7 +8077,9 @@ async function generateStructuredJson<T>(
           // Disable thinking for pure extraction tasks — thinking tokens are billed at the
           // same rate as output tokens ($9/M on gemini-3.5-flash) but add no value when the
           // task is deterministic structured extraction rather than open-ended reasoning.
-          ...(config.noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          // Note: lite models (e.g. gemini-3.5-flash-lite) do not support thinkingConfig at
+          // all — sending it causes a 400 INVALID_ARGUMENT error.
+          ...(config.noThinking && !modelName.includes("lite") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           ...(config.responseSchema ? { responseSchema: config.responseSchema } : {}),
         },
         contents: [{

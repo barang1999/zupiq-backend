@@ -6,30 +6,50 @@ const WOLFRAM_TIMEOUT_MS = 8000;
 
 /**
  * Strip LaTeX delimiters and commands to produce a plain-text query suitable for Wolfram Alpha.
- * Only the first (natural-language) line is used — any formula hint lines are dropped,
- * since they turn into gibberish after LaTeX stripping and cause Wolfram 501 errors.
+ *
+ * Two cases:
+ *  1. Natural-language question with optional inline formula (e.g. "Find P(X=k) given $...$")
+ *     → use only the text before the first "$", drop the formula.
+ *  2. Pure-formula input (first non-empty line starts with "$", e.g. "$\lim_{x\to0}...$")
+ *     → use the whole line and convert LaTeX notation to Wolfram-readable form.
  */
 function toPlainQuery(latex: string): string {
-  // Use only the first non-empty line — drop formula/context lines after it
   const firstLine = (latex ?? "")
     .split("\n")
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? "";
 
-  // Strip any inline formula appended to the natural-language question, e.g.:
-  // "Find the probability... $P(X=k) = \binom{n}{k}...$"  →  "Find the probability..."
-  const questionOnly = firstLine.replace(/\s*\$[\s\S]*$/, "").trim() || firstLine;
+  // Pure-formula input: the entire line IS the formula. Apply LaTeX conversion directly.
+  // Natural-language input: strip inline formula appended after the question text.
+  const isPureFormula = firstLine.startsWith("$");
+  const base = isPureFormula
+    ? firstLine
+    : (firstLine.replace(/\s*\$[\s\S]*$/, "").trim() || firstLine);
 
-  return questionOnly
+  return base
     // Strip leading problem numbers/labels: "4.", "4)", "(a)", "Q3:", etc.
     .replace(/^\s*(?:\d+[.)]\s*|\([a-zA-Z]\)\s*|\bQ\d+[.:]\s*)/i, "")
-    // Strip instruction prefixes — everything up to and including the first colon
-    // e.g. "Solve the differential equation:", "Find:", "Calculate:", "Evaluate:"
+    // Strip instruction prefixes up to and including the first colon
     .replace(/^\s*(?:solve|find|calculate|evaluate|simplify|determine|compute|integrate|differentiate|prove|verify|show\s+that)[\s\w,()]*:/i, "")
+    // Strip dollar signs
     .replace(/\$\$?/g, "")
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)")
+    // Expand \sqrt{...} BEFORE \frac so nested braces don't break \frac's [^}]+ capture
     .replace(/\\sqrt\{([^}]+)\}/g, "sqrt($1)")
     .replace(/\\sqrt\s(\S+)/g, "sqrt($1)")
+    // Limits: \lim_{x \to a} → "limit as x->a of "
+    .replace(/\\lim_\{([^}]*)\}/g, (_, sub) => {
+      const norm = sub
+        .replace(/\\to\b/g, "->")
+        .replace(/\\infty\b/g, "inf")
+        .replace(/\s+/g, " ")
+        .trim();
+      return `limit as ${norm} of `;
+    })
+    .replace(/\\lim\b/g, "limit")
+    .replace(/\\to\b/g, "->")
+    .replace(/\\infty\b/g, "inf")
+    // \frac now safe: \sqrt{} already resolved to sqrt(...) so no nested } in args
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)")
     .replace(/\\sin\b/g, "sin")
     .replace(/\\cos\b/g, "cos")
     .replace(/\\tan\b/g, "tan")
@@ -43,7 +63,12 @@ function toPlainQuery(latex: string): string {
     .replace(/\\times/g, "*")
     .replace(/\\div/g, "/")
     .replace(/\\left|\\right/g, "")
+    // Remove remaining LaTeX commands
     .replace(/\\[a-zA-Z]+/g, " ")
+    // Subscript braces _{...} → drop (e.g. \lim_{} already handled; stray _{n} are annotation only)
+    .replace(/_\{[^}]*\}/g, "")
+    // Superscript braces ^{n} → ^n
+    .replace(/\^\{([^}]*)\}/g, "^$1")
     .replace(/[{}]/g, "")
     // Convert "given that" / "where" / "with" into comma-separated Wolfram constraints
     .replace(/\s*,?\s*given\s+that\s*/gi, ", ")

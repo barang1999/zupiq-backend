@@ -29,12 +29,14 @@ describe("extractAnchorClaims", () => {
     expect(extractAnchorClaims(text, "f")).toEqual([{ x: 0, y: 0 }]);
   });
 
-  it("skips anchors where the y-value is part of a compound expression (e.g. -1/e or -1 \\cdot e^{-1})", () => {
-    // Real observed case: y=xe^x solution writes "f(-1) = -1 \cdot e^{-1}"
-    // which is -1/e ≈ -0.368. The regex used to capture just -1, causing a
-    // false mismatch when verifying the diagram anchor against evaluateLatexAt.
+  it("skips anchors where the y-value is part of a compound expression", () => {
+    // Real observed case 1: y=xe^x → "f(-1) = -1 \cdot e^{-1}" (true value -1/e ≈ -0.368)
     expect(extractAnchorClaims("f(-1) = -1 \\cdot e^{-1}", "f")).toEqual([]);
     expect(extractAnchorClaims("y(-1) = -1/e", "y")).toEqual([]);
+    // Real observed case 2: y=x^2-8ln(x) → "f(3) = 9 - 8\ln(3)" (true value ≈ 0.21)
+    expect(extractAnchorClaims("f(3) = 9 - 8\\ln(3)", "f")).toEqual([]);
+    expect(extractAnchorClaims("f(2) = 4 + 3\\pi", "f")).toEqual([]);
+    // Plain numeric anchors still extracted correctly
     expect(extractAnchorClaims("f(2) = 4, f(-1) = -1/e, f(0) = 0", "f")).toEqual([
       { x: 2, y: 4 },
       { x: 0, y: 0 },

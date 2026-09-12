@@ -4343,12 +4343,12 @@ export function extractAnchorClaims(solutionText: string, functionName: string =
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(solutionText)) !== null) {
     // If the character immediately after the captured y-number is a math
-    // continuation operator, the y-value is part of a compound expression
-    // (e.g. "f(-1) = -1 \cdot e^{-1}" or "f(-1) = -1/e") — the regex
-    // captured only the leading digit, not the full value. Skip to avoid
-    // a false mismatch in verifyDiagramBlocksAgainstSolution.
+    // continuation operator, the y-value is part of a compound expression —
+    // e.g. "f(-1) = -1 \cdot e^{-1}", "f(-1) = -1/e", "f(3) = 9 - 8\ln(3)".
+    // The regex captured only the leading digit; skip to avoid a false
+    // mismatch in verifyDiagramBlocksAgainstSolution.
     const afterMatch = solutionText.slice(match.index + match[0].length).trimStart();
-    if (/^[\\\/^*×÷]|^e\^/.test(afterMatch)) continue;
+    if (/^[\\\/^*×÷]|^e\^|^[+-]\s*[\d\\]/.test(afterMatch)) continue;
 
     const x = Number(match[1]);
     const y = Number(match[2]);

@@ -45,6 +45,7 @@ ${levelInfo}
 ${langInstruction}${stepSection}
 
 Guidelines:
+- NEVER introduce yourself, greet the student, or mention your name. Start directly with the solution content.
 - Explain concepts clearly with step-by-step reasoning.
 - Use examples relevant to the student's level.
 - For math/physics problems, show full working and explain each step.

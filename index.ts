@@ -17,6 +17,7 @@ import billingRoutes from "./api/routes/billing.routes.js";
 import quizzesRoutes from "./api/routes/quizzes.routes.js";
 import quizAttemptsRoutes from "./api/routes/quizAttempts.routes.js";
 import knowledgeRoutes from "./api/routes/knowledge.routes.js";
+import adminRoutes from "./api/routes/admin.routes.js";
 
 // ─── Middlewares ──────────────────────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from "./api/middlewares/error.middleware.js";
@@ -108,6 +109,7 @@ export async function createApp(): Promise<Express> {
   app.use("/api/quizzes", quizzesRoutes);
   app.use("/api/quiz-attempts", quizAttemptsRoutes);
   app.use("/api/knowledge", knowledgeRoutes);
+  app.use("/api/admin", adminRoutes);
 
   // ─── Error handling (must come last) ─────────────────────────────────────
 

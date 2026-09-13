@@ -1147,6 +1147,49 @@ export async function getUserSessions(userId: string, limit?: number, offset?: n
   return paginatedMerged;
 }
 
+export async function getUserProgression(userId: string): Promise<{
+  weeklyCompletion: boolean[];
+  streakCount: number;
+  studiedDates: string[];
+}> {
+  const db = getSupabaseAdmin();
+
+  const now = new Date();
+  const day = now.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat
+  const monday = new Date(now);
+  monday.setUTCDate(now.getUTCDate() - (day === 0 ? 6 : day - 1));
+  monday.setUTCHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  sunday.setUTCHours(23, 59, 59, 999);
+
+  const { data, error } = await db
+    .from('study_sessions')
+    .select('created_at')
+    .eq('user_id', userId)
+    .gte('created_at', monday.toISOString())
+    .lte('created_at', sunday.toISOString());
+
+  if (error) throw new AppError(error.message, 500);
+
+  const weeklyCompletion = [false, false, false, false, false, false, false]; // Mon=0 … Sun=6
+  const studiedDates = new Set<string>();
+
+  for (const row of (data ?? []) as Array<{ created_at: string }>) {
+    const d = new Date(row.created_at);
+    const dayIdx = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1;
+    weeklyCompletion[dayIdx] = true;
+    studiedDates.add(d.toISOString().split('T')[0]);
+  }
+
+  return {
+    weeklyCompletion,
+    streakCount: studiedDates.size,
+    studiedDates: [...studiedDates],
+  };
+}
+
 export async function deleteSession(id: string, userId: string): Promise<void> {
   const db = getSupabaseAdmin();
 

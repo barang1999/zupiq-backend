@@ -631,8 +631,8 @@ function sanitizeSolutionText(raw: string): string {
   // Strip "Problem:" or "**Problem:**" preamble at the START (up to first blank line)
   text = text.replace(/^\s*(?:\*{0,2}Problem:?\*{0,2})[^\n]*\n+/i, "").trim();
 
-  // Strip conversational greetings/fillers at the start (e.g. "ជំរាបសួរ! ខ្ញុំរីករាយនឹងជួយ...")
-  text = text.replace(/^\s*(?:ជំរាបសួរ|ជម្រាបសួរ|ខ្ញុំរីករាយនឹងជួយ|រីករាយនឹងជួយ)[^\n]*\n*/gi, "").trim();
+  // Strip conversational greetings/fillers at the start (e.g. "ជំរាបសួរ! ខ្ញុំរីករាយនឹងជួយ..." or "សួស្តី! ខ្ញុំគឺ Zupiq...")
+  text = text.replace(/^\s*(?:ជំរាបសួរ|ជម្រាបសួរ|ខ្ញុំរីករាយនឹងជួយ|រីករាយនឹងជួយ|សួស្ដី|សួស្តី|Hello)[^\n]*\n*/gi, "").trim();
 
   // Strip trailing "Problem:" / "Problem Intent:" / "Final Answer:" tail that Phase 1 sometimes appends.
   text = text.replace(/\n+\s*\*{0,2}(?:Problem|Problem Intent|Final Answer):?\*{0,2}[\s\S]*$/i, "").trim();

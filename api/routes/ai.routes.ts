@@ -438,6 +438,7 @@ interface ModelPricing {
 }
 
 const GEMINI_PRICING_BY_MODEL: ModelPricing[] = [
+  { model: "gemini-3-flash-preview", inputCostPerMillion: 0.50, outputCostPerMillion: 3.00 },
   { model: "gemini-3.8-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },
   { model: "gemini-3.7-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },
   { model: "gemini-3.6-flash", inputCostPerMillion: 0.75, outputCostPerMillion: 3.75 },

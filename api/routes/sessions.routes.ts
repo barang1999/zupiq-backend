@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { ValidationError, NotFoundError } from "../middlewares/error.middleware.js";
-import { createSession, getUserSessions, getSessionById, updateSession, deleteSession } from "../../services/session.service.js";
+import { createSession, getUserSessions, getSessionById, updateSession, deleteSession, getUserProgression } from "../../services/session.service.js";
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
 import { publishCollabEvent } from "../../services/collab-stream.js";
 import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
@@ -77,6 +77,16 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
     const sessions = await getUserSessions(req.user!.sub, limit, offset);
     res.json({ sessions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/sessions/progression
+router.get("/progression", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const progression = await getUserProgression(req.user!.sub);
+    res.json({ progression });
   } catch (err) {
     next(err);
   }

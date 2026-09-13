@@ -1,0 +1,909 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "moeys-math12-antiderivatives-integrals",
+    "title": "Grade 12 Math — Chapter 6: Antiderivatives and Indefinite Integrals (MOEYS)",
+    "titleKh": "គណិតវិទ្យា ថ្នាក់ទី ១២ — ជំពូក ៦: ព្រីមីទីវ និង អាំងតេក្រាលមិនកំណត់",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": [
+      "12"
+    ],
+    "sourceType": "textbook",
+    "topics": [
+      "antiderivatives",
+      "indefinite_integrals",
+      "integration_basic_formulas",
+      "integration_by_substitution",
+      "integration_by_parts",
+      "partial_fractions",
+      "integration_trig",
+      "integration_exponential_logarithm"
+    ],
+    "metadata": {
+      "pageCount": 15,
+      "originalFile": "Screenshots pp. 111–125",
+      "chapter": "6",
+      "lesson": "1",
+      "note": "MOEYS Grade 12 Khmer curriculum. Pages 111–125 extracted from screenshots."
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "complete",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "antiderivatives",
+        "indefinite_integrals",
+        "integration_by_substitution",
+        "integration_by_parts",
+        "partial_fractions"
+      ],
+      "structure": [
+        "State what is given and what is to be found",
+        "Set up the method (substitution variable, IBP choice, partial fraction decomposition)",
+        "Work through the algebra step by step, showing each equality",
+        "Write the final answer with '+ c, c ∈ ℝ'",
+        "Box or label the conclusion clearly"
+      ],
+      "khmerPhrases": [
+        "ដូច្នេះ",
+        "មូចនេះ",
+        "គេបាន",
+        "ឱ្យ",
+        "ក្លើ",
+        "ជំហានទី",
+        "ឡើ",
+        "ចម្លើយ"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូច្នេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": [
+        "antiderivatives",
+        "indefinite_integrals",
+        "integration_basic_formulas"
+      ],
+      "structure": [
+        "State the definition or theorem in Khmer",
+        "Give the mathematical formula",
+        "Prove or verify using derivatives (since integration reverses differentiation)",
+        "Provide a brief example"
+      ],
+      "khmerPhrases": [
+        "និយមន័យ",
+        "ទ្រឹស្ដីបទ",
+        "ឧទាហរណ៍",
+        "ចំណាំ",
+        "សម្រាយបញ្ជាក់"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "conclusionPrefix": "ដូច្នេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p111-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 111,
+      "pageEnd": 111,
+      "topic": "antiderivatives",
+      "topicKh": "ព្រីមីទីវ — និយមន័យ និង គំរូ",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "និយមន័យ: F(x) ជាព្រីមីទីវរបស់ f(x) តាលណា F'(x) = f(x) ចំពោះក្រប់ x ក្នុងដែនកំណត់របស់ f។ ឧទាហរណ៍: F(x) = x³+x²+x នេង f(x) = 3x²+2x+1 — គណនាលើ ℝ — បង្ហាញថា F(x) ជាព្រីមីទីវរបស់ f(x)។ ព្រោះ F'(x) = 3x²+2x+1 = f(x)។",
+      "normalizedText": "Definition: F(x) is an antiderivative of f(x) when F'(x) = f(x) for all x in the domain of f. Example: F(x) = x³+x²+x is an antiderivative of f(x) = 3x²+2x+1 on ℝ, since F'(x) = 3x²+2x+1 = f(x).",
+      "formulas": [
+        {
+          "latex": "F'(x) = f(x) \\Leftrightarrow F(x) \\text{ ជាព្រីមីទីវរបស់ } f(x)",
+          "meaning": "Definition of antiderivative: F is an antiderivative of f iff F' = f",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "antiderivative",
+        "primitive",
+        "ព្រីមីទីវ",
+        "អនុពន្ធ",
+        "F'(x)=f(x)",
+        "derivative reversal"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p111-c002",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 111,
+      "pageEnd": 112,
+      "topic": "antiderivatives",
+      "topicKh": "គ្រួសារព្រីមីទីវ និង ព្រីមីទីវទូទៅ",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "ទ្រឹស្ដីបទ: បើ F(x) ជាព្រីមីទីវមួយរបស់ f(x) នោះព្រីមីទីវទាំងអស់របស់ f មានទម្រង់ F(x)+c ដែល c ជាថ្នូនគិតចេញ។ ឧទាហរណ៍: F(x)=x², G(x)=x²+2008, H(x)=x²−29 — ទាំងបីជាព្រីមីទីវរបស់ f(x)=2x ព្រោះ F'=G'=H'=2x។ ការស្វែងរកព្រីមីទីវដោយ x²+c ដែល c ជាថ្នូនគិតចេញ។",
+      "normalizedText": "Theorem: If F(x) is one antiderivative of f(x), then all antiderivatives of f have the form F(x)+c where c is an arbitrary constant. Example: F(x)=x², G(x)=x²+2008, H(x)=x²−29 are all antiderivatives of f(x)=2x since their derivatives all equal 2x. The general antiderivative of 2x is x²+c.",
+      "formulas": [
+        {
+          "latex": "F(x) + c, \\quad c \\in \\mathbb{R}",
+          "meaning": "General form of all antiderivatives of f (family of antiderivatives)",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "family of antiderivatives",
+        "arbitrary constant",
+        "គ្រួសារព្រីមីទីវ",
+        "ថ្នូនគិតចេញ",
+        "general antiderivative"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p112-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 112,
+      "pageEnd": 112,
+      "topic": "antiderivatives",
+      "topicKh": "រកព្រីមីទីវពីលក្ខខណ្ឌចំណុច",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "លំហាត់គំរូ ១: រកព្រីមីទីវ F(x) នៃ f(x)=x² ដែល F(3)=2។",
+      "normalizedText": "Find the antiderivative F(x) of f(x)=x² given the initial condition F(3)=2.",
+      "problem": {
+        "textKh": "រកព្រីមីទីវ F(x) នៃ f(x) = x² ដែល F(3) = 2",
+        "text": "Find the antiderivative F(x) of f(x) = x² such that F(3) = 2",
+        "latex": "f(x) = x^2, \\quad F(3) = 2"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ព្រីមីទីវនៃ f(x)=x² គឺ F(x) = 1/3·x³+c ព្រោះ F'(x)=x²",
+          "text": "General antiderivative: F(x) = (1/3)x³ + c",
+          "latex": "F(x) = \\frac{1}{3}x^3 + c"
+        },
+        {
+          "textKh": "ដាក់ F(3)=2: 2 = 1/3·27+c → 2=9+c → c=−7",
+          "text": "Apply condition F(3)=2: 2 = (1/3)(27)+c = 9+c, so c = −7",
+          "latex": "F(3) = 2 \\Rightarrow \\frac{1}{3}(3^3) + c = 2 \\Rightarrow 9 + c = 2 \\Rightarrow c = -7"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដូច្នេះ F(x) = 1/3·x³−7",
+        "text": "F(x) = (1/3)x³ − 7",
+        "latex": "F(x) = \\frac{1}{3}x^3 - 7"
+      },
+      "keywords": [
+        "antiderivative",
+        "initial condition",
+        "ព្រីមីទីវ",
+        "លក្ខខណ្ឌចំណុច",
+        "find constant"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p113-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 112,
+      "pageEnd": 113,
+      "topic": "indefinite_integrals",
+      "topicKh": "អាំងតេក្រាលមិនកំណត់ — និយមន័យ",
+      "chunkType": "concept_explanation",
+      "responsePatternIds": [
+        "khmer-concept-explanation"
+      ],
+      "text": "និយមន័យ: បើ F(x) ជាព្រីមីទីវមួយរបស់ f(x) នោះអាំងតេក្រាលទំនៀមមិនកំណត់នៃ f(x) កំណត់ដោយ ∫f(x)dx = F(x)+c ដែល c ជាថ្នូនគិតចេញ។ ∫f(x)dx = F(x)+c អានថាអាំងតេក្រាលមិនកំណត់នៃ f(x) ស្មើនឹង F(x)+c។",
+      "normalizedText": "Definition of indefinite integral: If F(x) is an antiderivative of f(x), the indefinite integral is ∫f(x)dx = F(x)+c where c is an arbitrary constant. The integral sign ∫, f(x) is the integrand, and dx indicates the variable of integration.",
+      "formulas": [
+        {
+          "latex": "\\int f(x)\\,dx = F(x) + c, \\quad c \\in \\mathbb{R}",
+          "meaning": "Definition of indefinite integral",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "indefinite integral",
+        "អាំងតេក្រាល",
+        "អាំងតេក្រាលមិនកំណត់",
+        "∫",
+        "integration constant",
+        "F(x)+c"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p114-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 113,
+      "pageEnd": 115,
+      "topic": "integration_basic_formulas",
+      "topicKh": "រូបមន្តអាំងតេក្រាលមូលដ្ឋាន — ពហុធា និង អនុគមន៍ស្នូល",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "រូបមន្តអាំងតេក្រាលមូលដ្ឋាន: ∫kdx=kx+c; ∫xⁿdx=xⁿ⁺¹/(n+1)+c (n≠−1); ∫1/x²dx=−1/x+c; ∫1/√x dx=2√x+c; ∫eˣdx=eˣ+c; ∫(1/x)dx=ln|x|+c (x≠0); ∫kf(x)dx=k∫f(x)dx; ∫[f(x)±g(x)]dx=∫f(x)dx±∫g(x)dx",
+      "normalizedText": "Fundamental integration formulas: constant rule ∫kdx=kx+c; power rule ∫xⁿdx=xⁿ⁺¹/(n+1)+c for n≠−1; ∫1/x²dx=−1/x+c; ∫(1/√x)dx=2√x+c; exponential ∫eˣdx=eˣ+c; logarithm ∫(1/x)dx=ln|x|+c; constant multiple ∫kf(x)dx=k∫f(x)dx; linearity ∫[f±g]dx=∫fdx±∫gdx.",
+      "formulas": [
+        {
+          "latex": "\\int k\\,dx = kx + c",
+          "meaning": "Integral of a constant",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int x^n\\,dx = \\frac{x^{n+1}}{n+1} + c, \\quad n \\neq -1",
+          "meaning": "Power rule for integration",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\frac{1}{x^2}\\,dx = -\\frac{1}{x} + c",
+          "meaning": "Special case of power rule (n=-2)",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\frac{1}{\\sqrt{x}}\\,dx = 2\\sqrt{x} + c",
+          "meaning": "Integral of 1/√x",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int e^x\\,dx = e^x + c",
+          "meaning": "Integral of exponential function",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\frac{1}{x}\\,dx = \\ln|x| + c, \\quad x \\neq 0",
+          "meaning": "Integral of 1/x",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int [f(x) \\pm g(x)]\\,dx = \\int f(x)\\,dx \\pm \\int g(x)\\,dx",
+          "meaning": "Linearity of integration",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "power rule",
+        "integration rules",
+        "ruleofintegrals",
+        "រូបមន្ត",
+        "អាំងតេក្រាល",
+        "∫xⁿ",
+        "linearity",
+        "exponential integral",
+        "logarithm integral"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p116-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 116,
+      "pageEnd": 116,
+      "topic": "integration_basic_formulas",
+      "topicKh": "អាំងតេក្រាលពហុធា — លំហាត់គំរូ",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "លំហាត់គំរូ: គណនាអាំងតេក្រាល ∫(7x⁶−5x³+2x²+3)dx",
+      "normalizedText": "Worked example: compute ∫(7x⁶−5x³+2x²+3)dx by applying the power rule and linearity.",
+      "problem": {
+        "textKh": "គណនា ∫(7x⁶−5x³+2x²+3)dx",
+        "text": "Compute ∫(7x⁶−5x³+2x²+3)dx",
+        "latex": "\\int (7x^6 - 5x^3 + 2x^2 + 3)\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "Apply linearity: split into separate integrals with constant factors",
+          "latex": "= 7\\int x^6\\,dx - 5\\int x^3\\,dx + 2\\int x^2\\,dx + 3\\int dx"
+        },
+        {
+          "text": "Apply power rule to each term",
+          "latex": "= 7\\cdot\\frac{x^7}{7} - 5\\cdot\\frac{x^4}{4} + 2\\cdot\\frac{x^3}{3} + 3x + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "x⁷ − (5/4)x⁴ + (2/3)x³ + 3x + c",
+        "latex": "x^7 - \\frac{5}{4}x^4 + \\frac{2}{3}x^3 + 3x + c, \\quad c \\in \\mathbb{R}"
+      },
+      "keywords": [
+        "polynomial integral",
+        "power rule",
+        "linearity",
+        "ពហុធា",
+        "អាំងតេក្រាល"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p117-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 117,
+      "pageEnd": 118,
+      "topic": "integration_trig",
+      "topicKh": "អាំងតេក្រាលអនុគមន៍ត្រីកោណមាត្រ",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "រូបមន្តអាំងតេក្រាលត្រីកោណមាត្រ: ∫sinxdx=−cosx+c; ∫cosxdx=sinx+c; ∫(tan²x+1)dx=∫(1/cos²x)dx=tanx+c; ∫(1+cot²x)dx=∫(1/sin²x)dx=−cotx+c",
+      "normalizedText": "Trigonometric integration formulas: ∫sinxdx=−cosx+c; ∫cosxdx=sinx+c; ∫(tan²x+1)dx=tanx+c equivalent to ∫(1/cos²x)dx=tanx+c; ∫(1+cot²x)dx=−cotx+c equivalent to ∫(1/sin²x)dx=−cotx+c.",
+      "formulas": [
+        {
+          "latex": "\\int \\sin x\\,dx = -\\cos x + c",
+          "meaning": "Integral of sine",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\cos x\\,dx = \\sin x + c",
+          "meaning": "Integral of cosine",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int (\\tan^2 x + 1)\\,dx = \\int \\frac{1}{\\cos^2 x}\\,dx = \\tan x + c",
+          "meaning": "Integral of sec²x",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int (1 + \\cot^2 x)\\,dx = \\int \\frac{1}{\\sin^2 x}\\,dx = -\\cot x + c",
+          "meaning": "Integral of csc²x",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "trig integral",
+        "sin cos tan cot",
+        "ត្រីកោណមាត្រ",
+        "sinx cosx tanx",
+        "∫sinx",
+        "∫cosx",
+        "integration trigonometric"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p118-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 118,
+      "pageEnd": 118,
+      "topic": "integration_trig",
+      "topicKh": "អាំងតេក្រាលត្រីកោណមាត្រ — លំហាត់គំរូ",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "លំហាត់គំរូ: គណនាអាំងតេក្រាលខាងក្រោម: ក.∫(5sinx−3cosx)dx ២.∫(2/cos²x+3/sin²x)dx ន.∫(tanx+cotx)²dx",
+      "normalizedText": "Worked examples on trigonometric integrals: (a) ∫(5sinx−3cosx)dx; (b) ∫(2/cos²x+3/sin²x)dx; (c) ∫(tanx+cotx)²dx.",
+      "problem": {
+        "textKh": "គណនា: ក.∫(5sinx−3cosx)dx ២.∫(2/cos²x+3/sin²x)dx ន.∫(tanx+cotx)²dx",
+        "text": "Compute: (a) ∫(5sinx−3cosx)dx  (b) ∫(2/cos²x+3/sin²x)dx  (c) ∫(tanx+cotx)²dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "(a) Apply linearity and standard formulas",
+          "latex": "\\int (5\\sin x - 3\\cos x)\\,dx = -5\\cos x - 3\\sin x + c"
+        },
+        {
+          "text": "(b) Split and apply sec²/csc² formulas",
+          "latex": "\\int \\left(\\frac{2}{\\cos^2 x} + \\frac{3}{\\sin^2 x}\\right)dx = 2\\tan x - 3\\cot x + c"
+        },
+        {
+          "text": "(c) Expand (tanx+cotx)² = tan²x + 2tanx·cotx + cot²x = (tan²x+1) + (cot²x+1)",
+          "latex": "\\int (\\tan x + \\cot x)^2\\,dx = \\int[(\\tan^2 x+1)+(\\cot^2 x+1)]\\,dx = \\tan x - \\cot x + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "(a) −5cosx−3sinx+c  (b) 2tanx−3cotx+c  (c) tanx−cotx+c",
+        "latex": "\\text{(ក)} -5\\cos x - 3\\sin x + c \\qquad \\text{(២)} 2\\tan x - 3\\cot x + c \\qquad \\text{(ន)} \\tan x - \\cot x + c"
+      },
+      "keywords": [
+        "trig integral example",
+        "sinx cosx tanx cotx",
+        "ត្រីកោណមាត្រ",
+        "(tanx+cotx)²"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p119-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 119,
+      "pageEnd": 120,
+      "topic": "integration_by_substitution",
+      "topicKh": "អាំងតេក្រាលដោយប្តូរអថេរ (ការប្តូរអថេរ)",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ការគណនាអាំងតេក្រាលដោយប្រើអថេរថ្មី (ការប្ដូរអថេរ): ក.∫(x²+1)⁵·2xdx — ឱ្យ t=x²+1, dt=2xdx → ∫t⁵dt=t⁶/6+c=1/6(x²+1)⁶+c។ ខ.∫sin(2x+7)dx — ឱ្យ t=2x+7, dt=2dx → B=∫sint·(1/2)dt=−1/2cost+c=−1/2cos(2x+7)+c។ គ.∫sin²x·cosxdx — ឱ្យ t=sinx, dt=cosxdx → C=∫t²dt=t³/3+c=1/3(sinx)³+c",
+      "normalizedText": "Integration by substitution (change of variables): Set t=f(x), dt=f'(x)dx, then integrate in t and substitute back. Three examples: (A) ∫(x²+1)⁵·2xdx: let t=x²+1 → (1/6)(x²+1)⁶+c. (B) ∫sin(2x+7)dx: let t=2x+7 → −(1/2)cos(2x+7)+c. (C) ∫sin²x·cosxdx: let t=sinx → (1/3)(sinx)³+c.",
+      "problem": {
+        "text": "Compute by substitution: (A) ∫(x²+1)⁵·2xdx  (B) ∫sin(2x+7)dx  (C) ∫sin²x·cosxdx",
+        "latex": "A = \\int (x^2+1)^5 \\cdot 2x\\,dx, \\quad B = \\int \\sin(2x+7)\\,dx, \\quad C = \\int \\sin^2 x \\cos x\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "(A) Let t = x²+1, dt = 2xdx",
+          "latex": "A = \\int t^5\\,dt = \\frac{t^6}{6} + c = \\frac{1}{6}(x^2+1)^6 + c"
+        },
+        {
+          "text": "(B) Let t = 2x+7, dt = 2dx so dx = (1/2)dt",
+          "latex": "B = \\int \\sin t \\cdot \\frac{1}{2}\\,dt = -\\frac{1}{2}\\cos t + c = -\\frac{1}{2}\\cos(2x+7) + c"
+        },
+        {
+          "text": "(C) Let t = sinx, dt = cosxdx",
+          "latex": "C = \\int t^2\\,dt = \\frac{t^3}{3} + c = \\frac{1}{3}(\\sin x)^3 + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "(A) (1/6)(x²+1)⁶+c  (B) −(1/2)cos(2x+7)+c  (C) (1/3)sin³x+c",
+        "latex": "A = \\frac{1}{6}(x^2+1)^6+c \\quad B = -\\frac{1}{2}\\cos(2x+7)+c \\quad C = \\frac{1}{3}\\sin^3 x+c"
+      },
+      "keywords": [
+        "substitution",
+        "change of variable",
+        "ប្តូរអថេរ",
+        "u-substitution",
+        "t=f(x)",
+        "integration by substitution"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p120-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 120,
+      "pageEnd": 120,
+      "topic": "integration_by_substitution",
+      "topicKh": "រូបមន្តអាំងតេក្រាលអនុគមន៍សមាស (ការប្ដូរអថេរទូទៅ)",
+      "chunkType": "formula_rule",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "រូបមន្តអាំងតេក្រាលអនុគមន៍សមាស: ∫kf'(x)dx=kf(x)+c; ∫[f(x)]ⁿf'(x)dx=[f(x)]ⁿ⁺¹/(n+1)+c (n≠−1); ∫f'(x)eᶠ⁽ˣ⁾dx=eᶠ⁽ˣ⁾+c; ∫f'(x)/f(x)dx=ln|f(x)|+c; ∫f'(x)/[f(x)]ⁿdx=−1/((n−1)[f(x)]ⁿ⁻¹)+c; ∫f'(x)/√f(x)dx=2√f(x)+c; ∫sin[f(x)]f'(x)dx=−cos[f(x)]+c; ∫cos[f(x)]f'(x)dx=sin[f(x)]+c; ∫[1+tan²[f(x)]]f'(x)dx=tan[f(x)]+c; ∫[1+cot²[f(x)]]f'(x)dx=−cot[f(x)]+c",
+      "normalizedText": "Composite function integration formulas (chain-rule reversal): ∫[f(x)]ⁿf'(x)dx=[f(x)]ⁿ⁺¹/(n+1)+c; ∫f'(x)eᶠ⁽ˣ⁾dx=eᶠ⁽ˣ⁾+c; ∫f'(x)/f(x)dx=ln|f(x)|+c; ∫sin[f(x)]f'(x)dx=−cos[f(x)]+c; ∫cos[f(x)]f'(x)dx=sin[f(x)]+c; and analogous formulas for tan and cot of composite functions.",
+      "formulas": [
+        {
+          "latex": "\\int [f(x)]^n f'(x)\\,dx = \\frac{[f(x)]^{n+1}}{n+1} + c, \\quad n \\neq -1",
+          "meaning": "Power rule for composite functions",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int f'(x)e^{f(x)}\\,dx = e^{f(x)} + c",
+          "meaning": "Exponential of composite function",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\frac{f'(x)}{f(x)}\\,dx = \\ln|f(x)| + c",
+          "meaning": "Logarithm form: numerator is derivative of denominator",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\frac{f'(x)}{\\sqrt{f(x)}}\\,dx = 2\\sqrt{f(x)} + c",
+          "meaning": "Square root form",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\sin[f(x)]\\,f'(x)\\,dx = -\\cos[f(x)] + c",
+          "meaning": "Sine of composite function",
+          "confidence": 1.0
+        },
+        {
+          "latex": "\\int \\cos[f(x)]\\,f'(x)\\,dx = \\sin[f(x)] + c",
+          "meaning": "Cosine of composite function",
+          "confidence": 1.0
+        }
+      ],
+      "keywords": [
+        "composite function",
+        "chain rule reversal",
+        "f'(x)f(x)",
+        "អនុគមន៍សមាស",
+        "substitution formulas",
+        "integration table"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p121-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 121,
+      "pageEnd": 122,
+      "topic": "integration_by_parts",
+      "topicKh": "អាំងតេក្រាលដោយផ្នែក",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "អាំងតេក្រាលដោយផ្នែក: រូបមន្ត ∫f(x)g'(x)dx=f(x)g(x)−∫g(x)f'(x)dx។ លំហាត់គំរូ ១: ∫xeˣdx — ឱ្យ f(x)=x, f'(x)=1, g'(x)=eˣ, g(x)=eˣ → ∫xeˣdx=xeˣ−∫eˣdx=xeˣ−eˣ+c=(x−1)eˣ+c។ លំហាត់គំរូ ២: ∫lnxdx — ឱ្យ f(x)=lnx, f'(x)=1/x, g'(x)=1, g(x)=x → ∫lnxdx=xlnx−∫x·(1/x)dx=xlnx−x+c។",
+      "normalizedText": "Integration by parts formula: ∫f(x)g'(x)dx = f(x)g(x) − ∫g(x)f'(x)dx. Example 1: ∫xeˣdx: choose f=x, g'=eˣ → result (x−1)eˣ+c. Example 2: ∫lnxdx: choose f=lnx, g'=1 → result xlnx−x+c.",
+      "problem": {
+        "text": "Compute using integration by parts: (1) ∫xeˣdx  (2) ∫lnxdx",
+        "latex": "\\int x e^x\\,dx \\qquad \\int \\ln x\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "IBP formula",
+          "latex": "\\int f(x)g'(x)\\,dx = f(x)g(x) - \\int g(x)f'(x)\\,dx"
+        },
+        {
+          "text": "(1) Let f(x)=x, f'(x)=1; g'(x)=eˣ, g(x)=eˣ",
+          "latex": "\\int xe^x\\,dx = xe^x - \\int e^x\\,dx = xe^x - e^x + c = (x-1)e^x + c"
+        },
+        {
+          "text": "(2) Let f(x)=lnx, f'(x)=1/x; g'(x)=1, g(x)=x",
+          "latex": "\\int \\ln x\\,dx = x\\ln x - \\int x \\cdot \\frac{1}{x}\\,dx = x\\ln x - x + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "(1) (x−1)eˣ+c  (2) xlnx−x+c",
+        "latex": "\\int xe^x\\,dx = (x-1)e^x+c \\qquad \\int \\ln x\\,dx = x\\ln x - x + c"
+      },
+      "keywords": [
+        "integration by parts",
+        "IBP",
+        "parts",
+        "∫xeˣ",
+        "∫lnx",
+        "ផ្នែក",
+        "អាំងតេក្រាលដោយផ្នែក"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p122-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 121,
+      "pageEnd": 122,
+      "topic": "integration_by_parts",
+      "topicKh": "អាំងតេក្រាលដោយផ្នែក — eˣsinx/cosx និង ចំនួនដងច្រើន",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "លំហាត់គំរូ ៣: ∫(3x+2)sinxdx → f=3x+2, g'=sinx → =(3x+2)(−cosx)+∫3cosxdx=−(3x+2)cosx+3sinx+c។ លំហាត់គំរូ ៤: ∫eˣcosxdx — ប្រើ IBP ពីរដង: I=eˣsinx−∫eˣsinxdx, ∫eˣsinxdx=−eˣcosx+∫eˣcosxdx → 2I=eˣsinx+eˣcosx+c₁ → I=1/2eˣsinx+1/2eˣcosx+c",
+      "normalizedText": "IBP example 3: ∫(3x+2)sinxdx = −(3x+2)cosx+3sinx+c. IBP example 4: ∫eˣcosxdx requires applying IBP twice and solving the resulting equation: result = (1/2)eˣsinx+(1/2)eˣcosx+c.",
+      "problem": {
+        "text": "Compute: (3) ∫(3x+2)sinxdx  (4) ∫eˣcosxdx",
+        "latex": "\\int (3x+2)\\sin x\\,dx \\qquad \\int e^x \\cos x\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "(3) f=3x+2, g'=sinx → g=−cosx, f'=3",
+          "latex": "\\int (3x+2)\\sin x\\,dx = -(3x+2)\\cos x + 3\\int \\cos x\\,dx = -(3x+2)\\cos x + 3\\sin x + c"
+        },
+        {
+          "text": "(4) First IBP: f=eˣ, g'=cosx → g=sinx",
+          "latex": "\\int e^x\\cos x\\,dx = e^x\\sin x - \\int e^x\\sin x\\,dx \\quad (1)"
+        },
+        {
+          "text": "Second IBP for ∫eˣsinxdx: f=eˣ, g'=sinx → g=−cosx",
+          "latex": "\\int e^x\\sin x\\,dx = -e^x\\cos x + \\int e^x\\cos x\\,dx"
+        },
+        {
+          "text": "Substitute back into (1): 2∫eˣcosxdx = eˣsinx + eˣcosx + c₁",
+          "latex": "2\\int e^x\\cos x\\,dx = e^x\\sin x + e^x\\cos x + c_1"
+        }
+      ],
+      "finalAnswer": {
+        "text": "∫eˣcosxdx = (1/2)eˣsinx + (1/2)eˣcosx + c",
+        "latex": "\\int e^x\\cos x\\,dx = \\frac{1}{2}e^x\\sin x + \\frac{1}{2}e^x\\cos x + c"
+      },
+      "keywords": [
+        "IBP twice",
+        "eˣcosx",
+        "recursive IBP",
+        "∫eˣcosx",
+        "∫eˣsinx",
+        "integration by parts double"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p123-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 123,
+      "pageEnd": 125,
+      "topic": "partial_fractions",
+      "topicKh": "អាំងតេក្រាលអនុគមន៍សនិទាន — ការបំបែកប្រភាគ",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "ការគណនាអាំងតេក្រាលដោយបំបែកប្រភាគ។ ឧទាហរណ៍ ១: ∫(5x−3)/[(x+1)(x−3)]dx — បំបែក: (5x−3)/[(x+1)(x−3)]=2/(x+1)+3/(x−3) → ∫=2ln|x+1|+3ln|x−3|+c។ ឧទាហរណ៍ ២: ∫(6x+7)/(x+2)²dx — A=6, B=−5 → ∫=6ln|x+2|+5/(x+2)+c។ ឧទាហរណ៍ ៣: ∫dx/(x²+x−2) — 1/(x²+x−2)=1/3·1/(x−1)−1/3·1/(x+2) → ∫=1/3·ln|x−1|−1/3·ln|x+2|+c",
+      "normalizedText": "Integration using partial fractions. Example 1: ∫(5x−3)/[(x+1)(x−3)]dx — decompose into 2/(x+1)+3/(x-3) → 2ln|x+1|+3ln|x-3|+c. Example 2: ∫(6x+7)/(x+2)²dx — repeated factor, A=6, B=−5 → 6ln|x+2|+5/(x+2)+c. Example 3: ∫dx/(x²+x−2) — factor denominator as (x-1)(x+2), decompose → (1/3)ln|x-1|−(1/3)ln|x+2|+c.",
+      "problem": {
+        "text": "Integrate using partial fractions: (1) ∫(5x−3)/[(x+1)(x−3)]dx  (2) ∫(6x+7)/(x+2)²dx  (3) ∫dx/(x²+x−2)",
+        "latex": "\\int \\frac{5x-3}{(x+1)(x-3)}\\,dx \\qquad \\int \\frac{6x+7}{(x+2)^2}\\,dx \\qquad \\int \\frac{dx}{x^2+x-2}"
+      },
+      "solutionSteps": [
+        {
+          "text": "(1) Decompose: (5x−3)/[(x+1)(x−3)] = A/(x+1)+B/(x−3); solve A+B=5, −3A+B=−3 → A=2, B=3",
+          "latex": "\\frac{5x-3}{(x+1)(x-3)} = \\frac{2}{x+1} + \\frac{3}{x-3}"
+        },
+        {
+          "text": "(1) Integrate each term",
+          "latex": "\\int \\frac{5x-3}{(x+1)(x-3)}\\,dx = 2\\ln|x+1| + 3\\ln|x-3| + c"
+        },
+        {
+          "text": "(2) Repeated factor: (6x+7)/(x+2)² = A/(x+2)+B/(x+2)²; 6x+7=A(x+2)+B → A=6, B=−5",
+          "latex": "\\int \\frac{6x+7}{(x+2)^2}\\,dx = 6\\ln|x+2| + \\frac{5}{x+2} + c"
+        },
+        {
+          "text": "(3) Factor x²+x−2=(x−1)(x+2); decompose 1/[(x−1)(x+2)]=A₁/(x−1)+A₂/(x+2); A₁=1/3, A₂=−1/3",
+          "latex": "\\int \\frac{dx}{x^2+x-2} = \\frac{1}{3}\\ln|x-1| - \\frac{1}{3}\\ln|x+2| + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "Partial fraction decomposition then integrate each term using ∫(1/(ax+b))dx = (1/a)ln|ax+b|+c",
+        "latex": "\\int \\frac{f'(x)}{f(x)}\\,dx = \\ln|f(x)| + c"
+      },
+      "keywords": [
+        "partial fractions",
+        "rational function",
+        "ការបំបែកប្រភាគ",
+        "អនុគមន៍សនិទាន",
+        "decomposition",
+        "linear factors",
+        "repeated roots"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "moeys-math12-antiderivatives-integrals-p124-c001",
+      "sourceId": "moeys-math12-antiderivatives-integrals",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": [
+        "12"
+      ],
+      "pageStart": 124,
+      "pageEnd": 125,
+      "topic": "partial_fractions",
+      "topicKh": "ប្រភាគ — ករណីខ្នាតលើស (polynomial long division + partial fractions)",
+      "chunkType": "worked_example",
+      "responsePatternIds": [
+        "khmer-math-textbook-solution"
+      ],
+      "text": "លំហាត់ ២: ∫(2x+4)/(x³−2x²)dx — បំបែក: (2x+4)/[x²(x−2)]=A/x+B/x²+C/(x−2), A=−2, B=−2, C=2 → ∫=−2ln|x|+2/x+2ln|x−2|+c។ លំហាត់ ៣: ∫x³/(x²+2x+1)dx — ចារ: x³/(x²+2x+1)=x−2+3/(x+1)−1/(x+1)² → ∫=x²/2−2x+3ln|x+1|+1/(x+1)+c",
+      "normalizedText": "Example 2: ∫(2x+4)/(x³−2x²)dx with repeated root at 0 — decompose as A/x+B/x²+C/(x−2), solve A=−2, B=−2, C=2 → −2ln|x|+2/x+2ln|x−2|+c. Example 3: ∫x³/(x²+2x+1)dx — degree of numerator ≥ denominator, do polynomial division first: x³/(x+1)²=x−2+[3/(x+1)]−[1/(x+1)²], then integrate → x²/2−2x+3ln|x+1|+1/(x+1)+c.",
+      "problem": {
+        "text": "Compute: (2) ∫(2x+4)/(x³−2x²)dx  (3) ∫x³/(x²+2x+1)dx",
+        "latex": "\\int \\frac{2x+4}{x^3-2x^2}\\,dx \\qquad \\int \\frac{x^3}{x^2+2x+1}\\,dx"
+      },
+      "solutionSteps": [
+        {
+          "text": "(2) Factor denominator x³−2x²=x²(x−2); decompose with repeated root",
+          "latex": "\\frac{2x+4}{x^2(x-2)} = \\frac{A}{x} + \\frac{B}{x^2} + \\frac{C}{x-2}, \\quad A=-2,\\; B=-2,\\; C=2"
+        },
+        {
+          "text": "(2) Integrate each partial fraction term",
+          "latex": "\\int \\frac{2x+4}{x^3-2x^2}\\,dx = -2\\ln|x| + \\frac{2}{x} + 2\\ln|x-2| + c"
+        },
+        {
+          "text": "(3) Degree of numerator ≥ denominator → polynomial division first: x³/(x²+2x+1) = x−2 + (3x+2)/(x+1)²",
+          "latex": "\\frac{x^3}{x^2+2x+1} = x - 2 + \\frac{3}{x+1} - \\frac{1}{(x+1)^2}"
+        },
+        {
+          "text": "(3) Integrate",
+          "latex": "\\int \\frac{x^3}{x^2+2x+1}\\,dx = \\frac{x^2}{2} - 2x + 3\\ln|x+1| + \\frac{1}{x+1} + c"
+        }
+      ],
+      "finalAnswer": {
+        "text": "(2) −2ln|x|+2/x+2ln|x−2|+c  (3) x²/2−2x+3ln|x+1|+1/(x+1)+c",
+        "latex": "\\text{(2)} -2\\ln|x|+\\frac{2}{x}+2\\ln|x-2|+c \\qquad \\text{(3)} \\frac{x^2}{2}-2x+3\\ln|x+1|+\\frac{1}{x+1}+c"
+      },
+      "keywords": [
+        "partial fractions",
+        "repeated root",
+        "polynomial division",
+        "ការបំបែកប្រភាគ",
+        "ចារ",
+        "rational integral",
+        "degree numerator"
+      ],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

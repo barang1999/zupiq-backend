@@ -122,6 +122,13 @@ export const env = {
   // receive pro access without going through the payment flow.
   // Example: VIP_EMAILS=alice@example.com,bob@example.com
   VIP_EMAILS: optionalEnv("VIP_EMAILS", ""),
+
+  // Admin dashboard credentials — never commit these values.
+  // Generate ADMIN_JWT_SECRET with:
+  //   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ADMIN_EMAIL: optionalEnv("ADMIN_EMAIL", "admin@zupiq.ai"),
+  ADMIN_PASSWORD: optionalEnv("ADMIN_PASSWORD", "change-me-in-production"),
+  ADMIN_JWT_SECRET: optionalEnv("ADMIN_JWT_SECRET", "dev-admin-secret-change-in-production"),
 } as const;
 
 export type Env = typeof env;

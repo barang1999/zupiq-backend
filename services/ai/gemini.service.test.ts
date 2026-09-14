@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it, vi } from "vitest";
-import { checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { logger } from "../../utils/logger.js";
 
@@ -695,6 +695,78 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
       warnSpy.mockRestore();
       infoSpy.mockRestore();
     });
+  });
+});
+
+describe("backfillMissingPrimaryCurveInFunctionGraphBlocks", () => {
+  // Real observed case (production bug): f(x) = x - 1 + 2e^{-x}, asked to
+  // sketch its oblique asymptote L1, its tangent L2, and the curve C
+  // together. The AI correctly derived and plotted both lines but never
+  // added f(x)'s own curve to "functions" — the stored diagram was just the
+  // two lines crossing, no curve at all.
+  const problem = "អនុគមន៍ $f$ កំណត់ដោយ $y = f(x) = x - 1 + 2e^{-x}$ ហើយមានក្រាប $C$ ។";
+  const solutionText = "$L_1: y = x - 1$ ជាអាស៊ីមតូតទ្រេត។\n$L_2: y = -x + 1$ ជាបន្ទាត់ប៉ះត្រង់ $A(0,1)$។\nសង់បន្ទាត់ $L_1, L_2$ និងក្រាប $C$។";
+  const curvelessBlocks = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    functions: [
+      { kind: "linear", params: { m: 1, b: -1 }, latex: "y = x - 1" },
+      { kind: "linear", params: { m: -1, b: 1 }, latex: "y = -x + 1" },
+    ],
+    domain: [-3.6, 5],
+    range: [-2, 4],
+  }]);
+
+  it("prepends the missing curve as functions[0] when every existing function is just a derived line", () => {
+    const repaired = backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, curvelessBlocks);
+    expect(repaired).not.toBe(curvelessBlocks);
+    const spec = repaired[0]?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    expect(functions.length).toBe(3);
+    expect(functions[0].latex).toContain("e^{-x}");
+    expect(functions[0].kind).not.toBe("linear");
+  });
+
+  it("keeps the two original derived lines untouched alongside the backfilled curve", () => {
+    const repaired = backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, curvelessBlocks);
+    const spec = repaired[0]?.spec as Record<string, unknown>;
+    const linearFns = (spec.functions as Array<Record<string, unknown>>).filter((fn) => fn.kind === "linear");
+    expect(linearFns.length).toBe(2);
+  });
+
+  it("does nothing when a non-linear function is already present", () => {
+    const alreadyHasCurve = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [
+        { kind: "points", latex: "y = x - 1 + 2e^{-x}", points: [] },
+        { kind: "linear", params: { m: 1, b: -1 }, latex: "y = x - 1" },
+      ],
+      domain: [-3.6, 5],
+      range: [-2, 4],
+    }]);
+    expect(backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, alreadyHasCurve)).toBe(alreadyHasCurve);
+  });
+
+  it("does nothing when the problem/solution names no distinguishable non-linear function (a genuine two-line diagram)", () => {
+    const twoLineProblem = "រកចំណុចប្រសព្វនៃបន្ទាត់ $y = x - 1$ និង $y = -x + 1$។";
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [
+        { kind: "linear", params: { m: 1, b: -1 }, latex: "y = x - 1" },
+        { kind: "linear", params: { m: -1, b: 1 }, latex: "y = -x + 1" },
+      ],
+      domain: [-3, 3],
+      range: [-3, 3],
+    }]);
+    expect(backfillMissingPrimaryCurveInFunctionGraphBlocks(twoLineProblem, "", blocks)).toBe(blocks);
+  });
+
+  it("leaves non-function-graph blocks and an empty array untouched", () => {
+    expect(backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, [])).toEqual([]);
+    const signTable = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [{ label: "x", cells: ["-∞", "+∞"] }],
+    }]);
+    expect(backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, signTable)).toBe(signTable);
   });
 });
 

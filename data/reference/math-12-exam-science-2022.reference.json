@@ -1,0 +1,973 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-science-2022",
+    "title": "Grade 12 Science Math Selection Exam 2021-2022 (Phnom Penh)",
+    "titleKh": "ប្រឡងជ្រើស វិទ្យាសាស្ត្រពិត ថ្នាក់ទី១២ ២០២១-២០២២",
+    "author": "ចំ ពូ (Cham Pu)",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "book",
+    "topics": [
+      "complex_numbers",
+      "probability",
+      "combinatorics",
+      "differential_equations",
+      "ellipse",
+      "analytic_geometry",
+      "3d_vectors",
+      "sphere",
+      "limits",
+      "derivatives",
+      "integration",
+      "logarithmic_functions"
+    ],
+    "metadata": {
+      "pageCount": 11,
+      "originalFile": "1788919918064-a431c7b2-ab3a-4c12-a883-5c99e8526b7d_74.jpg (through _84.jpg)",
+      "rawExtractionFile": null
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["worked_example", "formula_rule", "problem_solution"],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": ["យើងមានៈ", "នាំអោយ", "តាមរូបមន្ត", "តាមទំនាក់ទំនង", "ដូចនេះ", "ចម្លើយ"],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["concept_explanation"],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": ["មានន័យថា", "លុះត្រាតែ", "សម្គាល់ៈ", "ឧទាហរណ៍", "ដូចនេះ"],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c001",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "សរសេរ A = 2(1+i)²/(1-i√3) ជាទម្រង់ត្រីកោណមាត្រ ហើយជាទម្រង់ពិជគណិតផងដែរ។",
+      "normalizedText": "Express A = 2(1+i)²/(1-i√3) in trigonometric form and algebraic form. Solution: convert numerator and denominator to polar form, divide angles, giving A = 2(cos(5π/6) + i sin(5π/6)) = -√3 + i.",
+      "problem": {
+        "textKh": "សរសេរ A ជាទម្រង់ត្រីកោណមាត្រ ហើយជាទម្រង់ពិជគណិត",
+        "text": "Write A in trigonometric form and algebraic form",
+        "latex": "A = \\frac{2(1+i)^2}{1-i\\sqrt{3}}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "បំលែង 1+i ជាទម្រង់ត្រីកោណមាត្រ",
+          "text": "Convert 1+i to polar form",
+          "latex": "1 + i = \\sqrt{2}\\left(\\cos\\frac{\\pi}{4} + i\\sin\\frac{\\pi}{4}\\right)",
+          "explanationKh": "រង្វង់ = √2, មុំ = π/4",
+          "explanation": "Modulus = √2, argument = π/4"
+        },
+        {
+          "textKh": "គូស (1+i)²",
+          "text": "Compute (1+i)²",
+          "latex": "(1+i)^2 = \\left[\\sqrt{2}\\left(\\cos\\frac{\\pi}{4}+i\\sin\\frac{\\pi}{4}\\right)\\right]^2 = 2\\left(\\cos\\frac{\\pi}{2}+i\\sin\\frac{\\pi}{2}\\right)"
+        },
+        {
+          "textKh": "បំលែង 1-i√3 ជាទម្រង់ត្រីកោណមាត្រ",
+          "text": "Convert 1-i√3 to polar form",
+          "latex": "1 - i\\sqrt{3} = 2\\left(\\cos\\frac{5\\pi}{3}+i\\sin\\frac{5\\pi}{3}\\right)"
+        },
+        {
+          "textKh": "គូស A ដោយចែក",
+          "text": "Divide in polar form",
+          "latex": "A = \\frac{2 \\cdot 2\\left(\\cos\\frac{\\pi}{2}+i\\sin\\frac{\\pi}{2}\\right)}{2\\left(\\cos\\frac{5\\pi}{3}+i\\sin\\frac{5\\pi}{3}\\right)} = 2\\left[\\cos\\left(\\frac{\\pi}{2}-\\frac{5\\pi}{3}\\right)+i\\sin\\left(\\frac{\\pi}{2}-\\frac{5\\pi}{3}\\right)\\right]",
+          "explanationKh": "ចែករ៉ង់ = ចែក, ដក មុំ",
+          "explanation": "Division: divide moduli, subtract arguments"
+        },
+        {
+          "textKh": "គណនាមុំ",
+          "text": "Simplify the angle",
+          "latex": "\\frac{\\pi}{2} - \\frac{5\\pi}{3} = \\frac{3\\pi - 10\\pi}{6} = \\frac{-7\\pi}{6} = -2\\pi + \\frac{5\\pi}{6} \\equiv \\frac{5\\pi}{6}"
+        },
+        {
+          "textKh": "ទម្រង់ត្រីកោណមាត្រ",
+          "text": "Trigonometric form result",
+          "latex": "A = 2\\left(\\cos\\frac{5\\pi}{6}+i\\sin\\frac{5\\pi}{6}\\right)"
+        },
+        {
+          "textKh": "ទម្រង់ពិជគណិត",
+          "text": "Convert to algebraic form",
+          "latex": "A = 2\\left(-\\frac{\\sqrt{3}}{2}+i\\cdot\\frac{1}{2}\\right) = -\\sqrt{3}+i"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ទម្រង់ត្រីកោណមាត្រ: A = 2(cos(5π/6)+i sin(5π/6))។ ទម្រង់ពិជគណិត: A = -√3+i",
+        "text": "Trigonometric form: A = 2(cos(5π/6)+i sin(5π/6)). Algebraic form: A = -√3+i",
+        "latex": "A = 2\\left(\\cos\\frac{5\\pi}{6}+i\\sin\\frac{5\\pi}{6}\\right) = -\\sqrt{3}+i"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{z_1}{z_2} = \\frac{r_1}{r_2}\\left(\\cos(\\theta_1-\\theta_2)+i\\sin(\\theta_1-\\theta_2)\\right)",
+          "meaning": "Division of complex numbers in polar form",
+          "confidence": 0.99
+        },
+        {
+          "latex": "z^n = r^n(\\cos n\\theta + i\\sin n\\theta)",
+          "meaning": "De Moivre's theorem for powers",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["complex numbers", "trigonometric form", "polar form", "algebraic form", "លេខកុំផ្លិច", "ទម្រង់ត្រីកោណមាត្រ", "De Moivre"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c002",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "combinatorics",
+      "topicKh": "ការរៀបចំ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រកចំនួនតម្រៀបដែលអាចបង្កើតជាលេខ ៣ ខ្ទង់ (ខ្ទង់ខុសគ្នា) ពីលេខ ០ ដល់ ៩",
+      "normalizedText": "Count the number of 3-digit numbers with distinct digits chosen from 0-9. First digit cannot be 0. Answer: 9 × 8 × 7 = 504.",
+      "problem": {
+        "textKh": "តើមានចំនួន ៣ ខ្ទង់ ដែលខ្ទង់ខុសគ្នា ដែលអាចបង្កើតបាន ពី ០ ដល់ ៩ ប៉ុន្មាន?",
+        "text": "How many 3-digit numbers with distinct digits can be formed from digits 0 to 9?",
+        "latex": "n(S) = ?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ខ្ទង់ទី ១ (ខ្ទង់រយ): មិនអាចជា ០ → ជ្រើសសរសេរ ៩ ប្រភេទ",
+          "text": "First digit (hundreds): cannot be 0 → 9 choices",
+          "latex": "9 \\text{ choices for first digit}"
+        },
+        {
+          "textKh": "ខ្ទង់ទី ២: ហើយនឹង ៨ ប្រភេទ",
+          "text": "Second digit: 8 remaining choices",
+          "latex": "8 \\text{ choices for second digit}"
+        },
+        {
+          "textKh": "ខ្ទង់ទី ៣: ហើយនឹង ៧ ប្រភេទ",
+          "text": "Third digit: 7 remaining choices",
+          "latex": "7 \\text{ choices for third digit}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ចំនួន ៣ ខ្ទង់ ដែលបង្កើតបានមាន ៥០៤",
+        "text": "Total number of 3-digit numbers with distinct digits is 504",
+        "latex": "n(S) = 9 \\times 8 \\times 7 = 504"
+      },
+      "formulas": [
+        {
+          "latex": "A_n^k = n(n-1)(n-2)\\cdots(n-k+1)",
+          "meaning": "Permutation / arrangement formula",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["combinatorics", "permutation", "arrangement", "3-digit number", "ការរៀបចំ", "ខ្ទង់"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c003",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "probability",
+      "topicKh": "ប្រូបាប៊ីលីតេ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "គណនាប្រូបាប A = «ចំនួន ៣ ខ្ទង់ជាលេខគូ» និង B = «ចំនួន ៣ ខ្ទង់ជាលេខសេស» ពីលំហ n(S)=504",
+      "normalizedText": "Given 3-digit numbers with distinct digits from 0-9 (total 504). Find P(A) where A = 'even number' and P(B) where B = 'odd number'. P(A) = 4/9, P(B) = 5/9.",
+      "problem": {
+        "textKh": "A : «ចំនួន ៣ ខ្ទង់ជាលេខគូ» | B : «ចំនួន ៣ ខ្ទង់ជាលេខសេស»",
+        "text": "A: '3-digit even number', B: '3-digit odd number'",
+        "latex": "P(A) = \\frac{n(A)}{n(S)}, \\quad P(B) = \\frac{n(B)}{n(S)}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា n(A): ខ្ទង់ចុងក្រោយជាលេខគូ (0,2,4,6,8) → ៥ ប្រភេទ",
+          "text": "n(A): last digit is even (0,2,4,6,8) → 5 choices for last digit",
+          "latex": "n(A) = 8 \\times 7 \\times 4 = 224",
+          "explanationKh": "ខ្ទង់ចុង = ០: ខ្ទង់ដំបូង ៩, ខ្ទង់កណ្ដាល ៨ → 9×8×1. ខ្ទង់ចុង ≠ ០: ជ្រើស ៤ (2,4,6,8) → 8×7×4",
+          "explanation": "Last digit = 0: 9×8 ways for first two. Last digit in {2,4,6,8}: first digit 8 ways (not 0 or last), second 7 ways, giving 8×7×4 = 224"
+        },
+        {
+          "textKh": "ប្រូបាប A",
+          "text": "Probability of A",
+          "latex": "P(A) = \\frac{224}{504} = \\frac{8 \\times 7 \\times 4}{9 \\times 8 \\times 7} = \\frac{4}{9}"
+        },
+        {
+          "textKh": "គណនា n(B): ខ្ទង់ចុងក្រោយជាលេខសេស (1,3,5,7,9) → ៥ ប្រភេទ",
+          "text": "n(B): last digit is odd (1,3,5,7,9) → 5 choices",
+          "latex": "n(B) = 8 \\times 7 \\times 5 = 280"
+        },
+        {
+          "textKh": "ប្រូបាប B",
+          "text": "Probability of B",
+          "latex": "P(B) = \\frac{280}{504} = \\frac{8 \\times 7 \\times 5}{9 \\times 8 \\times 7} = \\frac{5}{9}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "P(A) = 4/9 និង P(B) = 5/9",
+        "text": "P(A) = 4/9 and P(B) = 5/9",
+        "latex": "P(A) = \\frac{4}{9}, \\quad P(B) = \\frac{5}{9}"
+      },
+      "formulas": [
+        {
+          "latex": "P(A) = \\frac{n(A)}{n(S)}",
+          "meaning": "Classical probability formula",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["probability", "even number", "odd number", "ប្រូបាប", "លេខគូ", "លេខសេស"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c004",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "differential_equations",
+      "topicKh": "សមីការឌីផេរ៉ង់ស្យែល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ដោះស្រាយសមីការ (E): y'' - 3y' + 2y = 2x + 1 ។ (a) ស្រាយ (E₁): y'' - 3y' + 2y = 0 ហើយរក f លើ (E₁) ដែល f(0)=3 និង f'(0)=4",
+      "normalizedText": "Solve ODE (E): y'' - 3y' + 2y = 2x + 1. Part (a): solve homogeneous (E1): y'' - 3y' + 2y = 0, characteristic roots r=1, r=2. Find particular solution f with f(0)=3, f'(0)=4 giving f(x) = 2e^x + e^(2x).",
+      "problem": {
+        "textKh": "ដោះស្រាយ (E₁): y'' - 3y' + 2y = 0 ហើយរក f លើ (E₁) ដែល f(0)=3 និង f'(0)=4",
+        "text": "Solve homogeneous ODE (E1) and find f satisfying initial conditions f(0)=3, f'(0)=4",
+        "latex": "(E_1): y'' - 3y' + 2y = 0, \\quad f(0)=3, \\quad f'(0)=4"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "សមីការលក្ខណៈ",
+          "text": "Characteristic equation",
+          "latex": "r^2 - 3r + 2 = 0 \\implies (r-1)(r-2)=0 \\implies r_1=1,\\ r_2=2"
+        },
+        {
+          "textKh": "ដំណោះស្រាយទូទៅ (E₁)",
+          "text": "General solution of (E1)",
+          "latex": "y = Ae^x + Be^{2x}, \\quad A,B \\in \\mathbb{R}"
+        },
+        {
+          "textKh": "អនុវត្តលក្ខខណ្ឌ f(0)=3",
+          "text": "Apply f(0) = 3",
+          "latex": "f(0) = Ae^0 + Be^0 = A + B = 3 \\quad (1)"
+        },
+        {
+          "textKh": "គណនា f' ហើយអនុវត្ត f'(0)=4",
+          "text": "Compute f' and apply f'(0)=4",
+          "latex": "f'(x) = Ae^x + 2Be^{2x} \\implies f'(0) = A + 2B = 4 \\quad (2)"
+        },
+        {
+          "textKh": "ដោះប្រព័ន្ធ",
+          "text": "Solve the system",
+          "latex": "(2)-(1): B = 1 \\implies A = 2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f(x) = 2eˣ + e²ˣ",
+        "text": "f(x) = 2e^x + e^(2x)",
+        "latex": "f(x) = 2e^x + e^{2x}"
+      },
+      "formulas": [
+        {
+          "latex": "r^2 + pr + q = 0",
+          "meaning": "Characteristic equation for 2nd-order linear ODE with constant coefficients",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["differential equation", "homogeneous ODE", "characteristic equation", "initial conditions", "សមីការឌីផេរ៉ង់ស្យែល", "ដំណោះស្រាយទូទៅ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c005",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "differential_equations",
+      "topicKh": "សមីការឌីផេរ៉ង់ស្យែល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រកតម្លៃ a និង b ដើម្បី g(x) = ax + b ជាដំណោះស្រាយ (E): y'' - 3y' + 2y = 2x + 1",
+      "normalizedText": "Find constants a, b so that g(x) = ax + b satisfies (E): y'' - 3y' + 2y = 2x + 1. Substituting g into (E) and matching coefficients gives a=1, b=2.",
+      "problem": {
+        "textKh": "រក a, b ដើម្បី g(x)=ax+b ជាដំណោះស្រាយ (E)",
+        "text": "Find a, b such that g(x)=ax+b is a particular solution of (E)",
+        "latex": "g(x) = ax + b \\text{ satisfies } y'' - 3y' + 2y = 2x + 1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា g', g''",
+          "text": "Compute derivatives",
+          "latex": "g'(x) = a, \\quad g''(x) = 0"
+        },
+        {
+          "textKh": "ជំនួសចូល (E)",
+          "text": "Substitute into (E)",
+          "latex": "0 - 3a + 2(ax+b) = 2x+1 \\implies 2ax + (2b-3a) = 2x+1"
+        },
+        {
+          "textKh": "ប្រៀបធៀបមេគុណ",
+          "text": "Match coefficients",
+          "latex": "\\begin{cases} 2a = 2 \\implies a=1 \\\\ 2b-3a = 1 \\implies 2b-3=1 \\implies b=2 \\end{cases}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "a=1, b=2 ដូចនេះ g(x) = x+2",
+        "text": "a=1, b=2, so g(x) = x+2",
+        "latex": "a = 1,\\ b = 2"
+      },
+      "keywords": ["differential equation", "particular solution", "undetermined coefficients", "ដំណោះស្រាយពិសេស"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c006",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "ellipse",
+      "topicKh": "អេលីប",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រកកណ្ដាល ចំណុចកំពូល ចំណុចហ្វូស៊ី របស់អេលីប (E): 4x² + 9y² - 8x + 36y + 4 = 0",
+      "normalizedText": "Find center, vertices, and foci of ellipse 4x² + 9y² - 8x + 36y + 4 = 0. Completing the square gives (x-1)²/9 + (y+2)²/4 = 1. Center (1,-2), a=3, b=2, c=√5. Vertices V1(-2,-2), V2(4,-2). Foci F1(1-√5,-2), F2(1+√5,-2).",
+      "problem": {
+        "textKh": "រកកណ្ដាល ចំណុចកំពូល ហ្វូស៊ី",
+        "text": "Find center, vertices, and foci of the ellipse",
+        "latex": "(E): 4x^2 + 9y^2 - 8x + 36y + 4 = 0"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដំឡើងការ៉េ",
+          "text": "Complete the square",
+          "latex": "4(x^2-2x+1) - 4 + 9(y^2+4y+4) - 36 + 4 = 0"
+        },
+        {
+          "textKh": "ទម្រង់ស្ដង់ដា",
+          "text": "Standard form",
+          "latex": "4(x-1)^2 + 9(y+2)^2 = 36 \\implies \\frac{(x-1)^2}{9} + \\frac{(y+2)^2}{4} = 1"
+        },
+        {
+          "textKh": "ទាញយកប៉ារ៉ាម៉ែត្រ",
+          "text": "Extract parameters",
+          "latex": "h=1,\\ k=-2;\\ a=3,\\ b=2;\\ c^2=a^2-b^2=9-4=5 \\implies c=\\sqrt{5}"
+        },
+        {
+          "textKh": "ចំណុចកំពូល",
+          "text": "Vertices",
+          "latex": "V_1(h-a,\\ k) = (-2,-2), \\quad V_2(h+a,\\ k) = (4,-2)"
+        },
+        {
+          "textKh": "ហ្វូស៊ី",
+          "text": "Foci",
+          "latex": "F_1(1-\\sqrt{5},\\ -2), \\quad F_2(1+\\sqrt{5},\\ -2)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ទម្រង់ស្ដង់ដា: (x-1)²/9 + (y+2)²/4 = 1 | កណ្ដាល (1,-2) | V1(-2,-2), V2(4,-2) | F1(1-√5,-2), F2(1+√5,-2)",
+        "text": "Standard form: (x-1)²/9 + (y+2)²/4 = 1. Center (1,-2). Vertices V1(-2,-2), V2(4,-2). Foci F1(1-√5,-2), F2(1+√5,-2).",
+        "latex": "\\frac{(x-1)^2}{9}+\\frac{(y+2)^2}{4}=1"
+      },
+      "formulas": [
+        {
+          "latex": "\\frac{(x-h)^2}{a^2}+\\frac{(y-k)^2}{b^2}=1, \\quad c^2=a^2-b^2",
+          "meaning": "Standard form of ellipse with center (h,k), a>b>0",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["ellipse", "completing the square", "vertices", "foci", "center", "អេលីប", "ចំណុចហ្វូស៊ី", "ចំណុចកំពូល"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c007",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 5,
+      "topic": "ellipse",
+      "topicKh": "អេលីប",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រកចំណុចប្រសព្វ (E) និងអ័ក្សកូអរដោណេ: ប្រសព្វជាមួយ Ox និង Oy",
+      "normalizedText": "Find intersection of ellipse (x-1)²/9 + (y+2)²/4 = 1 with coordinate axes. With Ox (y=0): x=1 (tangent, one point). With Oy (x=0): y = -2 ± 4√2/3 ≈ -0.1 or -3.9.",
+      "problem": {
+        "textKh": "រកចំណុចប្រសព្វ (E) ជាមួយ Ox និង Oy",
+        "text": "Find intersection of ellipse (E) with the coordinate axes Ox and Oy",
+        "latex": "\\frac{(x-1)^2}{9}+\\frac{(y+2)^2}{4}=1"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ប្រសព្វជាមួយ Ox: y=0",
+          "text": "Intersection with Ox: set y=0",
+          "latex": "\\frac{(x-1)^2}{9}+\\frac{(0+2)^2}{4}=1 \\implies \\frac{(x-1)^2}{9}+1=1 \\implies (x-1)^2=0 \\implies x=1"
+        },
+        {
+          "textKh": "ប្រសព្វជាមួយ Oy: x=0",
+          "text": "Intersection with Oy: set x=0",
+          "latex": "\\frac{1}{9}+\\frac{(y+2)^2}{4}=1 \\implies \\frac{(y+2)^2}{4}=\\frac{8}{9} \\implies (y+2)^2=\\frac{32}{9}"
+        },
+        {
+          "textKh": "ដោះស្រាយ y",
+          "text": "Solve for y",
+          "latex": "y+2=\\pm\\frac{4\\sqrt{2}}{3} \\implies y=-2\\pm\\frac{4\\sqrt{2}}{3}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "(E) កាត់ Ox នៅ x=1 (ប្រសព្វតែ ១ ចំណុច) | (E) កាត់ Oy នៅ y≈-0.1 និង y≈-3.9",
+        "text": "(E) meets Ox at x=1 (tangent). (E) meets Oy at y = -2+4√2/3 ≈ -0.1 and y = -2-4√2/3 ≈ -3.9.",
+        "latex": "x_1=1; \\quad y_1=-2+\\frac{4\\sqrt{2}}{3}\\approx-0.1,\\ y_2=-2-\\frac{4\\sqrt{2}}{3}\\approx-3.9"
+      },
+      "keywords": ["ellipse", "axis intersection", "coordinate axes", "ប្រសព្វ", "អ័ក្ស"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c008",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "sphere",
+      "topicKh": "ស្វែរ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រកសមីការស្វែរ S ដែលមានអង្កត់ផ្ចិត AB ជាមួយ A(2,2,0) និង B(0,2,2)",
+      "normalizedText": "Find the equation of sphere S with diameter AB where A(2,2,0) and B(0,2,2). Center I = midpoint of AB = (1,2,1), radius r = |AB|/2 = √2. Equation: (x-1)² + (y-2)² + (z-1)² = 2.",
+      "problem": {
+        "textKh": "រកស្វែរ S ដែលមានអង្កត់ផ្ចិត AB, A(2,2,0), B(0,2,2)",
+        "text": "Find the sphere with diameter AB, A(2,2,0), B(0,2,2)",
+        "latex": "A(2,2,0),\\ B(0,2,2)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "កណ្ដាល I = ចំណុចកណ្ដាល AB",
+          "text": "Center I = midpoint of AB",
+          "latex": "I = \\left(\\frac{2+0}{2},\\frac{2+2}{2},\\frac{0+2}{2}\\right) = (1,2,1)"
+        },
+        {
+          "textKh": "រ៉ាយ៉ុង r",
+          "text": "Radius r",
+          "latex": "r = \\frac{|AB|}{2} = \\frac{\\sqrt{(0-2)^2+(2-2)^2+(2-0)^2}}{2} = \\frac{\\sqrt{8}}{2} = \\sqrt{2}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "សមីការស្វែរ S: (x-1)² + (y-2)² + (z-1)² = 2",
+        "text": "Sphere equation: (x-1)² + (y-2)² + (z-1)² = 2",
+        "latex": "(x-1)^2 + (y-2)^2 + (z-1)^2 = 2"
+      },
+      "formulas": [
+        {
+          "latex": "(x-a)^2+(y-b)^2+(z-c)^2 = r^2",
+          "meaning": "Equation of sphere with center (a,b,c) and radius r",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["sphere", "diameter", "midpoint", "3D geometry", "ស្វែរ", "អង្កត់ផ្ចិត"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c009",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 8,
+      "topic": "3d_vectors",
+      "topicKh": "វ៉ិចទ័រ ៣ ជ្រុង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(2,2,0), B(0,2,2), C(1,0,1): គណនា n = CA × CB, ផ្ទៃ △ABC, សមីការប្លែន ABC, ចំណុច M លើ Ox និង N លើ Oz, បញ្ជាក់ ABNM ជាចតុកោណកែង, ចម្ងាយ D(0,2,0) ទៅប្លែន ABC, បរិមាតន DBCA",
+      "normalizedText": "Given A(2,2,0), B(0,2,2), C(1,0,1): cross product CA×CB = (4,0,4), area of ABC = 2√2, plane ABC: x+z-2=0, M(2,0,0) on Ox, N(0,0,2) on Oz. AB=MN and MA⊥MN proves ABNM is a rectangle. Distance from D(0,2,0) to plane = √2. Volume of tetrahedron DBCA = 4/3.",
+      "problem": {
+        "textKh": "A(2,2,0), B(0,2,2), C(1,0,1): គណនា n⃗ = CA⃗ × CB⃗, ផ្ទៃ △ABC, ប្លែន ABC, ចំណុច M, N, ABNM, ចម្ងាយ D, បរិមាតន",
+        "text": "Compute cross product, area, plane equation, projections, rectangle, distance, volume",
+        "latex": "A(2,2,0),\\ B(0,2,2),\\ C(1,0,1)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "CA⃗ = A - C, CB⃗ = B - C",
+          "text": "Compute vectors CA and CB",
+          "latex": "\\overrightarrow{CA}=(2-1,2-0,0-1)=(1,2,-1) \\quad \\overrightarrow{CB}=(0-1,2-0,2-1)=(-1,2,1)"
+        },
+        {
+          "textKh": "ផ្លិចស្ខ ន⃗ = CA⃗ × CB⃗",
+          "text": "Cross product n = CA × CB",
+          "latex": "\\vec{n} = \\overrightarrow{CA}\\times\\overrightarrow{CB} = \\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\1&2&-1\\\\-1&2&1\\end{vmatrix} = (2+2)\\vec{i}-(1-1)\\vec{j}+(2+2)\\vec{k} = (4,0,4)"
+        },
+        {
+          "textKh": "ផ្ទៃ △ABC",
+          "text": "Area of triangle ABC",
+          "latex": "S_{\\triangle ABC} = \\frac{|\\overrightarrow{CA}\\times\\overrightarrow{CB}|}{2} = \\frac{\\sqrt{16+0+16}}{2} = \\frac{4\\sqrt{2}}{2} = 2\\sqrt{2}"
+        },
+        {
+          "textKh": "ប្លែន ABC ដែលឆ្លងកាត់ A(2,2,0) ដោយ n⃗=(4,0,4)",
+          "text": "Plane through A(2,2,0) with normal (4,0,4)",
+          "latex": "4(x-2)+0(y-2)+4(z-0)=0 \\implies 4x+4z-8=0 \\implies x+z-2=0"
+        },
+        {
+          "textKh": "ចំណុច M: ប្លែន ABC ∩ Ox (y=0,z=0)",
+          "text": "M: plane ABC meets Ox (y=0, z=0)",
+          "latex": "x+0-2=0 \\implies x=2 \\implies M(2,0,0)"
+        },
+        {
+          "textKh": "ចំណុច N: ប្លែន ABC ∩ Oz (x=0,y=0)",
+          "text": "N: plane ABC meets Oz (x=0, y=0)",
+          "latex": "0+z-2=0 \\implies z=2 \\implies N(0,0,2)"
+        },
+        {
+          "textKh": "បង្ហាញ AB⃗ = MN⃗ និង MA⃗ ⊥ MN⃗ → ABNM ជាចតុកោណកែង",
+          "text": "Show AB = MN and MA ⊥ MN → ABNM is a rectangle",
+          "latex": "\\overrightarrow{AB}=(-2,0,2),\\ \\overrightarrow{MN}=(-2,0,2) \\implies \\overrightarrow{AB}=\\overrightarrow{MN} \\quad (1)"
+        },
+        {
+          "textKh": "MA⃗ · MN⃗ = 0",
+          "text": "Dot product MA · MN = 0",
+          "latex": "\\overrightarrow{MA}=(0,2,0),\\ \\overrightarrow{MN}=(-2,0,2) \\implies \\overrightarrow{MA}\\cdot\\overrightarrow{MN}=0 \\quad (2)"
+        },
+        {
+          "textKh": "ចម្ងាយ D(0,2,0) ទៅប្លែន x+z-2=0",
+          "text": "Distance from D(0,2,0) to plane x+z-2=0",
+          "latex": "d = \\frac{|0+0-2|}{\\sqrt{1^2+1^2}} = \\frac{2}{\\sqrt{2}} = \\sqrt{2}"
+        },
+        {
+          "textKh": "បរិមាតន DBCA",
+          "text": "Volume of tetrahedron DBCA",
+          "latex": "V_{DBCA} = \\frac{1}{3} \\cdot S_{\\triangle ABC} \\cdot h = \\frac{1}{3} \\cdot 2\\sqrt{2} \\cdot \\sqrt{2} = \\frac{4}{3}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "n⃗=(4,0,4) | S=2√2 | ប្លែន: x+z-2=0 | M(2,0,0), N(0,0,2) | ABNM ជាចតុកោណកែង | d=√2 | V=4/3",
+        "text": "n=(4,0,4); Area=2√2; Plane: x+z-2=0; M(2,0,0), N(0,0,2); ABNM is rectangle; d(D,plane)=√2; V_DBCA=4/3.",
+        "latex": "\\vec{n}(4,0,4);\\quad S=2\\sqrt{2};\\quad x+z-2=0;\\quad V_{DBCA}=\\frac{4}{3}"
+      },
+      "formulas": [
+        {
+          "latex": "\\vec{u}\\times\\vec{v}=\\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\u_1&u_2&u_3\\\\v_1&v_2&v_3\\end{vmatrix}",
+          "meaning": "Cross product formula",
+          "confidence": 0.99
+        },
+        {
+          "latex": "d = \\frac{|ax_0+by_0+cz_0+d|}{\\sqrt{a^2+b^2+c^2}}",
+          "meaning": "Distance from point to plane",
+          "confidence": 0.99
+        },
+        {
+          "latex": "V = \\frac{1}{3} \\cdot S_{base} \\cdot h",
+          "meaning": "Volume of a pyramid/tetrahedron",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["cross product", "area triangle", "plane equation", "distance point to plane", "tetrahedron volume", "rectangle", "វ៉ិចទ័រ", "ប្លែន", "ចម្ងាយ", "បរិមាតន"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c010",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 9,
+      "topic": "limits",
+      "topicKh": "ដែន",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = -x - 4ln(x)/x: គណនា lim_{x→0⁺} f(x) និង lim_{x→+∞} f(x)",
+      "normalizedText": "For f(x) = -x - 4ln(x)/x, compute limits as x→0+ and x→+∞. As x→0+: -x→0 and -4ln(x)/x→+∞ (since ln(x)→-∞), so limit = +∞. As x→+∞: -x→-∞ and -4ln(x)/x→0, so limit = -∞.",
+      "problem": {
+        "textKh": "f(x) = -x - 4ln(x)/x: គណនា lim_{x→0⁺} f(x) និង lim_{x→+∞} f(x)",
+        "text": "Compute the two limits of f(x) = -x - 4ln(x)/x",
+        "latex": "f(x) = -x - \\frac{4\\ln x}{x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដែន នៅ x→0⁺",
+          "text": "Limit as x→0+",
+          "latex": "\\lim_{x\\to 0^+} f(x) = \\lim_{x\\to 0^+}\\left(-x-\\frac{4\\ln x}{x}\\right) = 0-(-\\infty) = +\\infty",
+          "explanationKh": "ln(x)→-∞ ហើយ x→0⁺ ដូចនេះ -4ln(x)/x → +∞",
+          "explanation": "As x→0+, ln(x)→-∞ and x→0+, so -4ln(x)/x = (-4)(-∞)/(0+) = +∞"
+        },
+        {
+          "textKh": "ដែន នៅ x→+∞",
+          "text": "Limit as x→+∞",
+          "latex": "\\lim_{x\\to+\\infty} f(x) = \\lim_{x\\to+\\infty}\\left(-x-\\frac{4\\ln x}{x}\\right) = -(+\\infty) - 0 = -\\infty",
+          "explanationKh": "ln(x)/x → 0 ពេល x→+∞ (ដំណើរការតូចជាងល",
+          "explanation": "As x→+∞, ln(x)/x→0 (logarithm grows slower than linear)"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "lim_{x→0⁺} f(x) = +∞ | lim_{x→+∞} f(x) = -∞",
+        "text": "lim as x→0+ is +∞. lim as x→+∞ is -∞.",
+        "latex": "\\lim_{x\\to 0^+}f(x)=+\\infty, \\quad \\lim_{x\\to+\\infty}f(x)=-\\infty"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x\\to+\\infty}\\frac{\\ln x}{x}=0",
+          "meaning": "Logarithm grows slower than any positive power of x",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["limits", "logarithm", "infinity", "ដែន", "លោការីត", " អនន្ត"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c011",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 10,
+      "topic": "asymptote",
+      "topicKh": "អាស៊ីម​តូត",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "បង្ហាញ L: y = -x ជាអាស៊ីម​តូតទ្រេតរបស់ (C) ។ ស្វែងរកទីតាំងសម្ពាន្ធ (C) និង L ។",
+      "normalizedText": "Show L: y = -x is an oblique asymptote of curve C for f(x) = -x - 4ln(x)/x. Position analysis: C meets L at x=1, above L for x∈(0,1), below L for x∈(1,+∞).",
+      "problem": {
+        "textKh": "បញ្ជាក់ L: y=-x ជាអាស៊ីម​តូតទ្រេត ហើយស្វែងរកទីតាំងសម្ពាន្ធ (C) និង L",
+        "text": "Prove L: y=-x is oblique asymptote and find relative position of curve C and line L",
+        "latex": "f(x) = -x - \\frac{4\\ln x}{x}, \\quad L: y = -x"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "បញ្ជាក់ L ជាអាស៊ីម​តូតទ្រេត",
+          "text": "Prove L is oblique asymptote",
+          "latex": "\\lim_{x\\to+\\infty}[f(x)-(-x)] = \\lim_{x\\to+\\infty}\\left(-\\frac{4\\ln x}{x}\\right) = 0"
+        },
+        {
+          "textKh": "ដូចនេះ L: y=-x ជាអាស៊ីម​តូត",
+          "text": "Therefore L: y=-x is asymptote",
+          "explanation": "Since f(x)-(-x) → 0 as x→+∞, L is an oblique asymptote"
+        },
+        {
+          "textKh": "ទីតាំងសម្ពាន្ធ: y_C - y_L = -4ln(x)/x",
+          "text": "Relative position: y_C - y_L",
+          "latex": "y_C - y_L = f(x)-(-x) = -\\frac{4\\ln x}{x}"
+        },
+        {
+          "textKh": "ប្រៀបធៀបសញ្ញា",
+          "text": "Sign analysis",
+          "latex": "y_C - y_L = 0 \\iff \\ln x = 0 \\iff x=1"
+        },
+        {
+          "textKh": "ពេល x∈(0,1): ln(x)<0, x>0 → y_C-y_L > 0 → C នៅលើ L",
+          "text": "For x∈(0,1): lnx<0 so -4lnx/x > 0, C is above L",
+          "latex": "x\\in(0,1):\\quad -\\frac{4\\ln x}{x}>0 \\implies C \\text{ above } L"
+        },
+        {
+          "textKh": "ពេល x∈(1,+∞): ln(x)>0 → y_C-y_L < 0 → C នៅក្រោម L",
+          "text": "For x∈(1,+∞): lnx>0 so -4lnx/x < 0, C is below L",
+          "latex": "x\\in(1,+\\infty):\\quad -\\frac{4\\ln x}{x}<0 \\implies C \\text{ below } L"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "L: y=-x ជាអាស៊ីម​តូតទ្រេត | (C) ប្រសព្វ L នៅ x=1 | x∈(0,1): C នៅលើ L | x∈(1,+∞): C នៅក្រោម L",
+        "text": "L: y=-x is oblique asymptote. C meets L at x=1. C is above L for x∈(0,1) and below L for x∈(1,+∞).",
+        "latex": "y_C - y_L = -\\frac{4\\ln x}{x}"
+      },
+      "keywords": ["asymptote", "oblique asymptote", "relative position", "logarithm", "អាស៊ីម​តូត", "ទីតាំងសម្ពាន្ធ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c012",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 10,
+      "topic": "derivatives",
+      "topicKh": "អាំងតេក្រាល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "បង្ហាញ f'(x) < 0 ៖ x>0 ។ រកតង់ហ្សង់ D ស្របជាមួយ L: y=-x",
+      "normalizedText": "For f(x) = -x - 4ln(x)/x, show f'(x) < 0 for all x>0 by computing f'(x) = -(x²+4-4ln(x))/x² and showing x²+4-4ln(x)>0. Find tangent D parallel to L (slope -1): tangent point A(e, -e-4/e), tangent line y = -x - 4/e.",
+      "problem": {
+        "textKh": "បង្ហាញ f'(x) < 0 ∀x>0 ហើយរក D ស្របជាមួយ L",
+        "text": "Show f'(x) < 0 for all x>0. Find tangent parallel to L: y=-x.",
+        "latex": "f(x) = -x - \\frac{4\\ln x}{x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា f'(x)",
+          "text": "Compute f'(x)",
+          "latex": "f'(x) = -1 - \\frac{(4\\ln x)'\\cdot x - 4\\ln x \\cdot 1}{x^2} = -1 - \\frac{\\frac{4}{x}\\cdot x - 4\\ln x}{x^2} = -1 - \\frac{4-4\\ln x}{x^2}"
+        },
+        {
+          "textKh": "សំព្រួញ f'(x)",
+          "text": "Simplify f'(x)",
+          "latex": "f'(x) = \\frac{-x^2 - 4 + 4\\ln x}{x^2} = -\\frac{x^2 + 4 - 4\\ln x}{x^2}"
+        },
+        {
+          "textKh": "បង្ហាញ x²+4-4ln(x)>0 ∀x>0",
+          "text": "Show numerator is always positive",
+          "latex": "x^2 + 4 - 4\\ln x > 0 \\iff \\frac{x^2+4-4\\ln x}{x^2} > 0 \\implies f'(x) < 0"
+        },
+        {
+          "textKh": "តង់ហ្សង់ D ស្របជាមួយ L → f'(x₀)=-1",
+          "text": "Tangent parallel to L means f'(x₀)=-1",
+          "latex": "-\\frac{x_A^2+4-4\\ln x_A}{x_A^2} = -1 \\implies x_A^2+4-4\\ln x_A = x_A^2 \\implies 4\\ln x_A = 4 \\implies x_A = e"
+        },
+        {
+          "textKh": "y_A = f(e)",
+          "text": "Find y-coordinate of tangency point",
+          "latex": "y_A = f(e) = -e - \\frac{4\\ln e}{e} = -e - \\frac{4}{e}"
+        },
+        {
+          "textKh": "សមីការ D",
+          "text": "Equation of tangent D",
+          "latex": "D: y = f'(x_A)(x-x_A)+y_A = -(x-e)+\\left(-e-\\frac{4}{e}\\right) = -x-\\frac{4}{e}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "f'(x) < 0 ∀x>0 (f ចុះ) | ចំណុចប៉ះ A(e, -e-4/e) | ស​មីការ D: y = -x - 4/e",
+        "text": "f'(x) < 0 for all x>0 (f is strictly decreasing). Tangency point A(e, -e-4/e). Tangent D: y = -x - 4/e.",
+        "latex": "f'(x) = -\\frac{x^2+4-4\\ln x}{x^2} < 0; \\quad D: y = -x - \\frac{4}{e}"
+      },
+      "formulas": [
+        {
+          "latex": "\\left(\\frac{u}{v}\\right)' = \\frac{u'v - uv'}{v^2}",
+          "meaning": "Quotient rule for differentiation",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["derivative", "strictly decreasing", "tangent line", "parallel", "logarithm", "ដេរីវេ", "តង់ហ្សង់", "ស្រប"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2022-p001-c013",
+      "sourceId": "math-12-exam-science-2022",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 2,
+      "pageEnd": 11,
+      "topic": "integration",
+      "topicKh": "អាំងតេក្រាល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "S(a) = ផ្ទៃដែលរឹតព័ត្ចន ដោយ (C) និង L នៅចន្លោះ 1 ≤ x ≤ a ។ រក a ដើម្បី S(a) = 2",
+      "normalizedText": "S(a) is the area between curve C and line L for 1 ≤ x ≤ a, where f(x) = -x - 4ln(x)/x and L: y=-x. Compute S(a) = ∫₁ᵃ (4lnx/x) dx = 2ln²a. Set S(a)=2: 2ln²a=2 → lna=±1 → a=e (since a>1).",
+      "problem": {
+        "textKh": "S(a) ជាផ្ទៃដែលរឹតព័ត ដោយ (C) និង L នៅ 1≤x≤a ។ រក a ដើម្បី S(a)=2",
+        "text": "S(a) is the area enclosed by C and L for 1≤x≤a. Find a such that S(a)=2.",
+        "latex": "S(a) = \\int_1^a |f(x)-(-x)|\\ dx = \\int_1^a \\frac{4\\ln x}{x}\\ dx"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ផ្ទៃ S(a): C នៅក្រោម L ពេល x>1 ដូចនេះ",
+          "text": "For x>1, C is below L, so |f(x)-(-x)| = 4lnx/x",
+          "latex": "S(a) = \\int_1^a \\frac{4\\ln x}{x}\\ dx"
+        },
+        {
+          "textKh": "ប្រើ (ln x)' = 1/x ដើម្បីធ្វើ substitution",
+          "text": "Use (ln²x)' = 2ln(x)/x for integration",
+          "latex": "\\int \\frac{4\\ln x}{x}\\ dx = \\int 4\\ln x \\cdot (\\ln x)'\\ dx = \\left[\\frac{4\\ln^2 x}{2}\\right] = 2\\ln^2 x"
+        },
+        {
+          "textKh": "គណនា S(a)",
+          "text": "Evaluate S(a)",
+          "latex": "S(a) = \\left[2\\ln^2 x\\right]_1^a = 2\\ln^2 a - 2\\ln^2 1 = 2\\ln^2 a"
+        },
+        {
+          "textKh": "ដោះស្រាយ S(a)=2",
+          "text": "Solve S(a)=2",
+          "latex": "2\\ln^2 a = 2 \\implies \\ln^2 a = 1 \\implies \\ln a = \\pm 1 \\implies a = e^{\\pm 1}"
+        },
+        {
+          "textKh": "ជ្រើស a>1: a = e⁻¹ = 1/e < 1 → ច្រានចោល | a = e > 1 → ទទួលយក",
+          "text": "Since a>1: a=1/e<1 is rejected, a=e is accepted",
+          "latex": "a = e^{-1} = \\frac{1}{e} < 1 \\text{ (rejected)}, \\quad a = e \\text{ (accepted)}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "a = e",
+        "text": "a = e",
+        "latex": "a = e"
+      },
+      "formulas": [
+        {
+          "latex": "\\int \\frac{\\ln x}{x}\\ dx = \\frac{\\ln^2 x}{2} + C",
+          "meaning": "Integral of ln(x)/x using substitution u=ln(x)",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["integration", "area between curves", "logarithm", "substitution", "អាំងតេក្រាល", "ផ្ទៃ", " លោការីត"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

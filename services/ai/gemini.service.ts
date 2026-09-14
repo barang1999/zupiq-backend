@@ -2155,9 +2155,31 @@ function isLinearExpression(latex: string): boolean {
 // itself to claims about *this specific* function instead of pooling every
 // "letter(number)=number" claim in the text regardless of which function
 // it was actually about.
+// A real observed case: "$y = f(x) = x - 1 + 2e^{-x}$" — the function is
+// named twice before its actual formula, an extremely common phrasing in
+// this curriculum's problem statements. The capture group below stops only
+// at "$"/newline/Khmer, so it swallows the whole "f(x) = x - 1 + 2e^{-x}"
+// tail, including the second "f(x) =" restatement — the resulting candidate
+// ("y=f(x) = x - 1 + 2e^{-x}") has an embedded "=" the expression grammar
+// doesn't support at all, so it fails to evaluate and gets silently
+// dropped, same as if the function had never been found. Strip any further
+// leading "NAME(x)="/"y=" restatements from the captured right-hand side
+// before it becomes a candidate, so only the actual formula remains.
+function stripChainedAssignmentPrefixes(expr: string): string {
+  let result = expr.trim();
+  let prefixMatch: RegExpMatchArray | null;
+  while ((prefixMatch = result.match(/^(?:[a-zA-Z]\(x\)|y)\s*=\s*/))) {
+    result = result.slice(prefixMatch[0].length).trim();
+  }
+  return result;
+}
+
 function findConcreteFunctionLatex(source: string): string | null {
   const candidates = Array.from(source.matchAll(/(?:([a-zA-Z])\(x\)|y)\s*=\s*([^\n$ក-៿]+)/gi))
-    .map((m) => (m[1] ? `${m[1]}(x)=${m[2].trim()}` : `y=${m[2].trim()}`))
+    .map((m) => {
+      const expr = stripChainedAssignmentPrefixes(m[2]);
+      return m[1] ? `${m[1]}(x)=${expr}` : `y=${expr}`;
+    })
     .filter((candidate) => evaluateLatexAt(candidate, 2) !== null || evaluateLatexAt(candidate, -3) !== null);
   for (let i = candidates.length - 1; i >= 0; i--) {
     if (!isLinearExpression(candidates[i])) return candidates[i];
@@ -2450,6 +2472,77 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
     logger.warn("[diagram:backstop-failed] normalizeDiagramBlocks-rejected-synthesized-spec", { functionLatex, domain });
   }
   return result;
+}
+
+// A "function-graph" block can pass every other check in this pipeline —
+// it's non-empty, its own latex/params are internally consistent, any
+// anchors that exist agree with the solution — and still be missing the one
+// thing that actually matters: the curve itself. Real observed case: a
+// problem defines f(x) = x - 1 + 2e^{-x} and asks to sketch its oblique
+// asymptote L1, its tangent L2, AND the curve C together. The AI correctly
+// derived both lines (L1: y=x-1, L2: y=-x+1) and plotted them, but never
+// added f(x)'s own curve to "functions" at all — the stored diagram was
+// just the two lines crossing, no curve. Nothing else catches this:
+// verifyDiagramBlocksAgainstSolution's anchor check reads functions[0],
+// which here is a line, not the curve, so it never engages on the curve at
+// all; and inferConstructedFunctionGraphForExplicitGraphRequest's own
+// bail-out (above) treats "a non-sign-table diagram already exists" as
+// "already handled", regardless of whether that diagram's functions are
+// all just derived lines.
+//
+// Deliberately narrow and conservative, not a general completeness pass:
+// it only fires when EVERY function already in the block is "linear" (so
+// nothing here is already claiming to be the curve — a diagram that's
+// genuinely just about two lines is left untouched) and
+// findConcreteFunctionLatex can locate a genuinely non-linear function
+// defined in the problem/solution text — the same ground-truth finder
+// inferConstructedFunctionGraphForExplicitGraphRequest already uses to
+// build a diagram from scratch, reused here to backfill one in place
+// instead. The curve is prepended as functions[0] — this codebase's
+// convention for "the primary plotted function", the same slot
+// verifyDiagramBlocksAgainstSolution's anchor check reads from — kind
+// "points" with empty "points" so normalizeFunctionGraphSpec's general
+// expression engine samples and range-fits it like any other AI-omitted
+// curve. The existing derived lines and feature points are kept exactly as
+// they were; this only ever adds the missing curve, never removes or
+// rebuilds anything else.
+export function backfillMissingPrimaryCurveInFunctionGraphBlocks(
+  problem: string,
+  solutionText: string,
+  blocks: ReturnType<typeof normalizeDiagramBlocks>,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  if (!blocks.length) return blocks;
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  let functionLatex: string | null | undefined; // lazily resolved — only needed if a candidate block is found
+  let changed = false;
+
+  const repaired = blocks.map((block) => {
+    if (block.diagramType !== "function-graph") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const functions = Array.isArray(spec.functions) ? spec.functions as Array<Record<string, unknown>> : [];
+    if (!functions.length || !functions.every((fn) => fn?.kind === "linear")) return block;
+
+    if (functionLatex === undefined) functionLatex = findConcreteFunctionLatex(source);
+    if (!functionLatex || isLinearExpression(functionLatex)) return block;
+
+    changed = true;
+    return {
+      diagramType: block.diagramType,
+      spec: {
+        ...spec,
+        functions: [{ kind: "points", latex: functionLatex, points: [] }, ...functions],
+      },
+    };
+  });
+
+  if (!changed) return blocks;
+  const renormalized = normalizeDiagramBlocks(repaired);
+  if (!renormalized.length) {
+    logger.warn("[diagram:backfill-missing-primary-curve-failed] normalizeDiagramBlocks-rejected-repaired-spec", { functionLatex });
+    return blocks;
+  }
+  logger.info("[diagram:backfilled-missing-primary-curve]", { functionLatex });
+  return renormalized;
 }
 
 function inferRationalInequalitySignTableBlocks(problem: string, solutionText: string): ReturnType<typeof normalizeDiagramBlocks> {
@@ -4964,6 +5057,7 @@ DIAGRAM SELECTION RULES (CRITICAL):
 6. Never guess a "sign-table"'s sign cells. Before emitting one, actually work out the sign of the named function/expression at a real test value in each interval (e.g. compute f'(-1) numerically, don't assume a pattern) — a wrong sign row is worse than no diagram. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or the sign of something across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — return {"diagramBlocks":[]} for those rather than attaching an unnecessary, unverified one. This applies even when the problem is "solve for an unknown constant using a derivative" (e.g. "find a such that lim f(x)/x = 1/8" solved via L'Hôpital) — computing a derivative once and evaluating it at one point is not monotonicity analysis; it does not justify a sign-table showing "+" on both sides of some interior point, or any sign-table at all.
 7. When a "function-graph" shows a piecewise-defined function (the solution splits into cases like "for x > 0 ... for x < 0 ...", or has a jump/removable discontinuity), every piece that is NOT valid across the whole graph MUST carry its own "domain":[min,max] matching exactly which x-values that piece applies to (e.g. [0,3] for "x ≥ 0", not the graph's overall domain) — never rely on a note like "(x \\ge 0)" written inside "latex"; that text is never parsed as structured data. Two pieces sharing the graph's full domain with no per-piece "domain" render as two overlapping full lines/curves instead of two separate rays/branches meeting at the split — always split "domain" between the pieces so they don't overlap. Mark which side is included with "closed":true/false on the featurePoint at the split (the piece whose domain includes that x gets the closed dot; the other gets an open one).
 8. If the problem discusses a function in the abstract — its coefficients are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", asking about general asymptote/root behavior across all their possible values), never invent placeholder numbers for those letters (e.g. plugging in a=1,b=0,c=0 and silently dropping the rest) — that plots a completely different, unrelated function and misrepresents the problem. Either return {"diagramBlocks":[]}, or if a picture would genuinely help illustrate the general case, pick one concrete, fully-numeric example that actually exhibits the behavior being discussed (e.g. one specific choice of a,b,c,p,q,r producing two vertical asymptotes) and say in the diagram that it's an illustrative example — never claim it IS the problem's own (unspecified) function.
+9. When the solution derives auxiliary straight lines for a curve — an oblique/horizontal asymptote, a tangent, a secant — and asks to sketch them together with the curve itself (e.g. "construct L1, L2 and the graph C", "សង់បន្ទាត់ (D) និងក្រាប (C)"), "functions" MUST include the curve's own function (its "latex", e.g. "y = f(x) = x - 1 + 2e^{-x}") as functions[0] — the derived lines are ADDITIONAL entries in "functions", never a replacement for the curve being graphed. A "function-graph" whose every "functions" entry is "linear" while the problem defines and asks to graph a non-linear f(x) is missing its primary curve and is not a complete diagram.
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -5158,6 +5252,15 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const inverseSquareIntervalRepair = repairInverseSquareIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
   if (inverseSquareIntervalRepair !== normalized) return inverseSquareIntervalRepair;
+
+  // A "function-graph" that only ever plotted the derived asymptote/tangent
+  // lines, never the curve those lines were derived from, is a real diagram
+  // by every other check (non-empty, internally consistent) — so it must be
+  // repaired here, before inferConstructedFunctionGraphForExplicitGraphRequest's
+  // own bail-out below treats "a non-sign-table diagram already exists" as
+  // "nothing left to do".
+  const missingCurveRepair = backfillMissingPrimaryCurveInFunctionGraphBlocks(problem, solutionText, normalized);
+  if (missingCurveRepair !== normalized) return missingCurveRepair;
 
   // Runs before the generic "useful" check below: a sign-table is a real,
   // non-empty diagram, so it would otherwise pass that check untouched even

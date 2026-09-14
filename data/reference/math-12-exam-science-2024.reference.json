@@ -1,0 +1,741 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "math-12-exam-science-2024",
+    "title": "Grade 12 Science Math Selection Exam 2023-2024 (Phnom Penh)",
+    "titleKh": "ប្រឡងជ្រើស វិទ្យាសាស្ត្រពិត ថ្នាក់ទី១២ ២០២៣-២០២៤",
+    "author": "ចំ ពូ (Cham Pu)",
+    "language": "km",
+    "subject": "math",
+    "gradeRange": ["12"],
+    "sourceType": "book",
+    "topics": [
+      "complex_numbers",
+      "inflection_points",
+      "cubic_functions",
+      "combinatorics",
+      "probability",
+      "differential_equations",
+      "exponential_functions",
+      "asymptotes",
+      "tangent_line",
+      "integration",
+      "sphere",
+      "plane_equation",
+      "3d_vectors",
+      "distance_point_to_line",
+      "distance_point_to_plane"
+    ],
+    "metadata": {
+      "pageCount": 7,
+      "originalFile": "1788919918064-a431c7b2-ab3a-4c12-a883-5c99e8526b7d_96.jpg (through _102.jpg)",
+      "rawExtractionFile": null
+    },
+    "quality": {
+      "textExtraction": "high",
+      "formulaExtraction": "high",
+      "reviewStatus": "curated_trusted_seed_chunks",
+      "trusted": true
+    }
+  },
+  "responsePatterns": [
+    {
+      "patternId": "khmer-math-textbook-solution",
+      "name": "Khmer Math Textbook Solution",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["worked_example", "formula_rule", "problem_solution"],
+      "structure": [
+        "ចាប់ផ្តើមដោយបញ្ជាក់អ្វីដែលត្រូវគណនា ឬស្រាយបញ្ជាក់។",
+        "សរសេរ 'យើងមានៈ' មុនពេលដាក់លក្ខខណ្ឌ ឬទិន្នន័យដែលគេឱ្យ។",
+        "ជ្រើសរើសរូបមន្តសមស្រប ហើយបង្ហាញការជំនួសតម្លៃជាជំហានៗ។",
+        "ប្រើ 'នាំអោយ' សម្រាប់ជំហានអាល់ហ្សេប្រាបន្តបន្ទាប់។",
+        "បញ្ចប់ដោយ 'ដូចនេះ' ហើយបញ្ជាក់ចម្លើយចុងក្រោយឱ្យច្បាស់។"
+      ],
+      "khmerPhrases": ["យើងមានៈ", "នាំអោយ", "តាមរូបមន្ត", "តាមទំនាក់ទំនង", "ដូចនេះ", "ចម្លើយ"],
+      "avoid": [
+        "កុំចម្លងប្រយោគយាវៗពីប្រភពដើម។",
+        "កុំដាក់អក្សរខ្មែរនៅក្នុង LaTeX math delimiters។",
+        "កុំប្រើសញ្ញាដែលខូចពី PDF extraction។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": true,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    },
+    {
+      "patternId": "khmer-concept-explanation",
+      "name": "Khmer Concept Explanation",
+      "language": "km",
+      "subject": "math",
+      "appliesTo": ["concept_explanation"],
+      "structure": [
+        "ផ្តល់និយមន័យខ្លីជាភាសាខ្មែរ។",
+        "បញ្ជាក់លក្ខខណ្ឌសំខាន់ៗជាចំណុចខ្លីៗ។",
+        "បង្ហាញរូបមន្តសំខាន់ជាមួយការពន្យល់និមិត្តសញ្ញានៅក្រៅ math block។",
+        "បញ្ចូលឧទាហរណ៍តូចមួយ បើសិស្សត្រូវការអនុវត្ត។"
+      ],
+      "khmerPhrases": ["មានន័យថា", "លុះត្រាតែ", "សម្គាល់ៈ", "ឧទាហរណ៍", "ដូចនេះ"],
+      "avoid": [
+        "កុំធ្វើឱ្យចម្លើយវែងពេក បើសំណួររបស់សិស្សខ្លី។",
+        "កុំលាយភាសាអង់គ្លេសច្រើន បើសិស្សប្រើខ្មែរ។"
+      ],
+      "mathFormatting": {
+        "formulaFirstWhenUseful": false,
+        "useLatex": true,
+        "keepKhmerLabelsOutsideMath": true,
+        "conclusionPrefix": "ដូចនេះ"
+      }
+    }
+  ],
+  "chunks": [
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c001",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 2,
+      "topic": "complex_numbers",
+      "topicKh": "លេខកុំផ្លិច",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រក t₁, t₂ ឫសសមីការ -t²+2t-4=0 ។ សរសេរ Z = 4t₂/t₁³ ជាទម្រង់ត្រីកោណ",
+      "normalizedText": "Find complex roots t₁, t₂ of -t²+2t-4=0. t₁=1-√3i=2(cos(5π/3)+isin(5π/3)), t₂=1+√3i=2(cos(π/3)+isin(π/3)). Compute t₁³=8(cosπ+isinπ). Then Z=4t₂/t₁³=cos(4π/3)+isin(4π/3).",
+      "problem": {
+        "textKh": "រក t₁, t₂ ហើយ Z = 4t₂/t₁³ ជាទម្រង់ត្រីកោណ",
+        "text": "Find roots of -t²+2t-4=0 and express Z=4t₂/t₁³ in trigonometric form",
+        "latex": "-t^2+2t-4=0;\\ Z=\\frac{4t_2}{t_1^3}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា Δ = b²-4ac",
+          "text": "Discriminant of -t²+2t-4=0 (equivalent to t²-2t+4=0)",
+          "latex": "\\Delta = 2^2 - 4(-1)(-4) = 4-16 = -12 \\implies \\sqrt{\\Delta}=2i\\sqrt{3}"
+        },
+        {
+          "textKh": "ឫស t₁ = (b+√Δ)/2a (using a=-1)",
+          "text": "Roots (note a=-1)",
+          "latex": "t_1 = \\frac{-2+2i\\sqrt{3}}{2(-1)} = 1-\\sqrt{3}i, \\quad t_2 = \\frac{-2-2i\\sqrt{3}}{2(-1)} = 1+\\sqrt{3}i"
+        },
+        {
+          "textKh": "ទម្រង់ t ត្រីកោណ t₁",
+          "text": "Polar form of t₁",
+          "latex": "t_1 = 2\\left(\\frac{1}{2}-\\frac{\\sqrt{3}}{2}i\\right) = 2\\left(\\cos\\frac{5\\pi}{3}+i\\sin\\frac{5\\pi}{3}\\right)"
+        },
+        {
+          "textKh": "t₁³ ដោយ De Moivre",
+          "text": "t₁³ by De Moivre's theorem",
+          "latex": "t_1^3 = 2^3\\left(\\cos\\frac{15\\pi}{3}+i\\sin\\frac{15\\pi}{3}\\right) = 8(\\cos 5\\pi+i\\sin 5\\pi) = 8(\\cos\\pi+i\\sin\\pi)"
+        },
+        {
+          "textKh": "ទម្រង់ t ត្រីកោណ t₂",
+          "text": "Polar form of t₂",
+          "latex": "t_2 = 2\\left(\\cos\\frac{\\pi}{3}+i\\sin\\frac{\\pi}{3}\\right)"
+        },
+        {
+          "textKh": "គណនា Z = 4t₂/t₁³",
+          "text": "Compute Z by dividing polar forms",
+          "latex": "Z = \\frac{4\\cdot 2\\left(\\cos\\frac{\\pi}{3}+i\\sin\\frac{\\pi}{3}\\right)}{8(\\cos\\pi+i\\sin\\pi)} = \\cos\\left(\\frac{\\pi}{3}-\\pi\\right)+i\\sin\\left(\\frac{\\pi}{3}-\\pi\\right)"
+        },
+        {
+          "textKh": "សំព្រួញ",
+          "text": "Simplify angle: π/3-π = -2π/3 ≡ 4π/3",
+          "latex": "Z = \\cos\\left(-\\frac{2\\pi}{3}\\right)+i\\sin\\left(-\\frac{2\\pi}{3}\\right) = \\cos\\frac{4\\pi}{3}+i\\sin\\frac{4\\pi}{3}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "t₁=1-√3i, t₂=1+√3i | Z = cos(4π/3)+i sin(4π/3)",
+        "text": "t₁=1-√3i, t₂=1+√3i. Z=cos(4π/3)+isin(4π/3).",
+        "latex": "t_1=1-\\sqrt{3}i;\\ t_2=1+\\sqrt{3}i;\\ Z=\\cos\\frac{4\\pi}{3}+i\\sin\\frac{4\\pi}{3}"
+      },
+      "formulas": [
+        {
+          "latex": "z^n = r^n(\\cos n\\theta+i\\sin n\\theta)",
+          "meaning": "De Moivre's theorem",
+          "confidence": 0.99
+        },
+        {
+          "latex": "\\frac{z_1}{z_2}=\\frac{r_1}{r_2}(\\cos(\\theta_1-\\theta_2)+i\\sin(\\theta_1-\\theta_2))",
+          "meaning": "Division of complex numbers in polar form",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["complex numbers", "polar form", "De Moivre", "roots", "ឫស", "ទម្រង់ត្រីកោណ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c002",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 2,
+      "topic": "inflection_points",
+      "topicKh": "ចំណុចប្រែស្លឹក",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រក p, q ដើម្បី M(1,0) ជាចំណុចប្រែស្លឹករបស់ g(x) = px³ + qx² + 2/3",
+      "normalizedText": "Find p, q so that M(1,0) is an inflection point of g(x)=px³+qx²+2/3. Conditions: g''(1)=0 and g(1)=0. From g''(1)=6p+2q=0 and g(1)=p+q+2/3=0, solve to get p=1/3, q=-1.",
+      "problem": {
+        "textKh": "រក p, q ដើម្បី M(1,0) ជាចំណុចប្រែស្លឹករបស់ g(x)=px³+qx²+2/3",
+        "text": "Find p, q so M(1,0) is an inflection point of g(x)=px³+qx²+2/3",
+        "latex": "g(x) = px^3 + qx^2 + \\frac{2}{3},\\ M(1,0)\\ \\text{is inflection point}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចំណុចប្រែស្លឹក M(1,0) → g''(1)=0 និង g(1)=0",
+          "text": "Inflection point conditions: g''(1)=0 (concavity change) and M lies on curve: g(1)=0",
+          "latex": "g'(x)=3px^2+2qx,\\ g''(x)=6px+2q"
+        },
+        {
+          "textKh": "g''(1)=0",
+          "text": "Apply g''(1)=0",
+          "latex": "6p+2q=0 \\quad (1)"
+        },
+        {
+          "textKh": "g(1)=0",
+          "text": "M lies on curve: g(1)=0",
+          "latex": "p+q+\\frac{2}{3}=0 \\implies p+q = -\\frac{2}{3} \\quad (2)"
+        },
+        {
+          "textKh": "ពី (1): q=-3p → ជំនួស (2)",
+          "text": "From (1): q=-3p, substitute into (2)",
+          "latex": "p+(-3p)=-\\frac{2}{3} \\implies -2p=-\\frac{2}{3} \\implies p=\\frac{1}{3}"
+        },
+        {
+          "textKh": "ហើយ q = -3p = -1",
+          "text": "Then q=-3p=-1",
+          "latex": "q = -3\\cdot\\frac{1}{3} = -1"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "p = 1/3 | q = -1",
+        "text": "p = 1/3, q = -1",
+        "latex": "p = \\frac{1}{3},\\ q = -1"
+      },
+      "formulas": [
+        {
+          "latex": "g''(x_0)=0\\ \\text{and}\\ g''\\text{ changes sign at }x_0 \\implies x_0\\ \\text{is inflection point}",
+          "meaning": "Condition for an inflection point",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["inflection point", "cubic function", "second derivative", "ចំណុចប្រែស្លឹក", "ដេរីវេទី ២"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c003",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "probability",
+      "topicKh": "ប្រូបាប",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ជ្រើស ៥ ក្នុង ១៤ (ក្រុម ៨ + ក្រុម ៦): P(A)=ជ្រើសសុទ្ធ ១ ក្រុម ៨; P(B)=ជ្រើស ៣+២; P(C)=ប្រឆាំង A",
+      "normalizedText": "Select 5 from 14 people (group of 8 + group of 6). n(S)=C(14,5)=2002. A: all 5 from group-8, P(A)=C(8,5)/C(14,5)=56/2002=4/143. B: exactly 3 from group-8 and 2 from group-6, P(B)=C(8,3)C(6,2)/2002=840/2002=60/143. C: complement of A, P(C)=139/143.",
+      "problem": {
+        "textKh": "ជ្រើស ៥ ក្នុង ១៤ (ក្រុម ៨ + ក្រុម ៦): P(A), P(B), P(C)",
+        "text": "Choose 5 from 14 (8+6). Compute P(A)=all from group-8, P(B)=exactly 3+2, P(C)=at most 4 from group-8",
+        "latex": "n(S)=C(14,5)=2002"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ចំណែករួម",
+          "text": "Total sample space",
+          "latex": "n(S) = C(14,5) = \\frac{14!}{9!\\cdot5!} = 14\\times13\\times11 = 2002"
+        },
+        {
+          "textKh": "A: ជ្រើស ៥ ក្នុង ក្រុម ៨",
+          "text": "A: all 5 chosen from group of 8",
+          "latex": "n(A) = C(8,5) = \\frac{8!}{3!5!} = 56 \\implies P(A) = \\frac{56}{2002} = \\frac{4}{143}"
+        },
+        {
+          "textKh": "B: ជ្រើស ៣ ក្នុង ក្រុម ៨ និង ២ ក្នុង ក្រុម ៦",
+          "text": "B: exactly 3 from group-8 and 2 from group-6",
+          "latex": "n(B) = C(8,3)\\cdot C(6,2) = 56\\times15 = 840 \\implies P(B) = \\frac{840}{2002} = \\frac{60}{143}"
+        },
+        {
+          "textKh": "C: ប្រឆាំង A (ប្រូបាប complementary)",
+          "text": "C: complement of A",
+          "latex": "P(C) = 1 - P(A) = 1 - \\frac{4}{143} = \\frac{139}{143}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "P(A)=4/143 | P(B)=60/143 | P(C)=139/143",
+        "text": "P(A)=4/143, P(B)=60/143, P(C)=139/143.",
+        "latex": "P(A)=\\frac{4}{143},\\ P(B)=\\frac{60}{143},\\ P(C)=\\frac{139}{143}"
+      },
+      "formulas": [
+        {
+          "latex": "C(n,k)=\\frac{n!}{k!(n-k)!}",
+          "meaning": "Combination formula: choose k from n",
+          "confidence": 0.99
+        },
+        {
+          "latex": "P(\\bar{A}) = 1-P(A)",
+          "meaning": "Complementary probability",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["probability", "combination", "complementary", "committee selection", "ប្រូបាប", "ការរើស"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c004",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 3,
+      "topic": "differential_equations",
+      "topicKh": "សមីការឌីផេរ៉ង់ស្យែល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "ដោះស្រាយ (F): y'' - 2y' + 5y = 0 ជាមួយ y(0)=2 និង y'(0)=6",
+      "normalizedText": "Solve (F): y''-2y'+5y=0 with initial conditions y(0)=2, y'(0)=6. Characteristic equation r²-2r+5=0 has complex roots r=1±2i. General solution y=e^x(Acos2x+Bsin2x). Applying conditions: A=2, B=2. Particular solution: y=e^x(2cos2x+2sin2x).",
+      "problem": {
+        "textKh": "ដោះស្រាយ (F): y''-2y'+5y=0 ជាមួយ y(0)=2, y'(0)=6",
+        "text": "Solve ODE y''-2y'+5y=0 with y(0)=2, y'(0)=6",
+        "latex": "(F):\\ y''-2y'+5y=0,\\ y(0)=2,\\ y'(0)=6"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "សមីការលក្ខណៈ",
+          "text": "Characteristic equation",
+          "latex": "r^2-2r+5=0 \\implies \\Delta=4-20=-16 \\implies \\sqrt{\\Delta}=4i"
+        },
+        {
+          "textKh": "ឫស (ចំនួនកុំផ្លិច)",
+          "text": "Complex roots",
+          "latex": "r_1 = \\frac{2-4i}{2}=1-2i,\\quad r_2=\\frac{2+4i}{2}=1+2i"
+        },
+        {
+          "textKh": "ដំណោះស្រាយទូទៅ",
+          "text": "General solution for complex conjugate roots α±βi",
+          "latex": "y = e^x(A\\cos 2x + B\\sin 2x),\\quad A,B\\in\\mathbb{R}",
+          "explanationKh": "ប្រើ α=1, β=2",
+          "explanation": "Use α=1 (real part), β=2 (imaginary part)"
+        },
+        {
+          "textKh": "y(0)=2: A=2",
+          "text": "Apply y(0)=2",
+          "latex": "y(0)=e^0(A\\cos 0+B\\sin 0)=A=2"
+        },
+        {
+          "textKh": "y'(x) ហើយ y'(0)=6",
+          "text": "Differentiate and apply y'(0)=6",
+          "latex": "y'(x)=e^x(A\\cos 2x+B\\sin 2x)+e^x(-2A\\sin 2x+2B\\cos 2x)"
+        },
+        {
+          "textKh": "ជំនួស x=0",
+          "text": "Substitute x=0",
+          "latex": "y'(0)=A+2B=6 \\implies 2+2B=6 \\implies B=2"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "ដំណោះស្រាយ y = eˣ(2cos2x + 2sin2x)",
+        "text": "Solution: y = e^x(2cos2x + 2sin2x)",
+        "latex": "y = e^x(2\\cos 2x + 2\\sin 2x)"
+      },
+      "formulas": [
+        {
+          "latex": "y = e^{\\alpha x}(A\\cos\\beta x + B\\sin\\beta x)",
+          "meaning": "General solution when characteristic roots are α±βi",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["ODE", "complex roots", "initial conditions", "exponential", "trigonometric solution", "សមីការឌីផេរ៉ង់ស្យែល", "ឫសស្មុគស្មាញ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c005",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "differential_equations",
+      "topicKh": "ដំណោះស្រាយពិសេស",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "រក n, p, q ដើម្បី y = 2x²+3x+1 ជាដំណោះស្រាយ (E): y'' - 2y' + 5y = nx²+px+q",
+      "normalizedText": "Find n,p,q so that y=2x²+3x+1 satisfies (E): y''-2y'+5y=nx²+px+q. Compute y'=4x+3, y''=4. Substitute: 4-2(4x+3)+5(2x²+3x+1) = 10x²+7x+3. So n=10, p=7, q=3. General solution of (E): y = e^x(Acos2x+Bsin2x) + 2x²+3x+1.",
+      "problem": {
+        "textKh": "រក n, p, q ដើម្បី yₚ=2x²+3x+1 ជាដំណោះស្រាយ (E)",
+        "text": "Find n,p,q so that y=2x²+3x+1 is a particular solution of (E)",
+        "latex": "y=2x^2+3x+1\\ \\text{satisfies}\\ y''-2y'+5y=nx^2+px+q"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "គណនា y', y''",
+          "text": "Compute derivatives",
+          "latex": "y' = 4x+3,\\quad y'' = 4"
+        },
+        {
+          "textKh": "ជំនួសចូល (E)",
+          "text": "Substitute into (E)",
+          "latex": "4 - 2(4x+3) + 5(2x^2+3x+1) = 4-8x-6+10x^2+15x+5 = 10x^2+7x+3"
+        },
+        {
+          "textKh": "ប្រៀបធៀបមេគុណ",
+          "text": "Match coefficients",
+          "latex": "n=10,\\ p=7,\\ q=3"
+        },
+        {
+          "textKh": "ដំណោះស្រាយទូទៅ (E)",
+          "text": "General solution of (E) = homogeneous + particular",
+          "latex": "y = y_c + y_p = e^x(A\\cos 2x+B\\sin 2x) + 2x^2+3x+1,\\quad A,B\\in\\mathbb{R}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "n=10, p=7, q=3 | ដំណោះស្រាយទូទៅ (E): y = eˣ(Acos2x+Bsin2x)+2x²+3x+1",
+        "text": "n=10, p=7, q=3. General solution: y = e^x(Acos2x+Bsin2x) + 2x²+3x+1.",
+        "latex": "n=10,\\ p=7,\\ q=3;\\ y=e^x(A\\cos 2x+B\\sin 2x)+2x^2+3x+1"
+      },
+      "keywords": ["ODE", "particular solution", "undetermined coefficients", "ដំណោះស្រាយពិសេស", "ប្រៀបធៀបមេគុណ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c006",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 4,
+      "topic": "exponential_functions",
+      "topicKh": "អនុគមន៍អិចស្ប៉ូណង់ស្យែល",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "f(x) = x-1+2e^(-x): ដែន ±∞, អាស៊ីម​តូត L₁:y=x-1, អប្បបរមា x=ln2, តង់ហ្សង់ L₂ នៅ A(0,1), ផ្ទៃ",
+      "normalizedText": "f(x)=x-1+2e^(-x), curve C. lim f(x)=+∞ for both x→±∞. Oblique asymptote L₁: y=x-1 (since 2e^(-x)→0 as x→+∞). Minimum at x=ln2: f'(x)=1-2e^(-x)=0→x=ln2, f(ln2)=ln2. Tangent L₂ at A(0,1): slope f'(0)=-1, L₂: y=-x+1. Area between C and L₁ for x∈[0,1]: S=∫₀¹2e^(-x)dx=2-2/e≈1.27.",
+      "problem": {
+        "textKh": "f(x)=x-1+2e^(-x): រកដែន ±∞, L₁, អប្បបរមា, L₂ នៅ A(0,1), ផ្ទៃ",
+        "text": "Analyze f(x)=x-1+2e^(-x): limits, oblique asymptote, minimum, tangent at A(0,1), area",
+        "latex": "f(x) = x-1+2e^{-x}"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "ដែន x→±∞",
+          "text": "Limits at ±∞",
+          "latex": "\\lim_{x\\to+\\infty}f(x)=+\\infty\\ (\\text{since }e^{-x}\\to 0);\\ \\lim_{x\\to-\\infty}f(x)=+\\infty\\ (\\text{since }e^{-x}\\to+\\infty)"
+        },
+        {
+          "textKh": "អាស៊ីម​តូត L₁: y=x-1",
+          "text": "Oblique asymptote L₁: y=x-1",
+          "latex": "\\lim_{x\\to+\\infty}[f(x)-(x-1)] = \\lim_{x\\to+\\infty}2e^{-x}=0 \\implies L_1:\\ y=x-1"
+        },
+        {
+          "textKh": "f'(x) = 1-2e^(-x) = 0 → x=ln2",
+          "text": "Critical point at x=ln2",
+          "latex": "f'(x)=1-2e^{-x}=0 \\implies e^{-x}=\\frac{1}{2} \\implies x=\\ln 2"
+        },
+        {
+          "textKh": "f''(x)=2e^(-x)>0 → x=ln2 ជាអប្បបរមា",
+          "text": "f''(x)=2e^(-x)>0 confirms x=ln2 is a minimum",
+          "latex": "f''(x)=2e^{-x}>0\\ \\forall x,\\ f(\\ln 2)=\\ln 2-1+2\\cdot\\frac{1}{2}=\\ln 2"
+        },
+        {
+          "textKh": "តង់ហ្សង់ L₂ នៅ A(0,1): f'(0)=1-2=-1",
+          "text": "Tangent L₂ at A(0,1): slope f'(0)=1-2=-1",
+          "latex": "L_2:\\ y=-(x-0)+1=-x+1"
+        },
+        {
+          "textKh": "ផ្ទៃ S = ∫₀¹[f(x)-(x-1)]dx ពេល C នៅលើ L₁",
+          "text": "Area between C and L₁ for x∈[0,1]",
+          "latex": "S=\\int_0^1[f(x)-(x-1)]\\,dx=\\int_0^1 2e^{-x}\\,dx=\\left[-2e^{-x}\\right]_0^1=-\\frac{2}{e}+2=2-\\frac{2}{e}\\approx1.27"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "L₁: y=x-1 (OP) | អប្បបរមា x=ln2, f(ln2)=ln2 | L₂: y=-x+1 | ផ្ទៃ S=2-2/e≈1.27",
+        "text": "Oblique asymptote L₁: y=x-1. Minimum at x=ln2: f(ln2)=ln2. Tangent L₂: y=-x+1. Area S=2-2/e≈1.27.",
+        "latex": "L_1:\\ y=x-1;\\ x_{\\min}=\\ln 2;\\ L_2:\\ y=-x+1;\\ S=2-\\frac{2}{e}"
+      },
+      "formulas": [
+        {
+          "latex": "\\lim_{x\\to+\\infty}[f(x)-(ax+b)]=0 \\implies y=ax+b\\ \\text{is oblique asymptote}",
+          "meaning": "Condition for oblique asymptote",
+          "confidence": 0.99
+        },
+        {
+          "latex": "\\int e^{-x}\\,dx = -e^{-x}+C",
+          "meaning": "Integral of e^(-x)",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["exponential function", "asymptote", "minimum", "tangent line", "area", "integration", "អនុគមន៍", "អប្បបរមា", "ផ្ទៃ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c007",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 1,
+      "pageEnd": 6,
+      "topic": "sphere",
+      "topicKh": "ស្វែរ ប្លែន ខ្សែ",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(1,2,4), B(2,-1,3), C(-2,3,-2): ស្វែរ S កណ្ដាល A, r=|BC|/2; ប្លែន P ឆ្លង A,B,C; ខ្សែ d ឆ្លង C ស្រប AB⃗",
+      "normalizedText": "A(1,2,4), B(2,-1,3), C(-2,3,-2). Sphere S: center A(1,2,4), r=|BC|/2=√57/2. Equation: (x-1)²+(y-2)²+(z-4)²=57/4. Plane P through B with normal AC=(-3,1,-6): -3x+y-6z+25=0. Line d through C with direction AB=(1,-3,-1): x=-2+t, y=3-3t, z=-2-t.",
+      "problem": {
+        "textKh": "A(1,2,4), B(2,-1,3), C(-2,3,-2): ស្វែរ S, ប្លែន P, ខ្សែ d",
+        "text": "Find sphere S (center A, r=|BC|/2), plane P through A,B,C, line d through C parallel to AB",
+        "latex": "A(1,2,4),\\ B(2,-1,3),\\ C(-2,3,-2)"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "BC⃗ = C-B",
+          "text": "Compute BC",
+          "latex": "\\overrightarrow{BC}=(-2-2,\\ 3-(-1),\\ -2-3)=(-4,4,-5)"
+        },
+        {
+          "textKh": "r = |BC|/2",
+          "text": "Radius r",
+          "latex": "r = \\frac{|\\overrightarrow{BC}|}{2}=\\frac{\\sqrt{16+16+25}}{2}=\\frac{\\sqrt{57}}{2}"
+        },
+        {
+          "textKh": "ស្វែរ S (កណ្ដាល A)",
+          "text": "Sphere equation with center A(1,2,4)",
+          "latex": "(S):\\ (x-1)^2+(y-2)^2+(z-4)^2=\\frac{57}{4}"
+        },
+        {
+          "textKh": "ប្លែន P: ប្រើ AC⃗ ជា normal",
+          "text": "Plane P: use normal vector AC",
+          "latex": "\\overrightarrow{AC}=(-2-1,\\ 3-2,\\ -2-4)=(-3,1,-6)"
+        },
+        {
+          "textKh": "P ឆ្លង B(2,-1,3)",
+          "text": "Plane through B(2,-1,3) with normal (-3,1,-6)",
+          "latex": "-3(x-2)+(y+1)-6(z-3)=0 \\implies -3x+y-6z+25=0"
+        },
+        {
+          "textKh": "ខ្សែ d: ឆ្លង C(-2,3,-2) ស្រប AB⃗=(1,-3,-1)",
+          "text": "Line d through C with direction AB",
+          "latex": "\\overrightarrow{AB}=(1,-3,-1);\\ d:\\ \\begin{cases}x=-2+t\\\\y=3-3t\\\\z=-2-t\\end{cases},\\ t\\in\\mathbb{R}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "(S): (x-1)²+(y-2)²+(z-4)²=57/4 | P: -3x+y-6z+25=0 | d: x=-2+t, y=3-3t, z=-2-t",
+        "text": "Sphere: (x-1)²+(y-2)²+(z-4)²=57/4. Plane P: -3x+y-6z+25=0. Line d: (x,y,z)=(-2+t, 3-3t, -2-t).",
+        "latex": "(S):\\ (x-1)^2+(y-2)^2+(z-4)^2=\\frac{57}{4};\\ P:\\ -3x+y-6z+25=0"
+      },
+      "formulas": [
+        {
+          "latex": "(x-a)^2+(y-b)^2+(z-c)^2=r^2",
+          "meaning": "Sphere equation with center (a,b,c)",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["sphere", "plane equation", "line equation", "normal vector", "ស្វែរ", "ប្លែន", "ខ្សែ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c008",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 6,
+      "pageEnd": 7,
+      "topic": "3d_distances",
+      "topicKh": "ចម្ងាយ ៣ ជ្រុង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(1,2,4), B(2,-1,3): ចម្ងាយ D_BA (B→A), D_Bd (B→ d), D_DP (D(3,-3,-3)→ P)",
+      "normalizedText": "Given A(1,2,4), B(2,-1,3), C(-2,3,-2), plane P: -3x+y-6z+25=0, line d through C with direction AB=(1,-3,-1). D_BA=|AB|=√11. D_Bd: distance B to line d = |AB×BC|/|AB| = √506/√11 = √46. D_DP: distance D(3,-3,-3) to plane P = 31√46/46.",
+      "problem": {
+        "textKh": "D_BA = ចម្ងាយ B→A | D_Bd = ចម្ងាយ B→d | D_DP = ចម្ងាយ D(3,-3,-3)→P",
+        "text": "Compute distance B to A, B to line d, and D(3,-3,-3) to plane P",
+        "latex": "D_{BA},\\ D_{Bd},\\ D_{DP}=?"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "D_BA = |AB⃗|",
+          "text": "Distance B to A = |AB|",
+          "latex": "D_{BA}=|\\overrightarrow{AB}|=\\sqrt{1^2+(-3)^2+(-1)^2}=\\sqrt{1+9+1}=\\sqrt{11}"
+        },
+        {
+          "textKh": "D_Bd: ចម្ងាយ B ទៅ d (ឆ្លង C ស្រប AB⃗)",
+          "text": "Distance from B to line d (through C, direction AB). Use: BC=(−4,4,−5), AB=(1,−3,−1)",
+          "latex": "\\overrightarrow{BC}=(-4,4,-5),\\quad \\overrightarrow{AB}=(1,-3,-1)"
+        },
+        {
+          "textKh": "AB⃗ × BC⃗",
+          "text": "Cross product AB × BC",
+          "latex": "\\overrightarrow{AB}\\times\\overrightarrow{BC}=\\begin{vmatrix}\\vec{i}&\\vec{j}&\\vec{k}\\\\1&-3&-1\\\\-4&4&-5\\end{vmatrix}=(15+4)\\vec{i}-(-5-4)\\vec{j}+(4-12)\\vec{k}=(19,9,-8)"
+        },
+        {
+          "textKh": "D_Bd = |AB×BC| / |AB|",
+          "text": "Distance formula for point to line",
+          "latex": "D_{Bd}=\\frac{|\\overrightarrow{AB}\\times\\overrightarrow{BC}|}{|\\overrightarrow{AB}|}=\\frac{\\sqrt{361+81+64}}{\\sqrt{11}}=\\frac{\\sqrt{506}}{\\sqrt{11}}=\\sqrt{46}"
+        },
+        {
+          "textKh": "D_DP: ចម្ងាយ D(3,-3,-3) ទៅ P: -3x+y-6z+25=0",
+          "text": "Distance from D(3,-3,-3) to plane -3x+y-6z+25=0",
+          "latex": "D_{DP}=\\frac{|-3(3)+(-3)-6(-3)+25|}{\\sqrt{(-3)^2+1^2+(-6)^2}}=\\frac{|-9-3+18+25|}{\\sqrt{46}}=\\frac{31}{\\sqrt{46}}=\\frac{31\\sqrt{46}}{46}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "D_BA=√11 | D_Bd=√46 | D_DP=31√46/46",
+        "text": "D_BA=√11. D_Bd=√46. D_DP=31√46/46.",
+        "latex": "D_{BA}=\\sqrt{11},\\ D_{Bd}=\\sqrt{46},\\ D_{DP}=\\frac{31\\sqrt{46}}{46}"
+      },
+      "formulas": [
+        {
+          "latex": "d(P,\\ \\text{line through }Q\\ \\text{dir }\\vec{u}) = \\frac{|\\vec{QP}\\times\\vec{u}|}{|\\vec{u}|}",
+          "meaning": "Distance from point to line in 3D",
+          "confidence": 0.99
+        },
+        {
+          "latex": "d = \\frac{|ax_0+by_0+cz_0+d|}{\\sqrt{a^2+b^2+c^2}}",
+          "meaning": "Distance from point to plane",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["distance point to line", "distance point to plane", "cross product", "ចម្ងាយ", "ចំណុច", "ប្លែន"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    },
+    {
+      "chunkId": "math-12-exam-science-2024-p001-c009",
+      "sourceId": "math-12-exam-science-2024",
+      "language": "km",
+      "subject": "math",
+      "gradeRange": ["12"],
+      "pageStart": 7,
+      "pageEnd": 7,
+      "topic": "3d_vectors",
+      "topicKh": "ផ្ទៃ ៣ ជ្រុង",
+      "chunkType": "worked_example",
+      "responsePatternIds": ["khmer-math-textbook-solution"],
+      "text": "A(1,2,4), B(2,-1,3), C(-2,3,-2): ផ្ទៃចតុកោណស្មើ BA⃗×BC⃗ និងផ្ទៃ△ABC",
+      "normalizedText": "A(1,2,4), B(2,-1,3), C(-2,3,-2). BA=(−1,3,1), BC=(−4,4,−5). BA×BC = AB×BC (magnitude) = (19,9,−8), |BA×BC|=√506. Parallelogram area = √506. Triangle area = √506/2.",
+      "problem": {
+        "textKh": "ផ្ទៃចតុកោណស្មើ BA⃗ & BC⃗ និង ផ្ទៃ△ABC",
+        "text": "Find area of parallelogram formed by BA and BC, and area of triangle ABC",
+        "latex": "S_{\\text{parallelogram}}=|\\overrightarrow{BA}\\times\\overrightarrow{BC}|,\\ S_{\\triangle ABC}=\\frac{1}{2}|\\overrightarrow{BA}\\times\\overrightarrow{BC}|"
+      },
+      "solutionSteps": [
+        {
+          "textKh": "AB⃗ × BC⃗ (ពីជំហានមុន = (19,9,-8))",
+          "text": "Use AB×BC=(19,9,-8) from previous calculation",
+          "latex": "|\\overrightarrow{AB}\\times\\overrightarrow{BC}|=\\sqrt{19^2+9^2+(-8)^2}=\\sqrt{361+81+64}=\\sqrt{506}"
+        },
+        {
+          "textKh": "ផ្ទៃចតុកោណស្មើ",
+          "text": "Parallelogram area",
+          "latex": "S_{\\text{parallelogram}}=|\\overrightarrow{BA}\\times\\overrightarrow{BC}|=\\sqrt{506}"
+        },
+        {
+          "textKh": "ផ្ទៃ△ABC",
+          "text": "Triangle area",
+          "latex": "S_{\\triangle ABC}=\\frac{1}{2}|\\overrightarrow{BA}\\times\\overrightarrow{BC}|=\\frac{\\sqrt{506}}{2}"
+        }
+      ],
+      "finalAnswer": {
+        "textKh": "S_ចតុកោណ = √506 | S_△ABC = √506/2",
+        "text": "Parallelogram area = √506. Triangle area = √506/2.",
+        "latex": "S_{\\text{parallelogram}}=\\sqrt{506},\\ S_{\\triangle ABC}=\\frac{\\sqrt{506}}{2}"
+      },
+      "formulas": [
+        {
+          "latex": "S_{\\triangle}=\\frac{1}{2}|\\vec{u}\\times\\vec{v}|",
+          "meaning": "Area of triangle using cross product of two edge vectors",
+          "confidence": 0.99
+        },
+        {
+          "latex": "S_{\\text{parallelogram}}=|\\vec{u}\\times\\vec{v}|",
+          "meaning": "Area of parallelogram using cross product",
+          "confidence": 0.99
+        }
+      ],
+      "keywords": ["area parallelogram", "area triangle", "cross product magnitude", "ផ្ទៃ", "ចតុកោណស្មើ"],
+      "difficulty": "high_school",
+      "quality": {
+        "textClean": true,
+        "formulaReviewed": true,
+        "humanReviewed": false,
+        "solutionReviewed": true,
+        "trusted": true,
+        "needsCuration": false
+      }
+    }
+  ]
+}

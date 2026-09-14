@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it, vi } from "vitest";
-import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferInequalityFeasibleRegionBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferEllipseBlocks, inferInequalityFeasibleRegionBlocks, inferSolidGeometryBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { logger } from "../../utils/logger.js";
 
@@ -446,7 +446,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, signTableBlocks);
     expect(blocks.length).toBe(1);
     expect(blocks[0]?.diagramType).toBe("function-graph");
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const fn = (spec.functions as Array<Record<string, unknown>>)[0];
     expect(fn.latex).toBe("y=\\frac{x^2+2x+2}{x+1}");
     // Domain should straddle the vertical asymptote at x=-1, not the
@@ -496,14 +496,14 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
 
   it("finds a non-rational function's own latex (a product with an exponential factor, not just \\frac{...}{...}), keeping its own name 'f' rather than rewriting to a bare 'y='", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const fn = (spec.functions as Array<Record<string, unknown>>)[0];
     expect(fn.latex).toBe("f(x)=(x + 1)(e^{-2x} + 1)");
   });
 
   it("does not mistake an exponential's steep-but-finite growth for a vertical asymptote, and narrows the domain to where the curve stays readable", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const [domainMin, domainMax] = spec.domain as [number, number];
     // The old magnitude-based heuristic mistook the steep left tail for a
     // pole, centering the domain on [-15,-5] — nowhere near this function's
@@ -524,7 +524,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     // x=-1/2, y≈1.86; the intercept at (0,2)) sits entirely within roughly
     // -2 to +8, squeezed into a small sliver of a 251-unit-tall chart.
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(exponentialProblem, "", exponentialSignTable);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const [rangeMin, rangeMax] = spec.range as [number, number];
     expect(rangeMax - rangeMin).toBeLessThan(100);
     // And the interesting values must actually fall inside that tighter range.
@@ -574,14 +574,14 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
   it("recognizes 'ខ្សែជាង' as a graph request too — the fix generalizes across 'ខ្សែ...' synonyms, not one literal at a time", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(khseJangProblem, "", khseJangSignTable);
     expect(blocks.length).toBe(1);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const fn = (spec.functions as Array<Record<string, unknown>>)[0];
     expect(fn.latex).toBe("g(x)=(2 - x)e^x + 2 - x");
   });
 
   it("finds a function defined as 'g(x)=...', not just 'f(x)=...' or 'y=...', keeping its own name 'g' rather than rewriting to a bare 'y='", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const fn = (spec.functions as Array<Record<string, unknown>>)[0];
     expect(fn.latex).toBe("g(x)=(2-x)e^x + 2 - x");
   });
@@ -592,7 +592,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     // "(D): y = 2 - x" (perfectly evaluable, appears after g's own
     // definition) instead of g(x) itself.
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const fn = (spec.functions as Array<Record<string, unknown>>)[0];
     expect(fn.latex).not.toBe("y=2 - x");
     expect(fn.latex).not.toBe("y= 2 - x");
@@ -606,7 +606,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     // nothing but a near-vertical plunge with none of g's actual behavior
     // (the inflection point (0,4), the asymptote crossing (2,0)) visible.
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, "", []);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const [rangeMin, rangeMax] = spec.range as [number, number];
     expect(rangeMax - rangeMin).toBeLessThan(100);
     expect(rangeMin).toBeLessThanOrEqual(0);
@@ -629,7 +629,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
 
   it("adds the derived asymptote/tangent lines as their own plotted functions, not just the bare curve", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, constructionNotesSolutionText, []);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const linearFns = (spec.functions as Array<Record<string, unknown>>).filter((f) => f.kind === "linear");
     expect(linearFns.length).toBe(2);
     const paramSets = linearFns.map((f) => f.params as { m: number; b: number });
@@ -639,7 +639,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
 
   it("adds feature points that are independently verified to lie on the curve or a derived line, not just echoed from the prose", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, constructionNotesSolutionText, []);
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
     expect(points).toEqual(expect.arrayContaining([
       [0, 4], // inflection point I(0, 4) — on the curve
@@ -655,7 +655,7 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
       `${constructionNotesSolutionText}\nសម្រាប់ $x \\in (0, +\\infty)$`,
       [],
     );
-    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
     expect(points.some(([x]) => x === 0 && points.some(([, y]) => !Number.isFinite(y)))).toBe(false);
     expect(points.every(([, y]) => Number.isFinite(y))).toBe(true);
@@ -694,6 +694,65 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
       expect(infoSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
       infoSpy.mockRestore();
+    });
+  });
+
+  describe("a domain-restricted function (\\ln x) combined with a tangent line derived across a multi-line aligned block", () => {
+    // Real observed case: f(x) = x^2+2x-1-4\ln x, defined only for x>0 —
+    // asked to construct the graph (C) and the tangent line d at x0=2.
+    // Three separate, independently-observed gaps compounded to make this
+    // return [] entirely (a real production regression, not a synthetic
+    // worst case):
+    const lnProblem = "គេឱ្យអនុគមន៍ $f$ កំណត់លើ $(0, +\\infty)$ ដោយ $f(x) = x^2 + 2x - 1 - 4\\ln x$។ តាង $(C)$ ជាក្រាបតំណាងអនុគមន៍ $f$។";
+    const lnSolutionText = [
+      "១. សិក្សាលីមីត និងទាញរកអាស៊ីមតូត៖",
+      "$\\lim_{x \\to 0^+} f(x) = +\\infty$ ដូច្នេះ $x=0$ ជាអាស៊ីមតូតឈរនៃក្រាប $(C)$។",
+      "២. a. បង្ហាញថា $f(x) = x^2 \\left( 1 + \\frac{2}{x} - \\frac{1}{x^2} - \\frac{4\\ln x}{x^2} \\right)$៖",
+      "តម្លៃអប្បបរមា $f(1) = 2$ ត្រង់ $x = 1$។",
+      "៤. a. កំណត់សមីការបន្ទាត់ $d$ ប៉ះនឹងក្រាប $(C)$ ត្រង់ $x_0 = 2$៖",
+      "$$\\begin{aligned} d: y &= 4(x - 2) + 4.2 \\\\ y &= 4x - 8 + 4.2 \\\\ y &= 4x - 3.8 \\end{aligned}$$",
+      "b. សង់ក្រាប $(C)$ និងបន្ទាត់ $d$៖",
+      "(ការសង់ក្រាបត្រូវផ្អែកលើចំណុចអប្បបរមា $(1, 2)$ និងចំណុចប៉ះ $(2, 4.2)$)",
+    ].join("\n");
+    const signTableBlocks = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [{ label: "x", cells: ["0", "1", "+∞"] }, { label: "f'(x)", cells: ["-", "0", "+"] }],
+    }]);
+
+    it("does not mistake a \\ln-restricted domain edge for a symmetric interior pole (used to produce an entirely invalid domain and return [])", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(lnProblem, lnSolutionText, signTableBlocks);
+      expect(blocks.length).toBe(1);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const [domainMin, domainMax] = spec.domain as [number, number];
+      // Must be a domain strictly inside (0, +∞), close to the true edge —
+      // the old logic produced [-15,-5] (entirely invalid: x<=0) here.
+      expect(domainMin).toBeGreaterThan(0);
+      expect(domainMin).toBeLessThan(1);
+      expect(domainMax).toBeGreaterThan(domainMin);
+    });
+
+    it("prefers the function's own canonical definition over a 'prove that f(x)=...' algebra-identity restatement found later in the text", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(lnProblem, lnSolutionText, signTableBlocks);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const functions = spec.functions as Array<Record<string, unknown>>;
+      expect(functions[0].latex).toBe("f(x)=x^2 + 2x - 1 - 4\\ln x");
+      expect(functions[0].latex).not.toContain("frac");
+    });
+
+    it("finds the tangent line derived across a multi-line \\begin{aligned} block using '&=', not just a bare 'y='", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(lnProblem, lnSolutionText, signTableBlocks);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const functions = spec.functions as Array<Record<string, unknown>>;
+      const line = functions.find((fn) => fn.kind === "linear");
+      expect(line?.params).toMatchObject({ m: 4, b: -3.8 });
+    });
+
+    it("still includes the minimum and tangent-point feature points alongside the curve and line", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(lnProblem, lnSolutionText, signTableBlocks);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
+      expect(points).toContainEqual([1, 2]);
+      expect(points).toContainEqual([2, 4.2]);
     });
   });
 });
@@ -870,5 +929,111 @@ $$&= -25\\vec{i} - 25\\vec{j} + 25\\vec{k}$$
   it("leaves a well-formed \\begin{aligned} block (no interior '$$') untouched", () => {
     const wellFormed = "$$\\begin{aligned}\na &= 1 \\\\\nb &= 2\n\\end{aligned}$$";
     expect(repairNestedDollarsInsideAligned(wellFormed)).toBe(wellFormed);
+  });
+});
+
+describe("inferEllipseBlocks", () => {
+  // Real observed case: "១) រេលីប E មួយមានសមីការ 25x^2+16y^2-150x+64y=111"
+  // — the problem states the *general* equation, and the solution derives
+  // the standard form with an explicit, non-origin center (3,-2). Two bugs
+  // compounded here: "រេលីប" (an alternate Khmer transliteration of
+  // "ellipse", distinct from "អេលីប") wasn't recognized at all, and even
+  // recognized, the old \frac{x^2}{A}+\frac{y^2}{B}=1-only regex never
+  // matches a shifted "(x-h)^2"/"(y-k)^2" equation — it silently fell
+  // through to a hardcoded denomX=25/denomY=9 default, an ellipse with
+  // nothing to do with this problem.
+  const problem = "១) រេលីប $E$ មួយមានសមីការ $25x^2 + 16y^2 - 150x + 64y = 111$ ។";
+  const solutionText = "សមីការទូទៅនៃរេលីបគឺ។ ដោះស្រាយបានលទ្ធផលចុងក្រោយ៖\n$$\\begin{aligned} \\frac{25(x-3)^2}{400} + \\frac{16(y+2)^2}{400} &= 1 \\\\ \\frac{(x-3)^2}{16} + \\frac{(y+2)^2}{25} &= 1 \\end{aligned}$$\nផ្ចិត $I(3, -2)$។";
+
+  it("recognizes 'រេលីប' as ellipse, not just 'អេលីប'", () => {
+    const blocks = inferEllipseBlocks(problem, solutionText, []);
+    expect(blocks.length).toBe(1);
+  });
+
+  it("parses a shifted (non-origin-centered) standard-form equation, not the hardcoded origin default", () => {
+    const blocks = inferEllipseBlocks(problem, solutionText, []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const shapes = spec.shapes as Array<Record<string, unknown>>;
+    const ellipse = shapes.find((s) => s.shape === "ellipse");
+    expect(ellipse?.center).toEqual([3, -2]);
+    // b^2=16 under the (x-h)^2 term -> rx=4 (minor, horizontal);
+    // a^2=25 under the (y-k)^2 term -> ry=5 (major, vertical) — matches
+    // the reference solution's own "អ័ក្សធំស្របនឹងអ័ក្សអរដោនេ" (major axis
+    // parallel to the y-axis) note.
+    expect(ellipse?.rx).toBe(4);
+    expect(ellipse?.ry).toBe(5);
+  });
+
+  it("skips the intermediate, coefficient-laden line from the same derivation (25(x-3)^2/400) in favor of the fully-reduced standard form", () => {
+    const blocks = inferEllipseBlocks(problem, solutionText, []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const shapes = spec.shapes as Array<Record<string, unknown>>;
+    const ellipse = shapes.find((s) => s.shape === "ellipse");
+    // If the intermediate "25(x-3)^2/400" line had been matched instead,
+    // rx/ry would come out as sqrt(400)=20 for both axes — wrong on every
+    // count (not shifted correctly parsed, size wrong, not even elliptical).
+    expect(ellipse?.rx).not.toBe(20);
+  });
+
+  it("still parses the plain origin-centered form (no regression)", () => {
+    const originProblem = "គេឱ្យរេលីបមួយមានសមីការ \\frac{x^2}{25} + \\frac{y^2}{9} = 1";
+    const blocks = inferEllipseBlocks(originProblem, "", []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const shapes = spec.shapes as Array<Record<string, unknown>>;
+    const ellipse = shapes.find((s) => s.shape === "ellipse");
+    expect(ellipse?.center).toEqual([0, 0]);
+    expect(ellipse?.rx).toBe(5);
+    expect(ellipse?.ry).toBe(3);
+  });
+
+  it("returns nothing (not a hardcoded default ellipse) when no recognizable equation form is present at all", () => {
+    const blocks = inferEllipseBlocks("គេឱ្យរេលីបមួយ។ រកចម្ងាយ។", "គ្មានសមីការច្បាស់លាស់នៅទីនេះ។", []);
+    expect(blocks).toEqual([]);
+  });
+});
+
+describe("inferSolidGeometryBlocks", () => {
+  // Real observed case: "កាំ R = MN" defines the radius symbolically
+  // (a vector length, not a literal number) before the solution computes
+  // it. The naive "find the label, then the nearest digit after it" scan
+  // has no boundary once the label isn't immediately followed by one — it
+  // kept expanding right past "= MN" and across the line break into the
+  // *next* line's own coordinate computation, latching onto an unrelated
+  // "0" from "(0 - (-1))^2" and reporting radius 0.
+  const problem = "រកកូអរដោនេស្វ៊ែរ S ។";
+  const solutionText = "ស្វ៊ែរ $S$ មានផ្ចិត $M(-1, 0, 1)$ និងកាំ $R = MN$៖\n$$\\begin{aligned} R &= \\sqrt{(0 - (-1))^2 + (1 - 0)^2 + (2 - 1)^2} \\\\ &= \\sqrt{1^2 + 1^2 + 1^2} = \\sqrt{3} \\end{aligned}$$\nសមីការស្វ៊ែរ $S$ គឺ $(x + 1)^2 + y^2 + (z - 1)^2 = 3$។";
+
+  it("reads the radius from the sphere's own equation (R²=3 -> R=√3), not the coincidental '0' the old label-scan latched onto", () => {
+    const blocks = inferSolidGeometryBlocks(problem, solutionText, []);
+    expect(blocks.length).toBe(1);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const params = spec.params as Record<string, unknown>;
+    expect(params.r).toBeCloseTo(Math.sqrt(3), 5);
+    expect(params.r).not.toBe(0);
+  });
+
+  it("also reads an explicit 'R^2 = N' statement when no full sphere equation is present", () => {
+    const blocks = inferSolidGeometryBlocks(
+      "ស្វ៊ែរ S ។",
+      "កាំ $R = MN$។ $R^2 = 3$។",
+      [],
+    );
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const params = spec.params as Record<string, unknown>;
+    expect(params.r).toBeCloseTo(Math.sqrt(3), 5);
+  });
+
+  it("falls back to the label-scan when a literal radius is stated directly (no regression)", () => {
+    const blocks = inferSolidGeometryBlocks("ស្វ៊ែរ S មានកាំ R = 7 ។", "", []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const params = spec.params as Record<string, unknown>;
+    expect(params.r).toBe(7);
+  });
+
+  it("falls back to the default radius (5), not 0, when nothing usable is found at all", () => {
+    const blocks = inferSolidGeometryBlocks("មានស្វ៊ែរមួយ។", "", []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const params = spec.params as Record<string, unknown>;
+    expect(params.r).toBe(5);
   });
 });

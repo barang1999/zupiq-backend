@@ -2174,17 +2174,44 @@ function stripChainedAssignmentPrefixes(expr: string): string {
   return result;
 }
 
+// A "prove/show that f(x) = <rewritten form>" sub-step restates the
+// function in an equivalent but uglier shape purely as an algebra identity
+// to verify — not a fresh definition of the function. A real observed
+// case: "២.a. បង្ហាញថា f(x) = x^2(1+2/x-1/x^2-4\ln x/x^2)" appears later in
+// the solution than the problem's own canonical "f(x) = x^2+2x-1-4\ln x",
+// and since findConcreteFunctionLatex prefers the LAST non-linear
+// evaluable candidate (to correctly skip an early symbolic/general form in
+// favor of a later concrete substitution — see below), it won over the
+// canonical original. Mathematically equivalent (nothing was plotted
+// wrong), but exactly the confusing shape to show a student as the
+// function's own on-graph label.
+const FUNCTION_RESTATEMENT_CONTEXT = /(?:show|prove|verify|demonstrate)\s+that\b|បង្ហាញ|ស្រាយបញ្ជាក់/i;
+
 function findConcreteFunctionLatex(source: string): string | null {
-  const candidates = Array.from(source.matchAll(/(?:([a-zA-Z])\(x\)|y)\s*=\s*([^\n$ក-៿]+)/gi))
-    .map((m) => {
-      const expr = stripChainedAssignmentPrefixes(m[2]);
-      return m[1] ? `${m[1]}(x)=${expr}` : `y=${expr}`;
-    })
-    .filter((candidate) => evaluateLatexAt(candidate, 2) !== null || evaluateLatexAt(candidate, -3) !== null);
-  for (let i = candidates.length - 1; i >= 0; i--) {
-    if (!isLinearExpression(candidates[i])) return candidates[i];
-  }
-  return candidates.length ? candidates[candidates.length - 1] : null;
+  const matches = Array.from(source.matchAll(/(?:([a-zA-Z])\(x\)|y)\s*=\s*([^\n$ក-៿]+)/gi));
+  const buildCandidate = (m: RegExpMatchArray): string => {
+    const expr = stripChainedAssignmentPrefixes(m[2]);
+    return m[1] ? `${m[1]}(x)=${expr}` : `y=${expr}`;
+  };
+  const isRestatement = (m: RegExpMatchArray): boolean =>
+    FUNCTION_RESTATEMENT_CONTEXT.test(source.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0));
+  const evaluable = (candidate: string): boolean =>
+    evaluateLatexAt(candidate, 2) !== null || evaluateLatexAt(candidate, -3) !== null;
+
+  const pick = (candidates: string[]): string | null => {
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      if (!isLinearExpression(candidates[i])) return candidates[i];
+    }
+    return candidates.length ? candidates[candidates.length - 1] : null;
+  };
+
+  // Candidates from a "prove that ..." restatement are only ever used as a
+  // last resort, when nothing else in the text evaluates at all — most
+  // problems that ask to prove an identity about f(x) already stated f(x)
+  // plainly first, so this almost never actually gets reached.
+  const preferred = pick(matches.filter((m) => !isRestatement(m)).map(buildCandidate).filter(evaluable));
+  if (preferred) return preferred;
+  return pick(matches.filter(isRestatement).map(buildCandidate).filter(evaluable));
 }
 
 // Reads the name back off a findConcreteFunctionLatex result: "g" from
@@ -2346,14 +2373,65 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   // sanity filter below, silently producing an empty curve. Only a real
   // null counts as a pole; a big finite value just means "don't center on
   // this x", not "something is discontinuous here".
+  //
+  // A null isn't always a *pole*, either. A real observed case:
+  // f(x) = x^2+2x-1-4\ln x is undefined for x<=0 — not at one isolated
+  // point with valid values on both sides, but across the *entire* left
+  // half of the default scan window, because \ln simply has no domain
+  // there. The scan below used to grab the very first null it found (here,
+  // x=-10, the scan's own starting point) and center a symmetric ±5 window
+  // on it — producing a domain of [-15,-5], entirely inside the region the
+  // function was never defined on in the first place, so genuinely nothing
+  // in it could ever evaluate. A domain EDGE like this needs the opposite
+  // treatment from a pole: start the domain just past the edge, not
+  // straddle it. Distinguished by checking, from any candidate null point,
+  // whether the function actually *recovers* (becomes defined again)
+  // further out in both directions — a genuine pole does; a one-sided
+  // domain restriction only recovers on one side, never the other, no
+  // matter how far the scan goes in that direction.
+  const isDefinedAt = (x: number): boolean => evaluateLatexAt(functionLatex, x) !== null;
+  const recoversWithin = (start: number, step: number, count: number): boolean => {
+    for (let i = 1; i <= count; i++) {
+      if (isDefinedAt(start + step * i)) return true;
+    }
+    return false;
+  };
   let asymptoteX: number | null = null;
   for (let x = -10; x <= 10; x++) {
-    if (evaluateLatexAt(functionLatex, x) === null) {
+    if (!isDefinedAt(x) && recoversWithin(x, 1, 5) && recoversWithin(x, -1, 5)) {
       asymptoteX = x;
       break;
     }
   }
-  let domain: [number, number] = asymptoteX !== null ? [asymptoteX - 5, asymptoteX + 5] : [-6, 6];
+  // No isolated pole found, but the function may still be undefined across
+  // a contiguous run from one edge of the scan (the \ln x case above) —
+  // find where it actually starts being defined, at a finer step than the
+  // pole scan needs, and build the domain forward from there instead.
+  let domainEdge: number | null = null;
+  if (asymptoteX === null) {
+    for (let x = -10; x < 10; x += 0.5) {
+      if (!isDefinedAt(x) && isDefinedAt(x + 0.5)) {
+        // A coarse 0.5-wide window is enough to *find* the edge, but
+        // landing the domain a full 0.5 past it loses most of a vertical
+        // asymptote's steep approach — which happens close to the edge,
+        // not half a unit away. Refine within this window at a finer step
+        // so the domain starts close to the true boundary instead.
+        domainEdge = x + 0.5;
+        for (let candidate = x; candidate < x + 0.5; candidate += 0.02) {
+          if (isDefinedAt(candidate)) {
+            domainEdge = candidate;
+            break;
+          }
+        }
+        break;
+      }
+    }
+  }
+  let domain: [number, number] = asymptoteX !== null
+    ? [asymptoteX - 5, asymptoteX + 5]
+    : domainEdge !== null
+      ? [domainEdge + 0.1, domainEdge + 10]
+      : [-6, 6];
 
   // A coarse range estimate is all this needs — normalizeDiagramBlocks
   // resamples the actual curve points itself once handed empty "points"
@@ -2371,6 +2449,7 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
       functionLatex,
       domain,
       asymptoteX,
+      domainEdge,
     });
     return [];
   }
@@ -3483,59 +3562,98 @@ export function inferEllipseBlocks(
   emptyBlocks: ReturnType<typeof normalizeDiagramBlocks> = [],
 ): RenderBlock[] {
   const source = normalizeDigits(`${problem}\n${solutionText}`);
+  // "អេលីប" is the common transliteration of "ellipse" in this curriculum,
+  // but a real observed case used "រេលីប" instead (a genuine alternate
+  // spelling seen in production, not a typo introduced here) — the whole
+  // problem/solution used it consistently throughout, and the old regex
+  // missing it meant this function never even ran, regardless of anything
+  // else below.
   const wantsEllipse = emptyBlocks.some((b) => b.diagramType === "geometry" || b.diagramType === "function-graph")
-    || /(ellipse|អេលីប)/i.test(source);
+    || /(ellipse|អេលីប|រេលីប)/i.test(source);
 
   if (!wantsEllipse) return [];
 
-  // Parse denominators under x^2 and y^2
-  // e.g. \frac{x^2}{25} + \frac{y^2}{9} = 1
-  const fracRegex = /\\frac\s*\{\s*x\^2\s*\}\s*\{\s*(\d+)\s*\}\s*\+\s*\\frac\s*\{\s*y\^2\s*\}\s*\{\s*(\d+)\s*\}\s*=\s*1/i;
-  const slashRegex = /x\^2\s*\/\s*(\d+)\s*\+\s*y\^2\s*\/\s*(\d+)\s*=\s*1/i;
+  // Standard form, possibly translated from the origin:
+  // \frac{(x-h)^2}{A} + \frac{(y-k)^2}{B} = 1 — the general shape these
+  // problems actually derive (a translated conic in "vertex form"), not
+  // just the origin-centered \frac{x^2}{A}+\frac{y^2}{B}=1 special case.
+  // A real observed case: a problem gives the *general* equation
+  // "25x^2+16y^2-150x+64y=111" and the solution completes the square to
+  // "\frac{(x-3)^2}{16}+\frac{(y+2)^2}{25}=1" — center (3,-2), never at the
+  // origin. The old regex only recognized the bare "x^2"/"y^2" form, so it
+  // never matched this equation at all and silently fell through to its
+  // hardcoded denomX=25/denomY=9 defaults — a completely unrelated ellipse
+  // (wrong center AND wrong size), not just an imprecise one. Tried first,
+  // since a coefficient-laden intermediate line from the same derivation
+  // (e.g. "\frac{25(x-3)^2}{400}+...") has non-empty text between "\frac{"
+  // and "(", which this pattern's "\{\s*\(" requires to be empty — it
+  // naturally skips that line and matches the later, fully-reduced one.
+  // "&" is tolerated right before "=" since these equations are almost
+  // always written inside a "\begin{aligned}...\end{aligned}" block, where
+  // "&=" marks the alignment column, not a "\frac{...}=1" special case.
+  const shiftedFracRegex = /\\frac\s*\{\s*\(\s*x\s*([+-])\s*(\d+(?:\.\d+)?)\s*\)\s*\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*\+\s*\\frac\s*\{\s*\(\s*y\s*([+-])\s*(\d+(?:\.\d+)?)\s*\)\s*\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*&?\s*=\s*1/i;
+  // Origin-centered forms: \frac{x^2}{25}+\frac{y^2}{9}=1, or x^2/25+y^2/9=1.
+  const fracRegex = /\\frac\s*\{\s*x\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*\+\s*\\frac\s*\{\s*y\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*&?\s*=\s*1/i;
+  const slashRegex = /x\^2\s*\/\s*(\d+(?:\.\d+)?)\s*\+\s*y\^2\s*\/\s*(\d+(?:\.\d+)?)\s*=\s*1/i;
 
-  let denomX = 25;
-  let denomY = 9;
+  let h = 0;
+  let k = 0;
+  let denomX: number | null = null;
+  let denomY: number | null = null;
 
-  const mFrac = source.match(fracRegex);
-  if (mFrac) {
-    denomX = Number(mFrac[1]);
-    denomY = Number(mFrac[2]);
+  const mShifted = source.match(shiftedFracRegex);
+  if (mShifted) {
+    h = mShifted[1] === "-" ? Number(mShifted[2]) : -Number(mShifted[2]);
+    denomX = Number(mShifted[3]);
+    k = mShifted[4] === "-" ? Number(mShifted[5]) : -Number(mShifted[5]);
+    denomY = Number(mShifted[6]);
   } else {
-    const mSlash = source.match(slashRegex);
-    if (mSlash) {
-      denomX = Number(mSlash[1]);
-      denomY = Number(mSlash[2]);
+    const mFrac = source.match(fracRegex);
+    if (mFrac) {
+      denomX = Number(mFrac[1]);
+      denomY = Number(mFrac[2]);
+    } else {
+      const mSlash = source.match(slashRegex);
+      if (mSlash) {
+        denomX = Number(mSlash[1]);
+        denomY = Number(mSlash[2]);
+      }
     }
   }
+
+  // No recognizable equation form found at all — there's no reliable data
+  // to draw from. Bail rather than show a hardcoded default ellipse that
+  // has nothing to do with this problem (the exact bug this rewrite
+  // fixes) — an absent diagram is a lesser failure than a wrong one.
+  if (denomX === null || denomY === null) return [];
 
   const rx = Number(Math.sqrt(denomX).toFixed(3));
   const ry = Number(Math.sqrt(denomY).toFixed(3));
 
   if (!(rx > 0 && ry > 0)) return [];
 
+  const fmt = (value: number) => Number(value.toFixed(2));
   const maxAxis = Math.max(rx, ry);
   const pad = Math.max(1, maxAxis * 0.25);
-  const xLimit = Number((maxAxis + pad).toFixed(2));
-  const yLimit = Number((maxAxis + pad).toFixed(2));
 
   return normalizeDiagramBlocks([{
     diagramType: "geometry",
     mathFamily: "geometry",
     shapes: [
-      { shape: "ellipse", center: [0, 0], rx, ry, color: "primary", fill: "none" },
-      { shape: "line", start: [-rx, 0], end: [rx, 0], color: "muted" },
-      { shape: "line", start: [0, -ry], end: [0, ry], color: "muted" },
-      { shape: "point", vertices: [[0, 0]], labels: ["Center (0,0)"], color: "primary" },
-      { shape: "point", vertices: [[rx, 0]], labels: [`V_1 (${rx},0)`], color: "primary" },
-      { shape: "point", vertices: [[-rx, 0]], labels: [`V_2 (-${rx},0)`], color: "primary" },
-      { shape: "point", vertices: [[0, ry]], labels: [`C_1 (0,${ry})`], color: "primary" },
-      { shape: "point", vertices: [[0, -ry]], labels: [`C_2 (0,-${ry})`], color: "primary" },
+      { shape: "ellipse", center: [h, k], rx, ry, color: "primary", fill: "none" },
+      { shape: "line", start: [h - rx, k], end: [h + rx, k], color: "muted" },
+      { shape: "line", start: [h, k - ry], end: [h, k + ry], color: "muted" },
+      { shape: "point", vertices: [[h, k]], labels: [`I(${fmt(h)},${fmt(k)})`], color: "primary" },
+      { shape: "point", vertices: [[h + rx, k]], labels: [`(${fmt(h + rx)},${fmt(k)})`], color: "primary" },
+      { shape: "point", vertices: [[h - rx, k]], labels: [`(${fmt(h - rx)},${fmt(k)})`], color: "primary" },
+      { shape: "point", vertices: [[h, k + ry]], labels: [`(${fmt(h)},${fmt(k + ry)})`], color: "primary" },
+      { shape: "point", vertices: [[h, k - ry]], labels: [`(${fmt(h)},${fmt(k - ry)})`], color: "primary" },
     ],
     options: {
-      xMin: -xLimit,
-      xMax: xLimit,
-      yMin: -yLimit,
-      yMax: yLimit,
+      xMin: fmt(h - maxAxis - pad),
+      xMax: fmt(h + maxAxis + pad),
+      yMin: fmt(k - maxAxis - pad),
+      yMax: fmt(k + maxAxis + pad),
       grid: true,
       showOrigin: true,
     }
@@ -4285,12 +4403,37 @@ export function inferSolidGeometryBlocks(
 
   // 4. Sphere
   if (/(sphere|ស្វ៊ែរ)/i.test(source)) {
-    const radius = firstNumberAfter(source, [
+    // A real observed case: the solution defines the radius symbolically
+    // first ("កាំ $R = MN$", i.e. "radius R = MN", a vector-length
+    // reference, not a literal number) before computing it. The label-scan
+    // pattern below — "find the label, then the nearest digit after it" —
+    // has no boundary once the label isn't immediately followed by a
+    // number: its "[^\d]*?" wildcard just kept expanding right past "= MN"
+    // and across the line break into the *next* line's own coordinate
+    // computation ("R &= \sqrt{(0 - (-1))^2 + ...}"), latching onto the
+    // first digit it found there — an unrelated "0" from a coordinate
+    // difference — and reporting a radius of 0 (a degenerate, invisible
+    // sphere; the real radius is √3).
+    //
+    // A sphere's own equation states its squared radius directly and
+    // unambiguously — "(x-h)^2+(y-k)^2+(z-l)^2 = R²" or an explicit
+    // "R^2 = N" — with no risk of wandering into unrelated text, since the
+    // captured group is the equation's own immediate right-hand side.
+    // Tried first, ahead of the label-scan fallback.
+    const equationRadiusSquared = firstNumberAfter(source, [
+      /\)\s*\^\s*2\s*(?:\+\s*[a-zA-Z]?\s*(?:\([^()]*\)\s*)?\^\s*2\s*){1,2}\s*&?\s*=\s*(\d+(?:\.\d+)?)/i,
+      /\bR\s*\^?\s*2\s*&?\s*=\s*(\d+(?:\.\d+)?)/i,
+      /\bR\s*²\s*&?\s*=\s*(\d+(?:\.\d+)?)/i,
+    ]);
+    const radiusFromEquation = Number.isFinite(equationRadiusSquared) && (equationRadiusSquared as number) > 0
+      ? Math.sqrt(equationRadiusSquared as number)
+      : null;
+    const radius = radiusFromEquation ?? firstNumberAfter(source, [
       /(?:\bradius\b|កាំ|\bR\b|\br\b)\s*(?:=|ស្មើ)?[^\d]*?(\d+(?:\.\d+)?)/i,
       /\bR\s*=\s*(\d+(?:\.\d+)?)/i,
       /\br\s*=\s*(\d+(?:\.\d+)?)/i
     ]);
-    const rVal = Number.isFinite(radius) ? radius : 5;
+    const rVal = Number.isFinite(radius) && (radius as number) > 0 ? radius as number : 5;
     return normalizeDiagramBlocks([{
       diagramType: "solid-geometry",
       spec: {
@@ -4479,7 +4622,22 @@ export function extractLineEquationClaims(text: string): Array<{ m: number; b: n
   // Latin sentence-ending punctuation mark, or a newline. A "." is only a
   // terminator when it's not sandwiched between digits, so a decimal
   // constant like "0.25" survives intact rather than being cut at the dot.
-  const pattern = /y\s*=\s*([\s\S]+?)(?=\$|។|？|\n|(?<!\d)\.(?!\d)|$)/g;
+  // "&" is tolerated right before "=", and "\\" (LaTeX's own line break
+  // inside a math environment) is added as a terminator, since a
+  // tangent/asymptote line's equation is almost always derived across
+  // *multiple* lines of a "\begin{aligned}...\end{aligned}" block, each
+  // using "&=" instead of a bare "=" — e.g. "d: y &= 4(x-2)+4.2 \\ y &=
+  // 4x-8+4.2 \\ y &= 4x-3.8". Without "\\" as a terminator, the capture
+  // doesn't stop at the end of the first line at all: nothing else in the
+  // terminator set matches a literal "\\", so it swallows the *next* "y
+  // &= ..." restatement into the same capture group verbatim — producing
+  // an unparseable blob ("4(x-2)+4.2 \\ y &= 4x-8+4.2 \\ y &= 4x-3.8")
+  // that fails to evaluate as math at all, and since `.exec`'s lastIndex
+  // has already advanced past the whole thing, the loop never gets a
+  // second attempt at the later lines either — a real observed case where
+  // this found zero claims, silently leaving the tangent line off an
+  // otherwise-correct constructed diagram.
+  const pattern = /y\s*&?\s*=\s*([\s\S]+?)(?=\$|។|？|\n|\\\\|(?<!\d)\.(?!\d)|$)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     const expr = match[1].trim().slice(0, 200);
@@ -5177,6 +5335,23 @@ ${DIAGRAM_SPEC_GUIDE}`,
   const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
   // Filter out blocks the normalizer flagged as empty (AI produced a diagram type but no data).
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
+  //
+  // Checked before the solid-geometry keyword backstop right below: a real
+  // observed case combined an ellipse-study problem with an unrelated 3D
+  // geometry sub-problem (find a plane's equation, then a sphere's, then
+  // check whether they intersect) in the same two-part question. The
+  // sphere is only ever a *computed* quantity there — nothing asks to draw
+  // it — while the ellipse has an explicit "សង់រេលីប E" ("construct the
+  // ellipse E") instruction and is the problem's own named, studied
+  // object. The solid-geometry check below fires on *any* mention of
+  // "sphere"/"ស្វ៊ែរ" anywhere in the text, with no such distinction, so
+  // checking it first meant the ellipse — the actually-requested diagram —
+  // never even got a chance to run.
+  if (/(ellipse|អេលីប|រេលីប)/i.test(problem + "\n" + solutionText)) {
+    const ellipseFallback = inferEllipseBlocks(problem, solutionText, normalized);
+    if (ellipseFallback.length) return ellipseFallback;
+  }
+
   // If the problem needs solid-geometry, prioritize our highly robust solid geometry inference.
   // This prevents AI errors (like returning empty specs or defaulting cylinders to cubes).
   if (/(cylinder|ស៊ីឡាំង|cone|កោន|frustum|truncated\s+cone|sphere|ស្វ៊ែរ|cuboid|rectangular\s+prism|គូបូអ៊ីត|space\s+diagonal|អង្កត់ទ្រូងលំហ)/i.test(problem + "\n" + solutionText)) {
@@ -5219,11 +5394,6 @@ ${DIAGRAM_SPEC_GUIDE}`,
   if (/(vector|magnitude|កម្លាំង|ខាងកើត|ខាងជើង|កម្លាំងសរុប|ពីតាហ្គ័រ|ត្រីកោណកែង)/i.test(problem + "\n" + solutionText)) {
     const vectorFallback = inferVectorRightTriangleBlocks(problem, solutionText, normalized);
     if (vectorFallback.length) return vectorFallback;
-  }
-
-  if (/(ellipse|អេលីប)/i.test(problem + "\n" + solutionText)) {
-    const ellipseFallback = inferEllipseBlocks(problem, solutionText, normalized);
-    if (ellipseFallback.length) return ellipseFallback;
   }
 
   if (/(sector|សិចទ័រ|ក្រឡាផ្ទៃសិចទ័រ)/i.test(problem + "\n" + solutionText)) {

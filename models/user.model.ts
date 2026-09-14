@@ -46,6 +46,9 @@ export interface UserPreferences {
   notification_enabled?: boolean;
   dark_mode?: boolean;
   ai_explanation_style?: "simple" | "detailed" | "socratic";
+
+  // App review
+  has_rated_app?: boolean;
 }
 
 export interface User {

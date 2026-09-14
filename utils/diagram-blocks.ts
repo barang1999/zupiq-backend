@@ -3172,56 +3172,191 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   // needlessly replaced with fresh, plain-number ticks that don't know the
   // axis is in units of π.
   const anyFunctionCorrected = resolvedFunctions.some((fn) => (fn as Record<string, unknown>)._wasReclassifiedFromClosedForm === true);
+  // A domain edge sitting right next to a genuine asymptote/pole (e.g.
+  // domain [0.1, 10] for y=1-2ln(x)/x, whose vertical asymptote is at x=0)
+  // makes the function's own dense `points` array start (or end) with a
+  // long, smoothly *decaying* run of large-magnitude samples — not a
+  // single stray spike, but dozens of points in a row, each large enough
+  // that a single global median-magnitude cap never gets to see past them:
+  // removing the biggest handful barely moves the median (most of the
+  // array is already small), so a fixed multiple-of-median threshold stays
+  // exactly where it started and the trim stalls almost immediately. A
+  // real observed case: y=1-2ln(x)/x over [0.1,10] peaks at y=47 right at
+  // x=0.1 then decays smoothly down to its minimum y=0.264 (at x=e) before
+  // climbing slowly back toward its y=1 horizontal asymptote — the AI's
+  // own stated `range` was [-4.4, 51.7], big enough to fit that x=0.1
+  // spike, which squeezed the minimum, the horizontal asymptote, and both
+  // roots into the bottom ~2% of the chart.
+  //
+  // Walking in from each edge (rather than filtering the whole array by
+  // one fixed threshold) is what actually reaches the genuinely small
+  // interesting y-scale even when the tail is long: the "core" median is
+  // recomputed only from points not yet trimmed, so it isn't dragged
+  // around by the very values being excluded, and the walk keeps peeling
+  // as long as the edge value is still a large multiple of that shrinking
+  // core — which a long decaying run satisfies point after point, unlike
+  // a single spike a global filter would remove in one pass regardless.
+  // Capped at 40% of the array from either edge so a genuinely steep (but
+  // legitimate — not an asymptote artifact) curve can't be silently
+  // gutted; any real feature near an edge is also almost always its own
+  // explicit `featurePoints` entry, which this trim never touches at all
+  // (see the separate feature-point loop below).
+  //
+  // A magnitude-only trigger isn't enough on its own, though — a real
+  // observed regression: y=5x^3-2\sin x\cos x over [-2,2] is a perfectly
+  // well-behaved cubic that legitimately peaks at ~±41 right at both
+  // domain edges (that's the whole point of the diagram), and an earlier
+  // version of this trim, gated on magnitude alone, discounted those real
+  // extremes the exact same way it discounts a genuine asymptote's spike —
+  // both "look large" to a pure magnitude check. What actually
+  // distinguishes them is *steepness*: near a genuine asymptote/pole, the
+  // curve's local slope (|Δy/Δx| between adjacent samples) is dramatically
+  // higher than the rest of the curve — the defining signature of
+  // unbounded growth — whereas a polynomial reaching its largest values at
+  // the domain edges still changes at a rate only modestly above its own
+  // core. Measured directly against the three known real cases: the cubic
+  // above has an edge/core slope ratio of ~11x; y=1-2\ln x/x over [0.1,10]
+  // and y=1/\sqrt{5x^3+2} over [-0.733,2] (the near-asymptote-spike case
+  // the magnitude walk exists for) both show ~130-150x — comfortably
+  // separated by an order of magnitude, so gating the magnitude walk on
+  // "edge slope is at least 30x the core's" keeps the cubic's real edges
+  // untouched while still recognizing both asymptotic cases for what they
+  // are. Each edge is gated independently — a function can be asymptotic
+  // on only one side (this file's own y=1-2\ln x/x case has essentially
+  // flat slope at its x=10 edge, nowhere near its x=0.1 asymptote).
+  function trimAsymptoticEdgeRuns(pointsSortedByX: [number, number][]): [number, number][] {
+    const n = pointsSortedByX.length;
+    if (n < 20) return pointsSortedByX;
+
+    const avgAbsSlope = (pts: [number, number][]): number => {
+      let sum = 0;
+      let count = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const dx = pts[i][0] - pts[i - 1][0];
+        if (dx === 0) continue;
+        sum += Math.abs((pts[i][1] - pts[i - 1][1]) / dx);
+        count++;
+      }
+      return count ? sum / count : 0;
+    };
+    const edgeWindow = Math.max(3, Math.floor(n * 0.05));
+    const coreSlope = avgAbsSlope(pointsSortedByX.slice(Math.floor(n * 0.25), Math.ceil(n * 0.75)));
+    if (!(coreSlope > 0)) return pointsSortedByX;
+    const STEEPNESS_RATIO_THRESHOLD = 30;
+    const startIsAsymptotic = avgAbsSlope(pointsSortedByX.slice(0, edgeWindow)) / coreSlope > STEEPNESS_RATIO_THRESHOLD;
+    const endIsAsymptotic = avgAbsSlope(pointsSortedByX.slice(-edgeWindow)) / coreSlope > STEEPNESS_RATIO_THRESHOLD;
+    if (!startIsAsymptotic && !endIsAsymptotic) return pointsSortedByX;
+
+    let start = 0;
+    let end = n;
+    const coreMedianAbs = (): number => {
+      const core = pointsSortedByX.slice(start, end).map(([, y]) => Math.abs(y)).sort((a, b) => a - b);
+      return core[Math.floor(core.length / 2)];
+    };
+    const magnitudeThreshold = (): number => Math.max(coreMedianAbs() * 4, 0.5);
+    const maxTrimPerSide = Math.floor(n * 0.4);
+    if (startIsAsymptotic) {
+      let trimmedFromStart = 0;
+      while (trimmedFromStart < maxTrimPerSide && start < end - 4 && Math.abs(pointsSortedByX[start][1]) > magnitudeThreshold()) {
+        start += 1;
+        trimmedFromStart += 1;
+      }
+    }
+    if (endIsAsymptotic) {
+      let trimmedFromEnd = 0;
+      while (trimmedFromEnd < maxTrimPerSide && end - 1 > start + 4 && Math.abs(pointsSortedByX[end - 1][1]) > magnitudeThreshold()) {
+        end -= 1;
+        trimmedFromEnd += 1;
+      }
+    }
+    return pointsSortedByX.slice(start, end);
+  }
   const fittedRange: [number, number] = (() => {
     if (graphStyle === "reciprocal-interval") return outputRange as [number, number];
-    let dataYMin = Infinity;
-    let dataYMax = -Infinity;
-    for (const fn of resolvedFunctions) {
-      const item = fn as Record<string, unknown>;
-      if (!FIT_RANGE_KINDS.has(String(item.kind || ""))) continue;
-      if (item.kind === "points") {
-        // Use the function's own already-densely-sampled points directly,
-        // rather than coarsely re-sampling at just 40 points across the
-        // domain via evalFnAt — a narrow near-asymptote spike can fall
-        // entirely between two of those 40 samples and be missed
-        // entirely, understating the true range even though the actual
-        // stored curve reaches much further. A real observed case:
-        // y=1/sqrt(5x^3+2), whose domain starts right at a vertical
-        // asymptote near x=-0.7368 — the 40-sample grid's nearest point
-        // outside that narrow spike only reached y=1.87, while the
-        // function's own stored points (computed at ~200+ resolution by
-        // sampleExpressionFromLatex) go up to 5.96 right at the edge of
-        // the domain. Scanning the existing dense points is strictly more
-        // accurate than any coarser re-sample, and cheaper too.
-        const pts = Array.isArray(item.points) ? item.points as [number, number][] : [];
-        for (const point of pts) {
-          const y = point?.[1];
-          if (!Number.isFinite(y)) continue;
-          dataYMin = Math.min(dataYMin, y);
-          dataYMax = Math.max(dataYMax, y);
+
+    // Scans every FIT_RANGE_KINDS function (plus feature points) for its
+    // y-extent. `useEdgeTrim` controls whether a `kind:"points"` function's
+    // own densely-sampled points get the asymptotic-edge-run trim applied
+    // first — see `trimAsymptoticEdgeRuns` above. Two separate passes (one
+    // with, one without) let the caller compare them and decide whether
+    // trimming actually helps this specific diagram, rather than trusting
+    // the trim unconditionally.
+    const scanYExtent = (useEdgeTrim: boolean): { min: number; max: number } => {
+      let yMin = Infinity;
+      let yMax = -Infinity;
+      for (const fn of resolvedFunctions) {
+        const item = fn as Record<string, unknown>;
+        if (!FIT_RANGE_KINDS.has(String(item.kind || ""))) continue;
+        if (item.kind === "points") {
+          // Use the function's own already-densely-sampled points directly,
+          // rather than coarsely re-sampling at just 40 points across the
+          // domain via evalFnAt — a narrow near-asymptote spike can fall
+          // entirely between two of those 40 samples and be missed
+          // entirely, understating the true range even though the actual
+          // stored curve reaches much further. A real observed case:
+          // y=1/sqrt(5x^3+2), whose domain starts right at a vertical
+          // asymptote near x=-0.7368 — the 40-sample grid's nearest point
+          // outside that narrow spike only reached y=1.87, while the
+          // function's own stored points (computed at ~200+ resolution by
+          // sampleExpressionFromLatex) go up to 5.96 right at the edge of
+          // the domain. Scanning the existing dense points is strictly more
+          // accurate than any coarser re-sample, and cheaper too.
+          const pts = (Array.isArray(item.points) ? item.points as [number, number][] : [])
+            .filter((point) => Number.isFinite(point?.[1]));
+          const used = useEdgeTrim ? trimAsymptoticEdgeRuns(pts) : pts;
+          for (const point of used) {
+            yMin = Math.min(yMin, point[1]);
+            yMax = Math.max(yMax, point[1]);
+          }
+          continue;
         }
-        continue;
+        const fnDomain = Array.isArray(item.domain) ? item.domain as [number, number] : (outputDomain as [number, number]);
+        const [dMin, dMax] = fnDomain;
+        if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) continue;
+        const samples = 40;
+        for (let i = 0; i <= samples; i++) {
+          const x = dMin + ((dMax - dMin) * i) / samples;
+          const y = evalFnAt(item, x);
+          if (!Number.isFinite(y)) continue;
+          yMin = Math.min(yMin, y);
+          yMax = Math.max(yMax, y);
+        }
       }
-      const fnDomain = Array.isArray(item.domain) ? item.domain as [number, number] : (outputDomain as [number, number]);
-      const [dMin, dMax] = fnDomain;
-      if (!Number.isFinite(dMin) || !Number.isFinite(dMax) || dMin >= dMax) continue;
-      const samples = 40;
-      for (let i = 0; i <= samples; i++) {
-        const x = dMin + ((dMax - dMin) * i) / samples;
-        const y = evalFnAt(item, x);
-        if (!Number.isFinite(y)) continue;
-        dataYMin = Math.min(dataYMin, y);
-        dataYMax = Math.max(dataYMax, y);
+      for (const fp of resolvedFeaturePoints) {
+        const coords = (fp as Record<string, unknown>).point as [number, number] | undefined;
+        if (Array.isArray(coords) && Number.isFinite(coords[1])) {
+          yMin = Math.min(yMin, coords[1]);
+          yMax = Math.max(yMax, coords[1]);
+        }
       }
-    }
-    for (const fp of resolvedFeaturePoints) {
-      const coords = (fp as Record<string, unknown>).point as [number, number] | undefined;
-      if (Array.isArray(coords) && Number.isFinite(coords[1])) {
-        dataYMin = Math.min(dataYMin, coords[1]);
-        dataYMax = Math.max(dataYMax, coords[1]);
-      }
-    }
-    if (!Number.isFinite(dataYMin) || !Number.isFinite(dataYMax)) return outputRange as [number, number];
+      return { min: yMin, max: yMax };
+    };
+
+    const untrimmed = scanYExtent(false);
+    if (!Number.isFinite(untrimmed.min) || !Number.isFinite(untrimmed.max)) return outputRange as [number, number];
+    const untrimmedSpan = untrimmed.max - untrimmed.min;
+
+    // Only actually discount a near-domain-edge run when doing so is what
+    // it takes to keep the rest of the curve visible at all — a near-
+    // asymptote reach that's still a meaningful *fraction* of the plotted
+    // curve (the exact "captures a narrow near-asymptote spike" case right
+    // above, where that reach IS the interesting content — the retained
+    // domain there is only [-0.733, 2], a short valid branch right next to
+    // its own asymptote, and the peak is ~40% of the whole span) must
+    // still be shown in full. Only an edge run so much larger than
+    // everything else that keeping it would crush the rest of the curve
+    // down to a sliver gets discounted — a real observed case:
+    // y=1-2ln(x)/x over domain [0.1,10] (chosen because the function is
+    // defined for ALL x>0, not because 0.1 is close to where a valid
+    // branch happens to start) peaks at y=47 right at x=0.1 while
+    // everything else the problem actually cares about — the minimum, the
+    // y=1 horizontal asymptote, both roots — lives entirely within
+    // roughly [0.26, 1.2], under 3% of the untrimmed 51-unit span.
+    const trimmed = scanYExtent(true);
+    const trimmedSpan = (Number.isFinite(trimmed.min) && Number.isFinite(trimmed.max)) ? trimmed.max - trimmed.min : untrimmedSpan;
+    const edgeRunDominates = untrimmedSpan > 0 && trimmedSpan > 0 && trimmedSpan / untrimmedSpan < 0.2;
+    const { min: dataYMin, max: dataYMax } = edgeRunDominates ? trimmed : untrimmed;
+
     const pad = Math.max(0.5, (dataYMax - dataYMin) * 0.1);
     // Once a function's own kind/params have already been shown untrustworthy
     // by the general expression engine (resampled from latex instead of the
@@ -3233,7 +3368,15 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
     // empty even after the curve itself was corrected. In that case, fit the
     // range tightly to the corrected data — don't just grow the AI's
     // original (equally suspect) bounds, replace them.
-    if (anyFunctionCorrected) return [dataYMin - pad, dataYMax + pad] as [number, number];
+    //
+    // Same reasoning applies when an asymptotic edge run dominates enough to
+    // be discounted above: the AI's own declared `range` was, in every
+    // observed case, computed the same naive way (min/max over the
+    // untrimmed points array) — it reflects the same dominating near-
+    // asymptote run this trim exists to discount, so "grow-only" would just
+    // hand that spike straight back by keeping the AI's already-oversized
+    // bounds.
+    if (anyFunctionCorrected || edgeRunDominates) return [dataYMin - pad, dataYMax + pad] as [number, number];
     if (dataYMin >= outputRange[0] && dataYMax <= outputRange[1]) return outputRange as [number, number];
     return [Math.min(outputRange[0], dataYMin - pad), Math.max(outputRange[1], dataYMax + pad)] as [number, number];
   })();

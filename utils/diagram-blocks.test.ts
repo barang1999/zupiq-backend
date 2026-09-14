@@ -958,6 +958,62 @@ describe("range re-fit after a kind correction", () => {
     // coarse-regrid bug would have capped it).
     expect(range[1]).toBeGreaterThan(5.5);
   });
+
+  it("discounts a near-asymptote domain edge that would otherwise dominate the whole chart", () => {
+    // Real observed case: y=1-2ln(x)/x over domain [0.1,10] (the function is
+    // defined for all x>0 — the domain wasn't chosen because 0.1 is close to
+    // where a valid branch starts, unlike the sqrt case above). It peaks at
+    // y≈47 right at x=0.1, decays to its minimum y≈0.264 at x=e, then climbs
+    // slowly back toward its y=1 horizontal asymptote. The AI's own declared
+    // range, [-4.41, 51.73], was sized to fit that x=0.1 spike — squeezing
+    // the minimum, the horizontal asymptote, and both roots (all of the
+    // actual mathematical content the problem asks about) into under 3% of
+    // the chart's vertical space. This is the "kind:points from the start"
+    // shape — no _wasReclassifiedFromClosedForm marker, so the tight-refit
+    // path only fires because this near-asymptote edge run itself was
+    // discounted, not because anyFunctionCorrected was true.
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-4.4145062, 51.7304482], domain: [0.1, 10],
+        functions: [{ kind: "points", latex: "y = 1 - \\frac{2 \\ln x}{x}", points: [] }],
+        featurePoints: [{ point: [Math.E, 1 - 2 / Math.E], label: "(e, 1 - 2/e)" }],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const range = spec.range as [number, number];
+    // The genuinely interesting behavior (minimum ~0.264, asymptote y=1,
+    // roots near y=0) must now be a substantial fraction of the chart, not
+    // squeezed into a sliver at the bottom of a 56-unit-tall viewport.
+    expect(range[1]).toBeLessThan(10);
+    expect(range[0]).toBeGreaterThan(-5);
+    // The minimum feature point must still be comfortably visible.
+    expect(range[0]).toBeLessThan(1 - 2 / Math.E);
+    expect(range[1]).toBeGreaterThan(1);
+  });
+
+  it("never discounts a smoothly-growing function's genuine extremes at the domain edges", () => {
+    // Real observed regression while building the fix above: y=5x^3-2\sin
+    // x\cos x over [-2,2] is a perfectly well-behaved cubic that legitimately
+    // peaks at ~±41 right at both domain edges — that reach IS the curve's
+    // real content, not an asymptote artifact, and must never be discounted
+    // just because the edge values are large. What distinguishes this from
+    // the near-asymptote case above is steepness, not magnitude: this
+    // cubic's edge/core slope ratio is only ~11x, versus ~130-150x for a
+    // genuine asymptote (see trimAsymptoticEdgeRuns's own comment).
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph", range: [-1.25, 1.25], domain: [-2, 2],
+        functions: [{ kind: "cubic", latex: "y = 5x^3 - 2\\sin x \\cos x", params: { a: 5, b: 0, c: 0, d: 0 }, points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const range = spec.range as [number, number];
+    expect(range[1]).toBeGreaterThan(35);
+    expect(range[0]).toBeLessThan(-35);
+  });
 });
 
 describe("stale xTicks/yTicks after a genuine kind correction", () => {

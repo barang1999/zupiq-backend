@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { logger } from "./logger.js";
+import { renderMathSvg } from "./mathjax-svg.js";
 
 // Every place in this file that decides to drop a function or a whole
 // diagram block goes through here instead of a bare `return null`/silent
@@ -19,6 +20,51 @@ function logDroppedFunction(reason: string, details: Record<string, unknown>): v
 
 function logDroppedBlock(reason: string, details: Record<string, unknown>): void {
   logger.warn(`[diagram:dropped-block] ${reason}`, details);
+}
+
+// The label the frontend currently draws for a function-graph curve (the
+// equation shown near the curve/line) is hand-rolled: react-native-svg
+// <Text> runs with manually estimated character widths and a regex-based
+// "shrink and raise the ^{...} part" superscript hack — a much cruder
+// pipeline than the real MathJax rendering already used for every other
+// piece of math in a solution (RenderBlock's "math" type, rendered via
+// `renderMathSvg` in mathjax-svg.ts and delivered as a real SVG snippet in
+// `svgHtml`). A diagram's own math label has no equivalent today.
+//
+// `renderMathSvg` is synchronous and its own LRU-cached, so calling it once
+// per function here (1-3 calls per diagram, typically) costs about the same
+// as rendering one more inline math run in the solution text — cheap enough
+// to do unconditionally rather than only on demand.
+//
+// Its return shape is `<span class="mathjax-svg-inline"><mjx-container
+// ...><svg ...>...</svg></mjx-container></span>` — an HTML wrapper around
+// one real <svg>. The frontend only wants the bare <svg>...</svg> (it feeds
+// this straight into react-native-svg's own SVG-string parser, which knows
+// nothing about <span>/<mjx-container>), so extract just that.
+function extractBareMathSvg(mathHtml: string | null): string | undefined {
+  if (!mathHtml) return undefined;
+  const match = mathHtml.match(/<svg[\s\S]*<\/svg>/);
+  return match ? match[0] : undefined;
+}
+
+// Renders a function-graph function's own `latex` (e.g. "y = x - 1 +
+// 2e^{-x}") to a real MathJax SVG snippet for the frontend to draw as its
+// on-graph label, instead of the hand-rolled text-run approximation. Best
+// effort: a render failure (malformed/unsupported latex — should be rare,
+// since this latex already survived the general expression engine's own
+// parse) just means no `labelSvg` on that function, and the frontend falls
+// back to its existing plain-text label rather than showing nothing.
+function functionLabelSvg(latex: string | undefined): string | undefined {
+  if (!latex || !latex.trim()) return undefined;
+  try {
+    return extractBareMathSvg(renderMathSvg(latex, false));
+  } catch (error) {
+    logger.warn("[diagram:label-svg-failed]", {
+      latex: latex.slice(0, 120),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
 }
 
 export type DiagramType =
@@ -3268,7 +3314,9 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
   // function-graph schema the frontend/anything downstream should see.
   const outputFunctions = resolvedFunctions.map((fn) => {
     const { _wasReclassifiedFromClosedForm, ...rest } = fn as Record<string, unknown>;
-    return rest;
+    const latex = typeof rest.latex === "string" ? rest.latex : undefined;
+    const labelSvg = functionLabelSvg(latex);
+    return labelSvg ? { ...rest, labelSvg } : rest;
   });
 
   return {

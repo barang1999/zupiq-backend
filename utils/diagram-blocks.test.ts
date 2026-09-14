@@ -1243,3 +1243,48 @@ describe("dropped functions/blocks are logged loudly, not silently swallowed", (
     warnSpy.mockRestore();
   });
 });
+
+describe("per-function labelSvg (real MathJax rendering for on-graph labels)", () => {
+  // The frontend's own on-graph function label used to be hand-rolled plain
+  // SVG text with a regex-based superscript hack — a much cruder rendering
+  // than the real MathJax output already used for every other piece of math
+  // in a solution. Every function that survives normalization with usable
+  // latex now also carries a real MathJax SVG snippet for the frontend to
+  // draw natively, instead of re-deriving an approximation client-side.
+  it("attaches a labelSvg to every function with usable latex, not just the primary one", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [
+        { kind: "points", latex: "y=x - 1 + 2e^{-x}", points: [] },
+        { kind: "linear", latex: "y = x - 1", params: { m: 1, b: -1 } },
+        { kind: "linear", latex: "y = -x + 1", params: { m: -1, b: 1 } },
+      ],
+      domain: [-2, 4],
+      range: [-2, 4],
+    }]);
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    expect(functions.length).toBe(3);
+    for (const fn of functions) {
+      expect(typeof fn.labelSvg).toBe("string");
+      expect(fn.labelSvg as string).toMatch(/^<svg[\s\S]*<\/svg>$/);
+      // The frontend parses this directly as SVG — it must never carry the
+      // <span>/<mjx-container> HTML wrapper renderMathSvg's raw output has.
+      expect(fn.labelSvg as string).not.toContain("mjx-container");
+      expect(fn.labelSvg as string).not.toContain("<span");
+    }
+  });
+
+  it("omits labelSvg (not a placeholder) when a function has no latex to render", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      functions: [{ kind: "quadratic", latex: "", params: { a: 1, b: 0, c: 0 } }],
+      domain: [-5, 5],
+      range: [-5, 5],
+    }]);
+    // Empty latex is dropped outright (see "Empty Latex Isn't Just A
+    // Quadratic Problem" in DIAGRAM_STRUCTURE_JSON_GUIDE.md) — nothing to
+    // assert a labelSvg against, but this documents that path never throws.
+    expect(blocks).toEqual([]);
+  });
+});

@@ -332,7 +332,7 @@ router.get(
       let sessionQuery = db
         .from("study_sessions")
         .select(
-          "id, user_id, title, subject_id, node_count, duration_seconds, prompt_tokens, completion_tokens, total_tokens, ai_cost_usd, created_at",
+          "id, user_id, title, subject_id, image_url, node_count, duration_seconds, prompt_tokens, completion_tokens, total_tokens, ai_cost_usd, created_at",
           { count: "exact" }
         )
         .order("created_at", { ascending: false })
@@ -387,6 +387,49 @@ router.get(
       }));
 
       res.json({ sessions: enriched, total: total ?? 0, page, limit });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── GET /api/admin/sessions/:id ─────────────────────────────────────────────
+
+router.get(
+  "/sessions/:id",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = getSupabaseAdmin();
+      const { id } = req.params;
+
+      const { data: session, error } = await db
+        .from("study_sessions")
+        .select(
+          "id, user_id, title, subject_id, topic_id, problem, node_count, duration_seconds, image_url, bookmarked, breakdown_json, visual_table_json, prompt_tokens, completion_tokens, total_tokens, ai_cost_usd, created_at"
+        )
+        .eq("id", id)
+        .single();
+
+      if (error || !session) {
+        res.status(404).json({ error: "Session not found." });
+        return;
+      }
+
+      const typedSession = session as { user_id: string; [key: string]: unknown };
+
+      const { data: user } = await db
+        .from("users")
+        .select("id, email, full_name, avatar_url")
+        .eq("id", typedSession.user_id)
+        .single();
+
+      res.json({
+        session: {
+          ...typedSession,
+          user: user ?? { id: typedSession.user_id, email: "unknown", full_name: "Unknown", avatar_url: null },
+        },
+      });
     } catch (err) {
       next(err);
     }

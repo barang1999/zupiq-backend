@@ -37,6 +37,20 @@ export function shouldRenderMathSvg(latex: string, display: boolean): boolean {
   return source.length > 0;
 }
 
+// MathJax's TeX input package doesn't implement \AA/\aa — the classic
+// LaTeX-kernel commands for the Angstrom-ring letters (Å/å), common in
+// physics/chemistry unit labels (e.g. "3.4 \text{ \AA}" for the Angstrom
+// unit). A real observed case: this doesn't throw (nothing for the retry
+// path below to catch) — it silently renders as literal text in MathJax's
+// own "unrecognized command" red error styling, three separate glyphs
+// ("\", "A", "A"), which reads to a student as a raw LaTeX leak. Replaced
+// with the actual Unicode character before the first render attempt,
+// which MathJax renders correctly as ordinary text, inside or outside a
+// "\text{}" block.
+function replaceUnsupportedTextGlyphCommands(source: string): string {
+  return source.replace(/\\AA\b/g, "Å").replace(/\\aa\b/g, "å");
+}
+
 // Strip common AI-output artifacts before a retry attempt
 function stripForRetry(latex: string): string {
   return latex
@@ -69,7 +83,7 @@ function setCached(key: string, value: string): void {
 export function renderMathSvg(latex: string, display: boolean): string | null {
   if (!shouldRenderMathSvg(latex, display)) return null;
 
-  const source = `${latex ?? ""}`.replace(/\\displaystyle\s+/g, "").trim();
+  const source = replaceUnsupportedTextGlyphCommands(`${latex ?? ""}`.replace(/\\displaystyle\s+/g, "").trim());
   const cacheKey = `${display ? "display" : "inline"}:${source}`;
 
   const cached = svgCache.get(cacheKey);

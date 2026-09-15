@@ -157,7 +157,7 @@ router.get("/users", requireAdminAuth, async (req: Request, res: Response, next:
     let userQuery = db
       .from("users")
       .select(
-        "id, email, full_name, avatar_url, education_level, created_at, subscriptions(plan_key, status, provider, billing_interval, current_period_end, cancel_at_period_end)",
+        "id, email, full_name, avatar_url, education_level, created_at, preferences, subscriptions(plan_key, status, provider, billing_interval, current_period_end, cancel_at_period_end)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
@@ -190,6 +190,7 @@ router.get("/users", requireAdminAuth, async (req: Request, res: Response, next:
       avatar_url: string | null;
       education_level: string;
       created_at: string;
+      preferences: Record<string, unknown> | null;
       subscriptions: SubRow | SubRow[] | null;
     }[];
 
@@ -235,6 +236,8 @@ router.get("/users", requireAdminAuth, async (req: Request, res: Response, next:
       return {
         ...u,
         subscriptions: undefined, // remove raw field
+        preferences: undefined, // remove raw field
+        has_rated_app: (u.preferences?.has_rated_app as boolean | undefined) ?? null,
         subscription: sub ?? { plan_key: "free", status: "free", provider: "none", billing_interval: null, current_period_end: null, cancel_at_period_end: false },
         ...(sessionStats[u.id] ?? {
           session_count: 0,
@@ -265,7 +268,7 @@ router.get(
         await Promise.all([
           db
             .from("users")
-            .select("id, email, full_name, avatar_url, education_level, language, created_at, updated_at")
+            .select("id, email, full_name, avatar_url, education_level, language, created_at, updated_at, preferences")
             .eq("id", id)
             .single(),
           db
@@ -309,7 +312,13 @@ router.get(
 
       const subscription = subData ?? { plan_key: "free", status: "free", provider: "none", billing_interval: null, current_period_start: null, current_period_end: null, cancel_at_period_end: false, trial_end: null, granted_by: "billing", provider_subscription_id: null, updated_at: null };
 
-      res.json({ user, subscription, sessions: sessions ?? [], stats });
+      const prefs = (user as { preferences?: Record<string, unknown> | null }).preferences;
+      const enrichedUser = {
+        ...user,
+        preferences: undefined,
+        has_rated_app: (prefs?.has_rated_app as boolean | undefined) ?? null,
+      };
+      res.json({ user: enrichedUser, subscription, sessions: sessions ?? [], stats });
     } catch (err) {
       next(err);
     }

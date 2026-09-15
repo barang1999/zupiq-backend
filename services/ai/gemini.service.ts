@@ -1268,7 +1268,13 @@ function inferFunctionGraphBlocks(
       };
       const slopeLatex = Number.isInteger(m) ? `${m}` : formatFraction(dy, dx);
       const interceptLatex = Number.isInteger(b) ? `${Math.abs(b)}` : formatFraction(Math.abs(dy * -pointA.x + pointA.y * dx), Math.abs(dx));
-      const latex = `y=${slopeLatex}x${b < 0 ? "-" : "+"}${interceptLatex}`;
+      // Same degenerate-case cleanup as formatLineEquationLatex below (a
+      // horizontal tangent, m=0, is a real possibility here too — e.g. at
+      // an inflection point with zero slope): a bare "y=${m}x+${b}"
+      // template renders that as the confusing "y=0x+3" instead of "y=3".
+      const slopeTerm = m === 0 ? "" : m === 1 ? "x" : m === -1 ? "-x" : `${slopeLatex}x`;
+      const interceptTerm = b === 0 ? "" : `${b < 0 ? "-" : "+"}${interceptLatex}`;
+      const latex = m === 0 ? `y=${b < 0 ? "-" : ""}${interceptLatex}` : `y=${slopeTerm}${interceptTerm}`;
 
       return normalizeDiagramBlocks([{
         diagramType: "function-graph",
@@ -2241,6 +2247,23 @@ function formatFeatureNumber(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 }
 
+// Formats a derived line's equation for display, handling the
+// algebraically correct but visually confusing special cases a bare
+// "y=${m}x${sign}${b}" template produces. A real observed case: a
+// horizontal asymptote y=0 (f(x)=(x+ln x)/x^2's own horizontal asymptote,
+// extracted correctly as m=0, b=0 by extractLineEquationClaims) rendered
+// as the on-graph label "y=0x+0" — not mathematically wrong, but not how
+// anyone actually writes a horizontal line's equation, and confusing for a
+// student to see labeled that way. Same treatment for b=0 ("y=1x+0"
+// instead of "y=x") and m=±1 ("y=1x+3"/"y=-1x+3" instead of "y=x+3"/
+// "y=-x+3") — none of these are wrong, just needlessly ugly.
+function formatLineEquationLatex(m: number, b: number): string {
+  if (m === 0) return `y=${b}`;
+  const slope = m === 1 ? "" : m === -1 ? "-" : `${m}`;
+  const intercept = b === 0 ? "" : `${b >= 0 ? "+" : ""}${b}`;
+  return `y=${slope}x${intercept}`;
+}
+
 // Extracts "NAME(x, y)" or bare "(x, y)" labeled-point claims from the
 // solution's own construction notes — the "ង. សង់..." section of these
 // problems conventionally lists the exact feature points a hand-drawn
@@ -2525,7 +2548,7 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   const lineColors = ["red", "orange", "green"];
   const companionFunctions = companionLines.map((line, idx) => ({
     kind: "linear" as const,
-    latex: `y=${line.m}x${line.b >= 0 ? "+" : ""}${line.b}`,
+    latex: formatLineEquationLatex(line.m, line.b),
     params: { m: line.m, b: line.b },
     color: lineColors[idx % lineColors.length],
   }));
@@ -4727,7 +4750,7 @@ function enrichFunctionGraphBlockWithDerivedLines(block: RenderBlock, source: st
   };
   const newLineFunctions = newLines.map((line) => ({
     kind: "linear" as const,
-    latex: `y=${line.m}x${line.b >= 0 ? "+" : ""}${line.b}`,
+    latex: formatLineEquationLatex(line.m, line.b),
     params: { m: line.m, b: line.b },
     points: [] as unknown[],
     color: pickColor(),

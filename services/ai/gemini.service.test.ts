@@ -755,6 +755,34 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
       expect(points).toContainEqual([2, 4.2]);
     });
   });
+
+  it("labels a horizontal asymptote as 'y=0', not the algebraically-correct-but-confusing 'y=0x+0'", () => {
+    // Real observed case: f(x) = (x+ln x)/x^2 has horizontal asymptote y=0
+    // as x->+infty. extractLineEquationClaims correctly derives m=0, b=0
+    // from "បន្ទាត់ y=0 ... ជាអាស៊ីមតូតដេក" ("the line y=0 ... is the
+    // horizontal asymptote"), but the companion-line latex used to be
+    // built from a bare `y=${m}x${sign}${b}` template — technically
+    // correct algebra, but "y=0x+0" is not how anyone writes a horizontal
+    // line, and confusing for a student to see labeled that way.
+    const problem = "គេមានអនុគមន៍ $f$ កំណត់លើ $I = ]0, +\\infty[$ ដោយ $f(x) = \\frac{x + \\ln x}{x^2}$ ។";
+    const solutionText = [
+      "តម្លៃអតិបរមាគឺ $f(1) = 1$។",
+      "អាស៊ីមតូត៖",
+      "- បន្ទាត់ $x = 0$ (អ័ក្សអរដោនេ) ជាអាស៊ីមតូតឈរ។",
+      "- បន្ទាត់ $y = 0$ (អ័ក្សអាប់ស៊ីស) ជាអាស៊ីមតូតដេកខាង $+\\infty$។",
+      "សង់ក្រាប $(C)$៖",
+    ].join("\n");
+    const signTable = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [{ label: "x", cells: ["0", "1", "+∞"] }],
+    }]);
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, signTable);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    const line = functions.find((fn) => fn.kind === "linear");
+    expect(line?.params).toMatchObject({ m: 0, b: 0 });
+    expect(line?.latex).toBe("y=0");
+  });
 });
 
 describe("backfillMissingPrimaryCurveInFunctionGraphBlocks", () => {

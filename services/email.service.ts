@@ -163,6 +163,33 @@ function accountDeletionAdminHtml(email: string, reason?: string): string {
 </html>`;
 }
 
+// ─── Admin broadcast email ────────────────────────────────────────────────────
+
+function applyRecipientVariables(
+  html: string,
+  recipient: { full_name: string }
+): string {
+  const firstName = recipient.full_name.split(" ")[0] ?? recipient.full_name;
+  return html
+    .replace(/\{\{name\}\}/g, recipient.full_name)
+    .replace(/\{\{first_name\}\}/g, firstName);
+}
+
+function isFullHtmlDocument(html: string): boolean {
+  const trimmed = html.trimStart().toLowerCase();
+  return trimmed.startsWith("<!doctype") || trimmed.startsWith("<html");
+}
+
+function adminBroadcastHtml(bodyHtml: string): string {
+  // If the body is already a complete HTML document, send it as-is to avoid double-wrapping.
+  if (isFullHtmlDocument(bodyHtml)) return bodyHtml;
+
+  return layout(
+    bodyHtml,
+    'You\'re receiving this as a Zupiq user. Questions? Contact <a href="mailto:support@zupiq.ai" style="color:#2f6bff;text-decoration:none;">support@zupiq.ai</a>.'
+  );
+}
+
 // ─── Send helpers ─────────────────────────────────────────────────────────────
 
 export async function sendWelcomeEmail(to: string, name: string): Promise<void> {
@@ -206,6 +233,47 @@ export async function sendPasswordResetEmail(
     console.error("[email] sendPasswordResetEmail error:", error);
     throw new Error("Failed to send password reset email");
   }
+}
+
+export async function sendAdminBroadcastEmail(
+  recipients: { email: string; full_name: string }[],
+  subject: string,
+  bodyHtml: string
+): Promise<{ sent: number; failed: number }> {
+  const client = getResend();
+  if (!client) {
+    warnMissingResend("sendAdminBroadcastEmail");
+    return { sent: 0, failed: recipients.length };
+  }
+
+  const BATCH_SIZE = 100;
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const chunk = recipients.slice(i, i + BATCH_SIZE);
+    try {
+      const { error } = await client.batch.send(
+        chunk.map((r) => ({
+          from: FROM,
+          to: [r.email],
+          subject: applyRecipientVariables(subject, r),
+          html: adminBroadcastHtml(applyRecipientVariables(bodyHtml, r)),
+        }))
+      );
+      if (error) {
+        failed += chunk.length;
+        logger.warn("[email] sendAdminBroadcastEmail batch error", { error });
+      } else {
+        sent += chunk.length;
+      }
+    } catch (e) {
+      failed += chunk.length;
+      logger.warn("[email] sendAdminBroadcastEmail batch exception", { error: e });
+    }
+  }
+
+  return { sent, failed };
 }
 
 export async function sendAccountDeletionEmails(

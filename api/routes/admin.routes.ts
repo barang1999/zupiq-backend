@@ -5,6 +5,9 @@ import { env } from "../../config/env.js";
 import { requireAdminAuth } from "../middlewares/admin.middleware.js";
 import { getSupabaseAdmin } from "../../config/supabase.js";
 import { logger } from "../../utils/logger.js";
+import { changeUserPlan } from "../../billing/subscription-service.js";
+import type { PlanKey } from "../../billing/types.js";
+import { sendAdminBroadcastEmail } from "../../services/email.service.js";
 
 const router = Router();
 
@@ -325,6 +328,51 @@ router.get(
   }
 );
 
+// ─── POST /api/admin/users/:id/plan ──────────────────────────────────────────
+
+router.post(
+  "/users/:id/plan",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { plan_key } = req.body as { plan_key?: string };
+
+      const VALID_PLANS: PlanKey[] = ["free", "core", "pro"];
+      if (!plan_key || !VALID_PLANS.includes(plan_key as PlanKey)) {
+        res.status(400).json({ error: `plan_key must be one of: ${VALID_PLANS.join(", ")}` });
+        return;
+      }
+
+      // Verify user exists
+      const db = getSupabaseAdmin();
+      const { data: user, error: userError } = await db
+        .from("users")
+        .select("id")
+        .eq("id", id)
+        .single();
+
+      if (userError || !user) {
+        res.status(404).json({ error: "User not found." });
+        return;
+      }
+
+      const subscription = await changeUserPlan({
+        userId: id,
+        planKey: plan_key as PlanKey,
+        provider: plan_key === "free" ? "none" : "manual",
+        billingInterval: plan_key === "free" ? null : "monthly",
+      });
+
+      logger.info("[admin] manual plan change", { userId: id, planKey: plan_key });
+
+      res.json({ subscription });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ─── GET /api/admin/sessions ──────────────────────────────────────────────────
 
 router.get(
@@ -439,6 +487,188 @@ router.get(
           user: user ?? { id: typedSession.user_id, email: "unknown", full_name: "Unknown", avatar_url: null },
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── GET /api/admin/email/templates ──────────────────────────────────────────
+
+router.get(
+  "/email/templates",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const db = getSupabaseAdmin();
+      const { data, error } = await db
+        .from("email_templates")
+        .select("id, name, subject, body, created_at, updated_at")
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(error.message);
+      res.json({ templates: data ?? [] });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/admin/email/templates ─────────────────────────────────────────
+
+router.post(
+  "/email/templates",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name, subject, body } = req.body as {
+        name?: string;
+        subject?: string;
+        body?: string;
+      };
+
+      if (!name?.trim() || !subject?.trim() || !body?.trim()) {
+        res.status(400).json({ error: "name, subject, and body are required." });
+        return;
+      }
+
+      const db = getSupabaseAdmin();
+      const { data, error } = await db
+        .from("email_templates")
+        .insert({
+          id: crypto.randomUUID(),
+          name: name.trim(),
+          subject: subject.trim(),
+          body: body.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("id, name, subject, body, created_at, updated_at")
+        .single();
+
+      if (error) throw new Error(error.message);
+      res.status(201).json({ template: data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── PUT /api/admin/email/templates/:id ───────────────────────────────────────
+
+router.put(
+  "/email/templates/:id",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { name, subject, body } = req.body as {
+        name?: string;
+        subject?: string;
+        body?: string;
+      };
+
+      if (!name?.trim() || !subject?.trim() || !body?.trim()) {
+        res.status(400).json({ error: "name, subject, and body are required." });
+        return;
+      }
+
+      const db = getSupabaseAdmin();
+      const { data, error } = await db
+        .from("email_templates")
+        .update({
+          name: name.trim(),
+          subject: subject.trim(),
+          body: body.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select("id, name, subject, body, created_at, updated_at")
+        .single();
+
+      if (error) throw new Error(error.message);
+      if (!data) {
+        res.status(404).json({ error: "Template not found." });
+        return;
+      }
+      res.json({ template: data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── DELETE /api/admin/email/templates/:id ────────────────────────────────────
+
+router.delete(
+  "/email/templates/:id",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const db = getSupabaseAdmin();
+      const { error } = await db.from("email_templates").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── POST /api/admin/email/send ───────────────────────────────────────────────
+
+router.post(
+  "/email/send",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { subject, html, userIds } = req.body as {
+        subject?: string;
+        html?: string;
+        userIds?: string[] | "all";
+      };
+
+      if (!subject?.trim() || !html?.trim()) {
+        res.status(400).json({ error: "subject and html are required." });
+        return;
+      }
+
+      if (!userIds || (Array.isArray(userIds) && userIds.length === 0)) {
+        res.status(400).json({ error: "userIds must be 'all' or a non-empty array." });
+        return;
+      }
+
+      const db = getSupabaseAdmin();
+      let recipients: { email: string; full_name: string }[] = [];
+
+      if (userIds === "all") {
+        const { data, error } = await db.from("users").select("email, full_name");
+        if (error) throw new Error(error.message);
+        recipients = (data ?? []) as { email: string; full_name: string }[];
+      } else {
+        const { data, error } = await db
+          .from("users")
+          .select("email, full_name")
+          .in("id", userIds);
+        if (error) throw new Error(error.message);
+        recipients = (data ?? []) as { email: string; full_name: string }[];
+      }
+
+      if (recipients.length === 0) {
+        res.status(400).json({ error: "No valid recipients found." });
+        return;
+      }
+
+      const { sent, failed } = await sendAdminBroadcastEmail(recipients, subject.trim(), html.trim());
+
+      logger.info("[admin] email broadcast sent", {
+        subject: subject.trim(),
+        total: recipients.length,
+        sent,
+        failed,
+      });
+
+      res.json({ sent, failed, total: recipients.length });
     } catch (err) {
       next(err);
     }

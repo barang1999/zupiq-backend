@@ -783,6 +783,80 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     expect(line?.params).toMatchObject({ m: 0, b: 0 });
     expect(line?.latex).toBe("y=0");
   });
+
+  describe("a curve implied by asymptote+tangent+inflection-point analysis, with no explicit 'construct the graph' phrase captured", () => {
+    // Real observed case: a two-part problem — part 1 studies an auxiliary
+    // function f; part 2 studies g(x)=(2-x)e^x+2-x, whose graph is named
+    // "C", derives an oblique asymptote D, a tangent line parallel to D,
+    // and C's inflection point. The problem-text *extraction* captured only
+    // part 1's own wording and dropped part 2's opening sentence entirely —
+    // the one that would normally introduce "តាង C ជាខ្សែកោង..." ("let C be
+    // the curve...") and the actual "construct the graph" instruction. With
+    // no curve-noun anywhere in the captured text at all, the existing
+    // "សង់ក្រាប"/"គូស...ក្រាប" trigger correctly found nothing — but the
+    // *solution* still derives a full landmark set (asymptote, tangent,
+    // inflection point) that only makes sense for a curve genuinely meant
+    // to be sketched. The AI's own primary diagram call, given the same
+    // truncated context, chose a sign-table for the *auxiliary* function f
+    // instead — not even the right function, let alone the right diagram
+    // type.
+    const problem = "១. $f$ ជាអនុគមន៍កំណត់លើ $\\mathbb{R}$ ដោយ $f(x) = (1 - x)e^x - 1$។ សង់តារាងអថេរភាពនៃអនុគមន៍ $f$។";
+    const solutionText = [
+      "តារាងអថេរភាពនៃ $f$: $f(x) \\le 0$ គ្រប់ $x$។",
+      "អនុគមន៍ $g$ កំណត់លើ $\\mathbb{R}$ ដោយ $g(x) = (2 - x)e^x + 2 - x$។",
+      "គេសង្កេតឃើញថា $g'(x) = f(x) \\le 0$។",
+      "ខ. បង្ហាញថា $D: y = 2 - x$ ជាអាសីុមតូតទ្រេត៖",
+      "ដូចនេះ បន្ទាត់ $D: y = 2 - x$ ជាអាសីុមតូតទ្រេតនៃខ្សែតាង $C$ ខាង $-\\infty$។",
+      "បើ $x = 2$ នោះ $g(x) - y_D = 0$ នាំឱ្យ $C$ កាត់ $D$ ត្រង់ចំណុច $(2, 0)$។",
+      "គ. រកសមីការបន្ទាត់ប៉ះនឹង $C$ ស្របនឹង $D$៖",
+      "តម្លៃអរដោនេ៖ $g(1) = (2 - 1)e^1 + 2 - 1 = e + 1$។",
+      "សមីការបន្ទាត់ប៉ះ៖ $y = g'(1)(x - 1) + g(1) = -1(x - 1) + e + 1 = -x + 1 + e + 1 = -x + e + 2$។",
+      "ឃ. រកកូអរដោនេចំណុចរបត់នៃ $C$៖",
+      "ដូចនេះ $C$ មានចំណុចរបត់ត្រង់ $x = 0$ ដែលមានអរដោនេ $g(0) = 4$។ ចំណុចរបត់គឺ $I(0, 4)$។",
+    ].join("\n");
+    const wrongSignTableForF = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["-∞", "0", "+∞"] },
+        { label: "f'(x)", cells: ["+", "0", "-"] },
+      ],
+    }]);
+
+    it("recognizes the graph is implied by asymptote + tangent-line + inflection-point analysis, even with no explicit 'construct the graph' phrase anywhere in the captured text", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, wrongSignTableForF);
+      expect(blocks.length).toBe(1);
+      expect((blocks[0] as { diagramType?: string })?.diagramType).toBe("function-graph");
+    });
+
+    it("plots g (the function whose curve C is actually being studied), not f (the auxiliary function only used to sign-check g')", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, wrongSignTableForF);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const functions = spec.functions as Array<Record<string, unknown>>;
+      expect(functions[0].latex).toContain("g(x)");
+      expect(functions[0].latex).toContain("2 - x)e^x");
+    });
+
+    it("finds both the asymptote D and the tangent line, including one derived as a single-line chained equality ('y = A = B = C = D')", () => {
+      // "y = g'(1)(x-1)+g(1) = -1(x-1)+e+1 = -x+1+e+1 = -x+e+2" — all on
+      // one line, no "\begin{aligned}" block, no "&=" — extractLineEquation
+      // Claims used to capture the *entire* chain as one unparseable blob
+      // (it contains "g", never evaluable) and silently find nothing.
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, wrongSignTableForF);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const functions = spec.functions as Array<Record<string, unknown>>;
+      const lines = functions.filter((fn) => fn.kind === "linear").map((fn) => fn.params as { m: number; b: number });
+      expect(lines).toContainEqual({ m: -1, b: 2 }); // D: y = 2 - x
+      const tangent = lines.find((l) => Math.abs(l.b - (Math.E + 2)) < 1e-4);
+      expect(tangent).toBeDefined(); // y = -x + e + 2
+    });
+
+    it("includes the inflection point I(0,4) among the feature points", () => {
+      const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, wrongSignTableForF);
+      const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+      const points = (spec.featurePoints as Array<{ point: [number, number] }>).map((p) => p.point);
+      expect(points).toContainEqual([0, 4]);
+    });
+  });
 });
 
 describe("backfillMissingPrimaryCurveInFunctionGraphBlocks", () => {

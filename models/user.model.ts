@@ -63,6 +63,11 @@ export interface User {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
+  // Progression cache — updated on session creation, read by getUserProgression
+  current_streak: number;
+  last_studied_date: string | null;       // ISO date string YYYY-MM-DD
+  unique_study_days_count: number;
+  first_session_date: string | null;      // ISO date string YYYY-MM-DD
 }
 
 export type PublicUser = Omit<User, "password_hash">;

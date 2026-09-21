@@ -2359,10 +2359,32 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   // for why a structured, AI-declared "requiresFunctionGraph" field (cross-
   // checked against this regex, not replaced by it) is the more durable fix.
   const GRAPH_NOUN = "(?:ក្រា(?:ប|ហ្វ)|ខ្សែ[ក-៿]*)";
-  const asksForGraph = new RegExp(
+  const explicitlyAsksForGraph = new RegExp(
     `(សង់[^\\n។]{0,80}?${GRAPH_NOUN}|គូស[^\\n។]{0,80}?${GRAPH_NOUN}|construct(?:ing|s)?\\s+the\\s+graph|sketch(?:ing|es)?\\s+the\\s+graph|draw(?:ing|s)?\\s+the\\s+graph|plot(?:ting|s)?\\s+the\\s+graph)`,
     "i",
   ).test(source);
+  // A real observed case: a multi-part problem where the problem-text
+  // extraction captured only the *first* part (studying an auxiliary
+  // function f) and dropped the second part's own opening sentence
+  // entirely — the one that would normally introduce "តាង C ជាខ្សែកោង
+  // តំណាងអនុគមន៍ g" ("let C be the curve representing g") and the actual
+  // "construct the graph" instruction. Nothing in `source` names C as a
+  // curve at all, so the check above correctly finds nothing — but the
+  // *solution* still goes on to derive an oblique asymptote, a tangent
+  // line parallel to it, and the curve's inflection point for g, exactly
+  // the landmark set a "sketch the curve" question always builds toward
+  // (see DIAGRAM_SPEC_GUIDE's own "Prefer function-graph ... for drawing,
+  // sketching, or analyzing any ... curve" rule). Flexible-spelled to
+  // survive the same kind of real spelling variance already seen
+  // elsewhere in this codebase (e.g. "អាស៊ីមតូត" vs "អាសីុមតូត" — different
+  // orderings of the same combining vowel signs, both genuine, neither a
+  // typo) rather than hardcoding one exact byte sequence.
+  const ASYMPTOTE_PATTERN = /អាស[ក-៿]{0,3}មតូត|asymptote/i;
+  const TANGENT_LINE_PATTERN = /បន្ទាត់ប៉ះ|tangent\s+line/i;
+  const INFLECTION_POINT_PATTERN = /ចំណុចរបត់|inflection\s+point/i;
+  const impliesGraphFromCurveAnalysis = ASYMPTOTE_PATTERN.test(source)
+    && (TANGENT_LINE_PATTERN.test(source) || INFLECTION_POINT_PATTERN.test(source));
+  const asksForGraph = explicitlyAsksForGraph || impliesGraphFromCurveAnalysis;
   if (!asksForGraph) return [];
 
   // From here on, the problem explicitly asked for a graph and doesn't
@@ -4663,7 +4685,23 @@ export function extractLineEquationClaims(text: string): Array<{ m: number; b: n
   const pattern = /y\s*&?\s*=\s*([\s\S]+?)(?=\$|។|？|\n|\\\\|(?<!\d)\.(?!\d)|$)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
-    const expr = match[1].trim().slice(0, 200);
+    let expr = match[1].trim().slice(0, 200);
+    // A single-line "y = A = B = C" chain — each step simplifying the
+    // previous one, ending at the actual reduced equation — has no
+    // separate "y=" to trigger a fresh match per segment the way the
+    // multi-line "&=" case above does, so the whole chain gets captured as
+    // one blob. A real observed case: "y = g'(1)(x-1)+g(1) = -1(x-1)+e+1
+    // = -x+1+e+1 = -x+e+2" (a tangent-line derivation written on one
+    // line) — evaluating that whole string fails outright (it contains
+    // "g", an undefined symbol, and multiple "="), so the claim was
+    // silently dropped entirely, even though the final segment
+    // ("-x+e+2") is a perfectly ordinary line equation on its own. Take
+    // just the text after the *last* bare "=" — for an ordinary
+    // (non-chained) capture this is a no-op (nothing to split), and for a
+    // genuine simplification chain the last segment is always at least as
+    // evaluable as, and typically cleaner than, the full chain.
+    const chainSegments = expr.split(/(?<!\\)=(?!=)/);
+    if (chainSegments.length > 1) expr = chainSegments[chainSegments.length - 1].trim();
     if (!expr || NON_LINEAR_SIGNAL_REGEX.test(expr)) continue;
     const xs = [10, 37, 91]; // arbitrary, well-separated sample points for the linearity check
     const ys = xs.map((x) => evaluateLatexAt(expr, x));

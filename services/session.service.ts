@@ -916,6 +916,14 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
     .select()
     .single();
 
+  // Fire-and-forget: update progression cache. Never blocks or throws to caller.
+  const fireProgressionCache = (result: StudySession) => {
+    updateUserProgressionCache(userId, result.created_at).catch(e =>
+      console.error('[createSession] updateUserProgressionCache error:', e)
+    );
+    return result;
+  };
+
   if (error) {
     // Backward compatibility for environments where topic/topic_id columns do not exist yet.
     if (error.message.includes("column \"topic\" of relation \"study_sessions\" does not exist") || (error.message.includes("topic") && error.message.includes("does not exist"))) {
@@ -936,12 +944,12 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
             .single();
           if (vtError) throw new AppError(vtError.message, 500);
           const normalized = normalizeSessionRow((vtData ?? {}) as Record<string, unknown>);
-          return { ...normalized, topic: null, topic_id: null, visual_table_json: session.visual_table_json ?? null };
+          return fireProgressionCache({ ...normalized, topic: null, topic_id: null, visual_table_json: session.visual_table_json ?? null });
         }
         throw new AppError(legacyError.message, 500);
       }
       const normalized = normalizeSessionRow((legacyData ?? {}) as Record<string, unknown>);
-      return { ...normalized, topic: null, topic_id: null };
+      return fireProgressionCache({ ...normalized, topic: null, topic_id: null });
     }
 
     // Backward compatibility for environments where visual_table_json has not been added yet.
@@ -954,7 +962,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
         .single();
       if (vtError) throw new AppError(vtError.message, 500);
       const normalized = normalizeSessionRow((vtData ?? {}) as Record<string, unknown>);
-      return { ...normalized, visual_table_json: session.visual_table_json ?? null };
+      return fireProgressionCache({ ...normalized, visual_table_json: session.visual_table_json ?? null });
     }
     // Backward compatibility for environments where subject_id has not been added yet.
     if (error.message.includes("subject_id") && error.message.includes("does not exist")) {
@@ -966,7 +974,7 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
         .single();
       if (legacyError) throw new AppError(legacyError.message, 500);
       const normalized = normalizeSessionRow((legacyData ?? {}) as Record<string, unknown>);
-      return { ...normalized, subject_id: subjectId };
+      return fireProgressionCache({ ...normalized, subject_id: subjectId });
     }
 
     // FK violation on topic_id: the resolved topic ID doesn't exist in the topics table.
@@ -980,13 +988,13 @@ export async function createSession(userId: string, dto: CreateSessionDTO): Prom
         .single();
       if (retryError) throw new AppError(retryError.message, 500);
       const normalized = normalizeSessionRow((retryData ?? {}) as Record<string, unknown>);
-      return { ...normalized, topic_id: null };
+      return fireProgressionCache({ ...normalized, topic_id: null });
     }
 
     throw new AppError(error.message, 500);
   }
 
-  return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
+  return fireProgressionCache(normalizeSessionRow((data ?? {}) as Record<string, unknown>));
 }
 
 // ─── Accumulate token usage on a session (fire-and-forget safe) ──────────────
@@ -1147,10 +1155,91 @@ export async function getUserSessions(userId: string, limit?: number, offset?: n
   return paginatedMerged;
 }
 
+// ---------------------------------------------------------------------------
+// Progression cache helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Recomputes and persists the progression cache columns on the users row.
+ * Called after every successful session creation.
+ */
+export async function updateUserProgressionCache(userId: string, sessionDateISO: string): Promise<void> {
+  const db = getSupabaseAdmin();
+  const sessionDate = sessionDateISO.split('T')[0]; // YYYY-MM-DD
+
+  // Read current cache in one query
+  const { data: userRow, error: userErr } = await db
+    .from('users')
+    .select('current_streak, last_studied_date, unique_study_days_count, first_session_date')
+    .eq('id', userId)
+    .single();
+
+  if (userErr) {
+    // Non-fatal: cache update failure should not break session creation
+    console.error('[updateUserProgressionCache] failed to read user row:', userErr.message);
+    return;
+  }
+
+  const cache = userRow as {
+    current_streak: number;
+    last_studied_date: string | null;
+    unique_study_days_count: number;
+    first_session_date: string | null;
+  };
+
+  const today = sessionDate;
+  const lastStudied = cache.last_studied_date;
+  const isNewDay = lastStudied !== today;
+
+  // unique_study_days_count: increment only when this is a new calendar day
+  const uniqueStudyDaysCount = isNewDay
+    ? (cache.unique_study_days_count ?? 0) + 1
+    : (cache.unique_study_days_count ?? 0);
+
+  // first_session_date: set once, never overwritten
+  const firstSessionDate = cache.first_session_date ?? today;
+
+  // current_streak
+  let currentStreak = cache.current_streak ?? 0;
+  if (isNewDay) {
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (!lastStudied || lastStudied < yesterdayStr) {
+      // Gap of 2+ days → reset
+      currentStreak = 1;
+    } else if (lastStudied === yesterdayStr) {
+      // Consecutive day → extend
+      currentStreak += 1;
+    } else {
+      // lastStudied === today already handled above (isNewDay = false)
+      currentStreak = 1;
+    }
+  }
+  // If same day (isNewDay = false), streak unchanged
+
+  const { error: updateErr } = await db
+    .from('users')
+    .update({
+      current_streak: currentStreak,
+      last_studied_date: today,
+      unique_study_days_count: uniqueStudyDaysCount,
+      first_session_date: firstSessionDate,
+    })
+    .eq('id', userId);
+
+  if (updateErr) {
+    console.error('[updateUserProgressionCache] failed to update user row:', updateErr.message);
+  }
+}
+
 export async function getUserProgression(userId: string): Promise<{
   weeklyCompletion: boolean[];
   streakCount: number;
   studiedDates: string[];
+  consistencyRate: number;
+  currentStreak: number;
 }> {
   const db = getSupabaseAdmin();
 
@@ -1164,29 +1253,73 @@ export async function getUserProgression(userId: string): Promise<{
   sunday.setUTCDate(monday.getUTCDate() + 6);
   sunday.setUTCHours(23, 59, 59, 999);
 
-  const { data, error } = await db
-    .from('study_sessions')
-    .select('created_at')
-    .eq('user_id', userId)
-    .gte('created_at', monday.toISOString())
-    .lte('created_at', sunday.toISOString());
+  // Only this week's sessions needed now — all-time stats come from the user cache
+  const [weekResult, userResult] = await Promise.all([
+    db
+      .from('study_sessions')
+      .select('created_at')
+      .eq('user_id', userId)
+      .gte('created_at', monday.toISOString())
+      .lte('created_at', sunday.toISOString()),
+    db
+      .from('users')
+      .select('current_streak, last_studied_date, unique_study_days_count, first_session_date')
+      .eq('id', userId)
+      .single(),
+  ]);
 
-  if (error) throw new AppError(error.message, 500);
+  if (weekResult.error) throw new AppError(weekResult.error.message, 500);
+  if (userResult.error) throw new AppError(userResult.error.message, 500);
 
   const weeklyCompletion = [false, false, false, false, false, false, false]; // Mon=0 … Sun=6
   const studiedDates = new Set<string>();
 
-  for (const row of (data ?? []) as Array<{ created_at: string }>) {
+  for (const row of (weekResult.data ?? []) as Array<{ created_at: string }>) {
     const d = new Date(row.created_at);
     const dayIdx = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1;
     weeklyCompletion[dayIdx] = true;
     studiedDates.add(d.toISOString().split('T')[0]);
   }
 
+  const cache = userResult.data as {
+    current_streak: number;
+    last_studied_date: string | null;
+    unique_study_days_count: number;
+    first_session_date: string | null;
+  };
+
+  // Consistency rate: computed from cached inputs (O(1) math, no extra query)
+  let consistencyRate = 0;
+  if (cache.first_session_date && cache.unique_study_days_count > 0) {
+    const todayUtc = new Date(now);
+    todayUtc.setUTCHours(0, 0, 0, 0);
+    const firstDate = new Date(cache.first_session_date);
+    firstDate.setUTCHours(0, 0, 0, 0);
+    const totalDays = Math.max(
+      Math.floor((todayUtc.getTime() - firstDate.getTime()) / 86_400_000),
+      7  // grace period
+    );
+    consistencyRate = Math.min(100, Math.round((cache.unique_study_days_count / totalDays) * 100));
+  }
+
+  // Validate cached streak: if last_studied_date is older than yesterday the chain is broken
+  let currentStreak = cache.current_streak ?? 0;
+  if (currentStreak > 0 && cache.last_studied_date) {
+    const todayStr = now.toISOString().split('T')[0];
+    const yesterdayUtc = new Date(now);
+    yesterdayUtc.setUTCDate(now.getUTCDate() - 1);
+    const yesterdayStr = yesterdayUtc.toISOString().split('T')[0];
+    if (cache.last_studied_date < yesterdayStr && cache.last_studied_date !== todayStr) {
+      currentStreak = 0;
+    }
+  }
+
   return {
     weeklyCompletion,
     streakCount: studiedDates.size,
     studiedDates: [...studiedDates],
+    consistencyRate,
+    currentStreak,
   };
 }
 

@@ -1,6 +1,6 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type UploadContext = "ai_query" | "lesson" | "profile_avatar" | "group" | "general";
+export type UploadContext = "ai_query" | "lesson" | "profile_avatar" | "group" | "general" | "post_image" | "post_document" | "archive_image";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 

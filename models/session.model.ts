@@ -149,6 +149,10 @@ export interface StudySession {
   chat_count?: number;
   /** Whether the user has bookmarked this session. */
   bookmarked?: boolean;
+  /** Audit summary maintained from active public publication records. */
+  is_publicly_shared?: boolean;
+  shared_by?: string | null;
+  shared_at?: string | null;
   /** AI token usage for this session. */
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
@@ -209,6 +213,9 @@ export const STUDY_SESSIONS_TABLE_SQL = `
     visual_table_json TEXT,
     image_url TEXT,
     bookmarked BOOLEAN NOT NULL DEFAULT FALSE,
+    is_publicly_shared BOOLEAN NOT NULL DEFAULT FALSE,
+    shared_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    shared_at TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )
 `;

@@ -735,6 +735,9 @@ function normalizeSessionRow(row: Record<string, unknown>): StudySession {
     visual_table_json: toCanonicalNullableJsonString(row.visual_table_json),
     image_url: typeof row.image_url === "string" ? row.image_url : null,
     bookmarked: Boolean(row.bookmarked ?? false),
+    is_publicly_shared: Boolean(row.is_publicly_shared ?? false),
+    shared_by: typeof row.shared_by === "string" ? row.shared_by : null,
+    shared_at: typeof row.shared_at === "string" ? row.shared_at : null,
     created_at: String(row.created_at),
     prompt_tokens:     typeof row.prompt_tokens     === "number" ? row.prompt_tokens     : null,
     completion_tokens: typeof row.completion_tokens === "number" ? row.completion_tokens : null,
@@ -1349,4 +1352,56 @@ export async function getSessionById(id: string, userId: string): Promise<StudyS
 
   if (error) return null;
   return normalizeSessionRow((data ?? {}) as Record<string, unknown>);
+}
+
+export async function getPublicSessionById(id: string): Promise<{
+  session: Omit<StudySession, "bookmarked" | "prompt_tokens" | "completion_tokens" | "total_tokens" | "ai_cost_usd">;
+  publication: { shared_by: string; shared_at: string };
+  access: { mode: "public_readonly"; canEdit: false; canChat: false; canGenerate: false; canDelete: false };
+} | null> {
+  const db = getSupabaseAdmin();
+  const publication = await db
+    .from("session_publications")
+    .select("shared_by,shared_at")
+    .eq("session_id", id)
+    .is("revoked_at", null)
+    .order("shared_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (publication.error) throw new AppError(publication.error.message, 500);
+  if (!publication.data) return null;
+
+  const result = await db
+    .from("study_sessions")
+    .select("id,user_id,title,subject_id,topic_id,problem,node_count,duration_seconds,breakdown_json,visual_table_json,image_url,created_at,is_publicly_shared,shared_by,shared_at")
+    .eq("id", id)
+    .eq("is_publicly_shared", true)
+    .maybeSingle();
+  if (result.error) throw new AppError(result.error.message, 500);
+  if (!result.data) return null;
+
+  const normalized = normalizeSessionRow(result.data as Record<string, unknown>);
+  const {
+    bookmarked: _bookmarked,
+    prompt_tokens: _promptTokens,
+    completion_tokens: _completionTokens,
+    total_tokens: _totalTokens,
+    ai_cost_usd: _aiCost,
+    ...publicSession
+  } = normalized;
+
+  return {
+    session: publicSession,
+    publication: {
+      shared_by: String(publication.data.shared_by),
+      shared_at: String(publication.data.shared_at),
+    },
+    access: {
+      mode: "public_readonly",
+      canEdit: false,
+      canChat: false,
+      canGenerate: false,
+      canDelete: false,
+    },
+  };
 }

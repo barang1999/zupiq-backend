@@ -25,6 +25,13 @@ const TOPICS_TO_SEED = [
   { id: "topic-chemistry-inorganic-chemistry", slugKey: "chemistry", name: "Inorganic Chemistry", slug: "inorganic-chemistry", description: "Transition Metals, Coordination Compounds", order_index: 3 },
   { id: "topic-chemistry-physical-chemistry", slugKey: "chemistry", name: "Physical Chemistry", slug: "physical-chemistry", description: "Kinetics, Equilibrium, Acid-Base, Electrochemistry", order_index: 4 },
   { id: "topic-chemistry-biochemistry", slugKey: "chemistry", name: "Biochemistry", slug: "biochemistry", description: "Proteins, DNA/RNA, Enzymes, Metabolic Pathways", order_index: 5 },
+
+  // Biology
+  { id: "topic-biology-cell-biology", slugKey: "biology", name: "Cell Biology", slug: "cell-biology", description: "Cells, organelles, membranes, transport", order_index: 1 },
+  { id: "topic-biology-genetics", slugKey: "biology", name: "Genetics", slug: "genetics", description: "DNA, inheritance, chromosomes, mutations", order_index: 2 },
+  { id: "topic-biology-ecology", slugKey: "biology", name: "Ecology", slug: "ecology", description: "Ecosystems, populations, energy flow", order_index: 3 },
+  { id: "topic-biology-human-biology", slugKey: "biology", name: "Human Biology", slug: "human-biology", description: "Body systems, anatomy, physiology", order_index: 4 },
+  { id: "topic-biology-evolution", slugKey: "biology", name: "Evolution", slug: "evolution", description: "Natural selection, adaptation, biodiversity", order_index: 5 },
 ];
 
 async function main() {
@@ -52,6 +59,7 @@ async function main() {
     { slug: "mathematics", name: "Math", description: "Mathematics, Algebra, Geometry, Calculus" },
     { slug: "physics", name: "Physics", description: "Mechanics, Electromagnetism, Thermodynamics, Optics" },
     { slug: "chemistry", name: "Chemistry", description: "Organic, Inorganic, Physical, Biochemistry" },
+    { slug: "biology", name: "Biology", description: "Cells, Genetics, Ecology, Human Biology, Evolution" },
   ];
 
   for (const canon of CANONICAL) {
@@ -104,7 +112,7 @@ async function main() {
   // 4. Update session.service.ts constants - print the real IDs for reference
   console.log("\n--- Real Subject IDs (update session.service.ts if needed) ---");
   for (const [slug, id] of subjectBySlug.entries()) {
-    if (["mathematics", "physics", "chemistry"].includes(slug)) {
+    if (["mathematics", "physics", "chemistry", "biology"].includes(slug)) {
       console.log(`${slug}: ${id}`);
     }
   }

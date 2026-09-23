@@ -67,6 +67,113 @@ export async function uploadFileToStorage(
   }
 }
 
+const ARCHIVE_IMAGE_TARGET_BYTES = 500 * 1024;
+const ARCHIVE_IMAGE_MAX_PX = 2048;
+const ARCHIVE_IMAGE_MIN_PX = 720;
+
+export type OptimizedArchiveImage = {
+  filePath: string;
+  storageFileName: string;
+  mimeType: "image/jpeg";
+  sizeBytes: number;
+  width: number;
+  height: number;
+  compressed: boolean;
+};
+
+/**
+ * Normalize an Archive photo before permanent storage. This follows the same
+ * broad production pattern used by large social-photo pipelines: fix EXIF
+ * orientation, cap oversized dimensions, strip metadata, and adapt JPEG
+ * quality/dimensions until the byte budget is met.
+ */
+export async function optimizeArchiveImage(
+  localFilePath: string,
+  originalName: string,
+): Promise<OptimizedArchiveImage> {
+  const original = fs.readFileSync(localFilePath);
+  const inputMetadata = await sharp(original).metadata();
+  const orientedWidth = inputMetadata.autoOrient?.width ?? inputMetadata.width ?? ARCHIVE_IMAGE_MAX_PX;
+  const orientedHeight = inputMetadata.autoOrient?.height ?? inputMetadata.height ?? ARCHIVE_IMAGE_MAX_PX;
+  const longest = Math.max(orientedWidth, orientedHeight);
+  const outputName = `${path.parse(originalName || "archive-photo").name || "archive-photo"}.jpg`;
+
+  if (original.length <= ARCHIVE_IMAGE_TARGET_BYTES && inputMetadata.format === "jpeg") {
+    return {
+      filePath: localFilePath,
+      storageFileName: outputName,
+      mimeType: "image/jpeg",
+      sizeBytes: original.length,
+      width: orientedWidth,
+      height: orientedHeight,
+      compressed: false,
+    };
+  }
+
+  let targetLongest = Math.min(longest, ARCHIVE_IMAGE_MAX_PX);
+  let quality = 86;
+  let bestBuffer: Buffer | null = null;
+  let bestWidth = orientedWidth;
+  let bestHeight = orientedHeight;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const resizedWidth = orientedWidth >= orientedHeight ? targetLongest : undefined;
+    const resizedHeight = orientedHeight > orientedWidth ? targetLongest : undefined;
+    const pipeline = sharp(original)
+      .rotate()
+      .resize(resizedWidth, resizedHeight, { fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#FFFFFF" })
+      .jpeg({
+        quality,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:2:0",
+      });
+    const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+    if (!bestBuffer || data.length < bestBuffer.length) {
+      bestBuffer = data;
+      bestWidth = info.width;
+      bestHeight = info.height;
+    }
+    if (data.length <= ARCHIVE_IMAGE_TARGET_BYTES) break;
+
+    if (targetLongest > ARCHIVE_IMAGE_MIN_PX) {
+      const sizeRatio = Math.sqrt(ARCHIVE_IMAGE_TARGET_BYTES / data.length) * 0.96;
+      const scale = Math.min(0.92, Math.max(0.72, sizeRatio));
+      targetLongest = Math.max(ARCHIVE_IMAGE_MIN_PX, Math.floor(targetLongest * scale));
+      quality = Math.max(78, quality - 1);
+    } else {
+      quality = Math.max(50, quality - 6);
+    }
+  }
+
+  if (!bestBuffer) throw new AppError("Could not optimize Archive image.", 422);
+  if (bestBuffer.length > ARCHIVE_IMAGE_TARGET_BYTES) {
+    throw new AppError("Could not compress Archive image below 500 KB.", 422);
+  }
+  const optimizedPath = path.join(
+    path.dirname(localFilePath),
+    `${path.parse(localFilePath).name}-archive.jpg`,
+  );
+  fs.writeFileSync(optimizedPath, bestBuffer);
+  logger.info("[upload] archive image optimized", {
+    originalBytes: original.length,
+    optimizedBytes: bestBuffer.length,
+    originalDims: `${orientedWidth}x${orientedHeight}`,
+    optimizedDims: `${bestWidth}x${bestHeight}`,
+    targetBytes: ARCHIVE_IMAGE_TARGET_BYTES,
+  });
+  return {
+    filePath: optimizedPath,
+    storageFileName: outputName,
+    mimeType: "image/jpeg",
+    sizeBytes: bestBuffer.length,
+    width: bestWidth,
+    height: bestHeight,
+    compressed: true,
+  };
+}
+
 // ─── Get uploads ──────────────────────────────────────────────────────────────
 
 export async function getUploadById(id: string): Promise<Upload | null> {

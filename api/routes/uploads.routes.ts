@@ -7,6 +7,7 @@ import {
   getUploadById,
   deleteUpload,
   uploadFileToStorage,
+  optimizeArchiveImage,
 } from "../../services/upload.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { createUploadMiddleware, uploadDir } from "../middlewares/upload.middleware.js";
@@ -51,7 +52,9 @@ function isMimeTypeAllowedForContext(mimeType: string, context: UploadContext): 
 }
 
 function resolveStorageBucketForContext(context: UploadContext): string {
-  return context === "profile_avatar" ? STORAGE_BUCKETS.AVATARS : STORAGE_BUCKETS.UPLOADS;
+  if (context === "profile_avatar") return STORAGE_BUCKETS.AVATARS;
+  if (context === "post_image") return STORAGE_BUCKETS.POSTS;
+  return STORAGE_BUCKETS.UPLOADS;
 }
 
 // ─── POST /api/uploads/signed-upload-url ─────────────────────────────────────
@@ -186,6 +189,28 @@ router.post(
         for (const file of files) {
           const localPath = path.resolve(uploadDir, file.filename);
           const fileStartedAt = Date.now();
+          let uploadPath = localPath;
+          let storageFileName = file.originalname;
+          let storedMimeType = file.mimetype;
+          let storedSizeBytes = file.size;
+
+          if (context === "archive_image") {
+            try {
+              const optimized = await optimizeArchiveImage(localPath, file.originalname);
+              uploadPath = optimized.filePath;
+              storageFileName = optimized.storageFileName;
+              storedMimeType = optimized.mimeType;
+              storedSizeBytes = optimized.sizeBytes;
+            } catch (optimizeError) {
+              fs.unlink(localPath, () => {});
+              logger.error("[uploads] archive-image:optimization-failed", {
+                traceId,
+                originalName: file.originalname,
+                message: optimizeError instanceof Error ? optimizeError.message : String(optimizeError),
+              });
+              return next(new ValidationError("Could not optimize this photo. Please choose another image."));
+            }
+          }
 
           // Try to push to Supabase storage
           let storageUrl: string | undefined;
@@ -193,9 +218,9 @@ router.post(
           try {
             const result = await uploadFileToStorage(
               req.user!.sub,
-              localPath,
-              file.originalname,
-              file.mimetype
+              uploadPath,
+              storageFileName,
+              storedMimeType
             );
             storageUrl = result.storageUrl;
             storedNameForRecord = result.storagePath || file.filename;
@@ -209,18 +234,21 @@ router.post(
               elapsedMs: Date.now() - fileStartedAt,
             });
             // Local temp file is no longer needed — Supabase holds the copy.
-            fs.unlink(localPath, (unlinkErr) => {
-              if (unlinkErr) {
-                logger.warn("[uploads] cleanup:unlink-failed", {
-                  traceId,
-                  localPath,
-                  message: unlinkErr.message,
-                });
-              }
-            });
+            for (const cleanupPath of new Set([localPath, uploadPath])) {
+              fs.unlink(cleanupPath, (unlinkErr) => {
+                if (unlinkErr) {
+                  logger.warn("[uploads] cleanup:unlink-failed", {
+                    traceId,
+                    localPath: cleanupPath,
+                    message: unlinkErr.message,
+                  });
+                }
+              });
+            }
           } catch {
-            storageUrl = `/uploads/${file.filename}`;
-            storedNameForRecord = file.filename;
+            storageUrl = `/uploads/${path.basename(uploadPath)}`;
+            storedNameForRecord = path.basename(uploadPath);
+            if (uploadPath !== localPath) fs.unlink(localPath, () => {});
             logger.warn("[uploads] storage:fallback-local", {
               traceId,
               originalName: file.originalname,
@@ -235,8 +263,8 @@ router.post(
             user_id: req.user!.sub,
             original_name: file.originalname,
             stored_name: storedNameForRecord,
-            mime_type: file.mimetype,
-            size_bytes: file.size,
+            mime_type: storedMimeType,
+            size_bytes: storedSizeBytes,
             storage_url: storageUrl,
             context,
           });

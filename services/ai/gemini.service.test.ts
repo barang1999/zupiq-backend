@@ -461,6 +461,41 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     expect(blocks).toEqual([]);
   });
 
+  it("replaces a sign table with the primary curve for a structured variation study that derives an asymptote", () => {
+    const variationProblem = "១០. អនុគមន៍ $f$ កំណត់លើ $I = (0, +\\infty)$ ដោយ $f(x) = x - 1 - \\frac{\\ln x}{x^2}$ និងមានខ្សែរកោង $C$ ។";
+    const variationSolution = [
+      "គេកំណត់អនុគមន៍ជំនួយ $g(x) = x^3 + 2\\ln x - 1$។",
+      "$f'(x)=\\frac{g(x)}{x^3}$ ដូច្នេះ $f$ ចុះលើ $(0,1)$ ហើយកើនលើ $(1,+\\infty)$។",
+      "$M(1,0)$ ជាចំណុចអប្បបរមា។",
+      "បន្ទាត់ $T: y=x-1$ ជាអាស៊ីមតូតទ្រេតនៃខ្សែរកោង $C$។",
+      "តាង $d(x)=f(x)-(x-1)=-\\frac{\\ln x}{x^2}$។",
+    ].join("\n");
+    const variationSignTable = normalizeDiagramBlocks([{
+      diagramType: "sign-table",
+      rows: [
+        { label: "x", cells: ["0", "1", "+∞"] },
+        { label: "f'(x)", cells: ["-", "0", "+"] },
+      ],
+    }]);
+
+    const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(
+      variationProblem,
+      variationSolution,
+      variationSignTable,
+      "variation",
+    );
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.diagramType).toBe("function-graph");
+    const spec = blocks[0]?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    expect(functions[0]?.latex).toBe("f(x)=x - 1 - \\frac{\\ln x}{x^2}");
+    expect(functions.some((fn) => fn.kind === "linear" && fn.latex === "y=x-1")).toBe(true);
+    expect(spec.featurePoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ point: [1, 0] }),
+    ]));
+  });
+
   it("never overrides a diagram that isn't a sign-table (e.g. the AI already produced a real function-graph)", () => {
     const functionGraphBlocks = normalizeDiagramBlocks([{
       diagramType: "function-graph",

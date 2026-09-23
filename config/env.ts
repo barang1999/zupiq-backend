@@ -40,6 +40,7 @@ export const env = {
   SUPABASE_URL: requireEnv("SUPABASE_URL", "https://placeholder.supabase.co"),
   SUPABASE_ANON_KEY: requireEnv("SUPABASE_ANON_KEY", "placeholder-key"),
   SUPABASE_SERVICE_ROLE_KEY: optionalEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
+  SUPABASE_SCHEMA: optionalEnv("SUPABASE_SCHEMA", "public"),
 
   // Google Gemini AI
   GEMINI_API_KEY: requireEnv("GEMINI_API_KEY", ""),
@@ -65,7 +66,7 @@ export const env = {
   UPLOAD_MAX_SIZE_MB: parseInt(optionalEnv("UPLOAD_MAX_SIZE_MB", "10"), 10),
   ALLOWED_FILE_TYPES: optionalEnv(
     "ALLOWED_FILE_TYPES",
-    "image/jpeg,image/png,image/webp,application/pdf,text/plain"
+    "image/jpeg,image/png,image/webp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ).split(","),
 
   // Rate limiting

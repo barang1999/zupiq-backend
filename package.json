@@ -10,7 +10,10 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "python": "cd python && source venv/bin/activate && uvicorn resolver.main:app --port 8001 --reload"
+    "python": "cd python && source venv/bin/activate && uvicorn resolver.main:app --port 8001 --reload",
+    "db": "bash scripts/migrate.sh",
+    "db:dev": "bash scripts/migrate.sh $1 dev",
+    "db:both": "bash scripts/migrate.sh $1 both"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

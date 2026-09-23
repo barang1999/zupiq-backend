@@ -6,7 +6,7 @@ import { logger } from "../utils/logger.js";
 // ─── Supabase Admin Client (server-side) ─────────────────────────────────────
 // Uses the service role key — NEVER expose this to the browser.
 
-let adminClient: SupabaseClient | null = null;
+let adminClient: SupabaseClient<any, any> | null = null;
 
 try {
   dns.setDefaultResultOrder("ipv4first");
@@ -62,9 +62,12 @@ const supabaseOptions = {
   global: {
     fetch: supabaseFetch,
   },
+  db: {
+    schema: env.SUPABASE_SCHEMA,
+  },
 };
 
-export function getSupabaseAdmin(): SupabaseClient {
+export function getSupabaseAdmin(): SupabaseClient<any, any> {
   if (adminClient) return adminClient;
 
   if (!env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -85,9 +88,9 @@ export function getSupabaseAdmin(): SupabaseClient {
 
 // ─── Supabase Anon Client (for server-side operations that respect RLS) ───────
 
-let anonClient: SupabaseClient | null = null;
+let anonClient: SupabaseClient<any, any> | null = null;
 
-export function getSupabaseClient(): SupabaseClient {
+export function getSupabaseClient(): SupabaseClient<any, any> {
   if (anonClient) return anonClient;
 
   anonClient = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, supabaseOptions);
@@ -100,6 +103,7 @@ export function getSupabaseClient(): SupabaseClient {
 export const STORAGE_BUCKETS = {
   UPLOADS: "user-uploads",
   AVATARS: "avatars",
+  POSTS: "discover_post",
 } as const;
 
 /**

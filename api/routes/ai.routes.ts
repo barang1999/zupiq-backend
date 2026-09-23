@@ -18,6 +18,7 @@ import {
   requiresVisualTable,
   generateVisualTable,
   generateDiagramBlocksForSession,
+  isProblemIntent,
   sanitizeBreakdownNode,
   type AIRequestOptions,
 } from "../../services/ai/gemini.service.js";
@@ -1904,6 +1905,9 @@ router.post(
           .trim();
       }
       const finalAnswer = String(payload.finalAnswer || "").trim() || undefined;
+      const problemIntent = isProblemIntent(payload.problemIntent)
+        ? payload.problemIntent
+        : undefined;
 
       logger.info("[session-diagram] context", {
         sessionId: session.id,
@@ -1925,6 +1929,7 @@ router.post(
         solutionText,
         finalAnswer,
         aiOptions,
+        problemIntent,
       );
 
       if (!diagramBlocks.length) {

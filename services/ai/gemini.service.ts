@@ -332,7 +332,7 @@ export interface ProblemSolutionFirst {
   _usage?: ChatUsage;
 }
 
-type ProblemIntent =
+export type ProblemIntent =
   | "average-rate"
   | "point-membership"
   | "range"
@@ -341,7 +341,7 @@ type ProblemIntent =
   | "variation"
   | "other";
 
-function isProblemIntent(value: unknown): value is ProblemIntent {
+export function isProblemIntent(value: unknown): value is ProblemIntent {
   return [
     "average-rate",
     "point-membership",
@@ -2321,6 +2321,7 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   problem: string,
   solutionText: string,
   normalized: ReturnType<typeof normalizeDiagramBlocks>,
+  problemIntent?: ProblemIntent,
 ): ReturnType<typeof normalizeDiagramBlocks> {
   // Never override an actual (non-sign-table) diagram the AI already
   // produced. But an *empty* diagramBlocks array is not that — it's the
@@ -2384,11 +2385,20 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   const INFLECTION_POINT_PATTERN = /ចំណុចរបត់|inflection\s+point/i;
   const impliesGraphFromCurveAnalysis = ASYMPTOTE_PATTERN.test(source)
     && (TANGENT_LINE_PATTERN.test(source) || INFLECTION_POINT_PATTERN.test(source));
-  const asksForGraph = explicitlyAsksForGraph || impliesGraphFromCurveAnalysis;
+  // A structured variation study that also derives an asymptote needs the
+  // curve itself, even when OCR omitted the final "construct C" instruction.
+  // This is deliberately keyed by problemIntent rather than another growing
+  // list of prose variants. A sign table covers monotonicity, but cannot show
+  // the asymptotic behavior the same solved task explicitly established.
+  const impliesGraphFromStructuredVariation = problemIntent === "variation"
+    && ASYMPTOTE_PATTERN.test(source);
+  const asksForGraph = explicitlyAsksForGraph
+    || impliesGraphFromCurveAnalysis
+    || impliesGraphFromStructuredVariation;
   if (!asksForGraph) return [];
 
-  // From here on, the problem explicitly asked for a graph and doesn't
-  // already have a real one — every remaining bail-out below means this
+  // From here on, the problem explicitly or structurally requires a graph
+  // and doesn't already have a real one — every remaining bail-out below means this
   // backstop itself failed to satisfy that request. Each of those failure
   // modes has, in practice, turned out to be a real bug worth finding (a
   // regex too narrow to find the function's own latex, a truncation inside
@@ -2396,7 +2406,18 @@ export function inferConstructedFunctionGraphForExplicitGraphRequest(
   // growth for a pole) rather than something actually unfixable about the
   // AI's output — so log loudly instead of returning [] silently, the same
   // way a caught exception should never vanish without a trace.
-  const functionLatex = findConcreteFunctionLatex(source);
+  // Prefer a concrete function defined in the stored problem only when that
+  // same problem text explicitly associates it with a graph/curve. Later
+  // solution steps often introduce helpers such as g(x)=f'(x)'s numerator;
+  // this prevents those helpers from replacing a clearly named primary curve.
+  // When upstream OCR omitted the curve-bearing part of the problem, keep the
+  // combined-source last-candidate behavior: it is what correctly finds a
+  // later g(x) after an earlier auxiliary f(x). Symbolic problem definitions
+  // also fall through so a later numeric specialization can win.
+  const problemNamesCurve = new RegExp(GRAPH_NOUN, "i").test(problem);
+  const functionLatex = (problemNamesCurve
+    ? findConcreteFunctionLatex(normalizeDigits(problem))
+    : null) || findConcreteFunctionLatex(source);
   if (!functionLatex) {
     logger.warn("[diagram:backstop-failed] no-concrete-function-latex-found", {
       problemPreview: problem.slice(0, 200),
@@ -5288,7 +5309,7 @@ Problem:
 ${problem}
 
 Solution:
-${solutionText.slice(0, 1800)}
+${solutionText}
 
 ${DIAGRAM_SPEC_GUIDE}`,
     options,
@@ -5496,7 +5517,12 @@ ${DIAGRAM_SPEC_GUIDE}`,
   // Runs before the generic "useful" check below: a sign-table is a real,
   // non-empty diagram, so it would otherwise pass that check untouched even
   // when the problem explicitly asked to construct/sketch/draw the graph.
-  const constructedGraphForExplicitRequest = inferConstructedFunctionGraphForExplicitGraphRequest(problem, solutionText, normalized);
+  const constructedGraphForExplicitRequest = inferConstructedFunctionGraphForExplicitGraphRequest(
+    problem,
+    solutionText,
+    normalized,
+    problemIntent,
+  );
   if (constructedGraphForExplicitRequest.length) return constructedGraphForExplicitRequest;
 
   const useful = normalized.filter(
@@ -5556,6 +5582,7 @@ export async function generateDiagramBlocksForSession(
   solutionText: string,
   finalAnswer: string | undefined,
   options: AIRequestOptions,
+  problemIntent?: ProblemIntent,
 ): Promise<{ blocks: RenderBlock[]; usage: ChatUsage }> {
   const usageOut = { current: zeroUsage() };
   // Diagram extraction is structured JSON output — curriculum reference/knowledge
@@ -5565,7 +5592,7 @@ export async function generateDiagramBlocksForSession(
     solutionText,
     withoutContext(options),
     finalAnswer,
-    undefined,
+    problemIntent,
     usageOut,
   );
   return {

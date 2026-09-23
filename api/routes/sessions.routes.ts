@@ -1,14 +1,29 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { ValidationError, NotFoundError } from "../middlewares/error.middleware.js";
-import { createSession, getUserSessions, getSessionById, updateSession, deleteSession, getUserProgression } from "../../services/session.service.js";
+import { createSession, getUserSessions, getSessionById, getPublicSessionById, updateSession, deleteSession, getUserProgression } from "../../services/session.service.js";
 import type { CreateSessionDTO, UpdateSessionDTO } from "../../models/session.model.js";
 import { publishCollabEvent } from "../../services/collab-stream.js";
 import { logActivity, getSessionActivity } from "../../services/activity-log.service.js";
+import { detectAndUpdateLevel } from "../../services/level-detection.service.js";
+import { detectAndTagSessionTopic } from "../../services/topic-detection.service.js";
 import { upsertBreakdownFeedback, deleteBreakdownFeedback, getBreakdownFeedback } from "../../services/feedback.service.js";
 import { indexSession } from "../../services/resolver.service.js";
 
 const router = Router();
+
+// Public read-only session view. This route deliberately sits before the
+// authenticated router guard and exposes a sanitized payload only.
+router.get("/:id/public", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await getPublicSessionById(req.params.id);
+    if (!result) throw new NotFoundError("Shared session");
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(requireAuth);
 
 // POST /api/sessions
@@ -23,6 +38,16 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
       title: session.title,
       subject: session.subject,
     });
+
+    // Fire-and-forget: infer education level from this problem + subject context
+    const levelText = [dto.problem, session.subject, session.topic].filter(Boolean).join(" ");
+    detectAndUpdateLevel(req.user!.sub, levelText).catch(() => {});
+
+    // Fire-and-forget: detect and backfill topic if session came in without one
+    if (!session.topic) {
+      detectAndTagSessionTopic(session.id, dto.problem).catch(() => {});
+    }
+
     res.status(201).json({ session });
   } catch (err) {
     next(err);
@@ -56,6 +81,12 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
     const afterSnap = { title: session.title, subject: session.subject, problem: session.problem, node_count: session.node_count };
     for (const key of snapshotKeys) {
       afterSnapshot[key] = afterSnap[key as keyof typeof afterSnap];
+    }
+
+    // Fire-and-forget: re-detect level when problem content changes
+    if (dto.problem) {
+      const levelText = [dto.problem, session.subject, session.topic].filter(Boolean).join(" ");
+      detectAndUpdateLevel(req.user!.sub, levelText).catch(() => {});
     }
 
     // Notify collaborators that the session has been updated

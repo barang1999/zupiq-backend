@@ -40,7 +40,7 @@ run_public() {
 
 run_dev() {
   echo "→ dev"
-  sed 's/public\./dev./g' "$FILE" | psql "$DB"
+  { echo "SET search_path TO dev;"; cat "$FILE"; } | psql "$DB"
 }
 
 case $SCHEMA in

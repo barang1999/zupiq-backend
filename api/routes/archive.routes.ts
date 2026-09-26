@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { ValidationError } from "../middlewares/error.middleware.js";
-import { ARCHIVE_ITEM_TYPES, type ArchiveItemType, type SaveArchiveItemInput } from "../../models/archive.model.js";
+import { ARCHIVE_ITEM_TYPES, ARCHIVE_SORTS, type ArchiveItemType, type ArchiveSort, type SaveArchiveItemInput } from "../../models/archive.model.js";
 import {
   addItemToCollection,
   createCollection,
@@ -46,6 +46,14 @@ function archiveType(value: unknown, required = false): ArchiveItemType | undefi
   return value as ArchiveItemType;
 }
 
+function archiveSort(value: unknown): ArchiveSort | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !ARCHIVE_SORTS.includes(value as ArchiveSort)) {
+    throw new ValidationError(`sort must be one of: ${ARCHIVE_SORTS.join(", ")}.`);
+  }
+  return value as ArchiveSort;
+}
+
 function saveInput(body: any, collectionId?: string): SaveArchiveItemInput {
   return {
     type: archiveType(body?.type, true)!,
@@ -69,6 +77,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       query: optionalString(req.query.q ?? req.query.query),
       cursor: optionalString(req.query.cursor),
       limit,
+      sort: archiveSort(req.query.sort),
     });
     res.json(result);
   } catch (error) { next(error); }
@@ -129,6 +138,7 @@ router.get("/collections/:id", async (req: Request, res: Response, next: NextFun
       query: optionalString(req.query.q),
       cursor: optionalString(req.query.cursor),
       limit,
+      sort: archiveSort(req.query.sort),
     });
     const isOwner = collection.user_id === req.user!.sub;
     res.json({

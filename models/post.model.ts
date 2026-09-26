@@ -19,6 +19,7 @@ export interface Post {
   like_count: number;
   comment_count: number;
   save_count: number;
+  view_count: number;
   created_at: string;
 }
 

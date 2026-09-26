@@ -5,6 +5,7 @@ import type {
   ArchiveItem,
   ArchiveItemNote,
   ArchiveItemType,
+  ArchiveSort,
   SaveArchiveItemInput,
 } from "../models/archive.model.js";
 
@@ -498,10 +499,15 @@ async function syncLegacySavedState(
 
 export async function listArchiveItems(
   userId: string,
-  options: { collectionId?: string; type?: ArchiveItemType; query?: string; cursor?: string; limit?: number } = {},
+  options: { collectionId?: string; type?: ArchiveItemType; query?: string; cursor?: string; limit?: number; sort?: ArchiveSort } = {},
 ): Promise<{ items: ArchiveItem[]; nextCursor: string | null }> {
   const db = getSupabaseAdmin();
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
+  const sort = options.sort ?? "newest";
+  const sortsByName = sort === "name_asc" || sort === "name_desc";
+  const ascending = sort === "oldest" || sort === "name_asc";
+  const sortField = sortsByName ? "title" : "last_saved_at";
+  const offset = sortsByName && options.cursor ? Math.max(0, Number.parseInt(options.cursor, 10) || 0) : 0;
   let memberIds: string[] | null = null;
   if (options.collectionId) {
     const collection = await resolveCollection(userId, options.collectionId);
@@ -532,17 +538,23 @@ export async function listArchiveItems(
     .from("archive_items")
     .select(ITEM_LIST_SELECT)
     .eq("user_id", userId)
-    .order("last_saved_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit + 1);
+    .order(sortField, { ascending })
+    .order("id", { ascending });
   if (options.type) request = request.eq("type", options.type);
-  if (options.cursor) request = request.lt("last_saved_at", options.cursor);
+  if (options.cursor && !sortsByName) {
+    request = ascending
+      ? request.gt("last_saved_at", options.cursor)
+      : request.lt("last_saved_at", options.cursor);
+  }
   if (memberIds) request = request.in("id", memberIds);
   if (search) {
     const filters = [`title.ilike.%${search}%`, `preview.ilike.%${search}%`];
     if (noteMatchIds.length) filters.push(`id.in.(${noteMatchIds.join(",")})`);
     request = request.or(filters.join(","));
   }
+  request = sortsByName
+    ? request.range(offset, offset + limit)
+    : request.limit(limit + 1);
   const result = await request;
   if (result.error) throw operational(result.error.message);
   const rows = (result.data ?? []) as any[];
@@ -550,7 +562,11 @@ export async function listArchiveItems(
   const page = hasMore ? rows.slice(0, limit) : rows;
   return {
     items: await enrichItems(userId, page),
-    nextCursor: hasMore ? String(page[page.length - 1]?.last_saved_at ?? "") || null : null,
+    nextCursor: hasMore
+      ? sortsByName
+        ? String(offset + limit)
+        : String(page[page.length - 1]?.last_saved_at ?? "") || null
+      : null,
   };
 }
 

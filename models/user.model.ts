@@ -59,6 +59,7 @@ export interface User {
   education_level: EducationLevel;
   grade: string | null;
   language: Language;
+  country_code: string | null;
   preferences: UserPreferences;
   avatar_url: string | null;
   created_at: string;
@@ -79,6 +80,7 @@ export interface CreateUserDTO {
   education_level?: EducationLevel;
   grade?: string;
   language?: Language;
+  country_code?: string | null;
 }
 
 export interface UpdateUserDTO {
@@ -86,6 +88,7 @@ export interface UpdateUserDTO {
   education_level?: EducationLevel;
   grade?: string;
   language?: Language;
+  country_code?: string | null;
   avatar_url?: string;
   preferences?: Partial<UserPreferences>;
 }

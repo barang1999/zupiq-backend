@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "../config/supabase.js";
 import type { CommentWithAuthor, CreateCommentDTO } from "../models/comment.model.js";
 import { moderateContent } from "./moderation.service.js";
+import { AppError } from "../api/middlewares/error.middleware.js";
 
 export async function getComments(
   postId: string,
@@ -46,9 +47,7 @@ export async function createComment(
   // Moderate comment text before saving
   const mod = await moderateContent(dto.content, "comment");
   if (!mod.allowed) {
-    const err = new Error(mod.reason ?? "Your comment violates our community guidelines.") as any;
-    err.statusCode = 422;
-    throw err;
+    throw new AppError(mod.reason ?? "Your comment violates our community guidelines.", 422);
   }
 
   const db = getSupabaseAdmin();

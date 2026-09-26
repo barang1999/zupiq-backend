@@ -1,0 +1,42 @@
+Hi there,
+
+On October 30, Supabase will stop automatically granting Data API access to new tables in the public schema for existing projects.
+
+ 
+
+Nothing changes for your existing tables. They retain their current grants and remain accessible through supabase-js, PostgREST, GraphQL, and other client libraries. No action is required to keep your app running.
+
+ 
+
+What changes on October 30
+
+ 
+
+Any new table created in public needs an explicit GRANT before the Data API can reach it. If a grant is missing, the API returns a permission denied error with the exact GRANT statement to run.
+
+Migrations count too. From October 30, any migration that creates a table without the required grants leaves that table unreachable through the Data API. That includes new projects, preview branches, and a local "supabase db reset". Add grants to those migrations now.
+
+What to do
+
+Add grants in the same migration that creates the table:
+
+grant select
+on public.your_table
+to anon;
+
+grant select, insert, update, delete
+on public.your_table
+to authenticated;
+
+grant select, insert, update, delete
+on public.your_table
+to service_role;
+Check which tables are exposed in your project's Data API settings.
+
+Learn more about this change
+
+If you have any questions, please reach out via our support portal.
+
+ 
+
+The team at Supabase

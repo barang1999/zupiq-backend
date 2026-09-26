@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import path from "path";
-import { getUserById, updateUser, deleteUser } from "../../services/user.service.js";
+import { getUserById, updateUser, deleteUser, getSuggestedUsers } from "../../services/user.service.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { AppError, NotFoundError } from "../middlewares/error.middleware.js";
 import { STORAGE_BUCKETS } from "../../config/supabase.js";
@@ -30,6 +30,20 @@ const router = Router();
 
 // All user routes require authentication
 router.use(requireAuth);
+
+// ─── GET /api/users/suggestions ─────────────────────────────────────────────
+
+router.get(
+  "/suggestions",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const users = await getSuggestedUsers(req.user!.sub);
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // ─── GET /api/users/profile ──────────────────────────────────────────────────
 

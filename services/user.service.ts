@@ -30,25 +30,82 @@ export async function createUser(dto: CreateUserDTO): Promise<PublicUser> {
   const id = generateId();
   const passwordHash = await hashPassword(dto.password);
 
+  const insertPayload: Record<string, any> = {
+    id,
+    email: dto.email.toLowerCase(),
+    password_hash: passwordHash,
+    full_name: dto.full_name,
+    education_level: dto.education_level ?? "high_school",
+    grade: dto.grade ?? null,
+    language: dto.language ?? "en",
+    preferences: DEFAULT_PREFERENCES,
+    created_at: nowISO(),
+    updated_at: nowISO(),
+  };
+  if (dto.country_code) insertPayload.country_code = dto.country_code;
+  console.log("[user.service] createUser insert payload:", JSON.stringify({ ...insertPayload, password_hash: "[redacted]" }));
+
   const { data, error } = await db
     .from("users")
-    .insert({
-      id,
-      email: dto.email.toLowerCase(),
-      password_hash: passwordHash,
-      full_name: dto.full_name,
-      education_level: dto.education_level ?? "high_school",
-      grade: dto.grade ?? null,
-      language: dto.language ?? "en",
-      preferences: DEFAULT_PREFERENCES,
-      created_at: nowISO(),
-      updated_at: nowISO(),
-    })
+    .insert(insertPayload)
     .select()
     .single();
 
+  console.log("[user.service] createUser insert result — error:", error?.message ?? null, "data.id:", (data as any)?.id ?? null);
   if (error) throw new AppError(error.message, 500);
   return toPublicUser(data as User);
+}
+
+// ─── Suggested users ─────────────────────────────────────────────────────────
+
+export async function getSuggestedUsers(
+  userId: string,
+  limit = 10
+): Promise<{ id: string; full_name: string; avatar_url: string | null; detected_level: string | null; level_confidence: number }[]> {
+  const db = getSupabaseAdmin();
+
+  // Get current user for scoring
+  const { data: me } = await db.from("users").select("preferences").eq("id", userId).single();
+  const mySubjects: string[] = (me?.preferences as any)?.subjects ?? [];
+  const myCountry: string | null = null; // country_code scoring deferred until schema cache refreshes
+
+  // Get IDs the user already follows
+  const { data: follows } = await db.from("user_follows").select("following_id").eq("follower_id", userId);
+  const followedIds = new Set((follows ?? []).map((f: any) => f.following_id));
+
+  // Fetch candidate pool (recent users, excluding self + already followed)
+  const { data: candidates, error } = await db
+    .from("users")
+    .select("id, full_name, avatar_url, preferences, detected_level, level_confidence")
+    .neq("id", userId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  console.log("[suggestions] me — country:", myCountry, "subjects:", mySubjects);
+  console.log("[suggestions] already following:", followedIds.size, "ids");
+  console.log("[suggestions] candidates fetched:", candidates?.length ?? 0, "error:", error?.message ?? null);
+
+  if (error || !candidates) return [];
+
+  // Score and rank
+  const scored = (candidates as any[])
+    .filter((u) => !followedIds.has(u.id))
+    .map((u) => {
+      const theirSubjects: string[] = (u.preferences as any)?.subjects ?? [];
+      const subjectOverlap = mySubjects.filter((s) => theirSubjects.includes(s)).length;
+      const countryMatch = myCountry && u.country_code === myCountry ? 2 : 0;
+      return { ...u, _score: subjectOverlap * 3 + countryMatch };
+    })
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit)
+    .map(({ _score, preferences, ...u }) => ({
+      ...u,
+      detected_level: u.detected_level ?? null,
+      level_confidence: u.level_confidence ?? 0,
+    }));
+
+  console.log("[suggestions] returning", scored.length, "users:", scored.map(u => ({ id: u.id, name: u.full_name, country: u.country_code })));
+  return scored;
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -119,6 +176,7 @@ export async function updateUser(id: string, dto: UpdateUserDTO): Promise<Public
       education_level: dto.education_level ?? existingUser.education_level,
       grade: dto.grade ?? existingUser.grade,
       language: dto.language ?? existingUser.language,
+      country_code: "country_code" in dto ? dto.country_code : existingUser.country_code,
       avatar_url: dto.avatar_url ?? existingUser.avatar_url,
       preferences: mergedPrefs,
       updated_at: nowISO(),

@@ -1,5 +1,7 @@
 export const ARCHIVE_ITEM_TYPES = ["solution", "post", "image", "board", "note"] as const;
 export type ArchiveItemType = (typeof ARCHIVE_ITEM_TYPES)[number];
+export const ARCHIVE_SORTS = ["newest", "oldest", "name_asc", "name_desc"] as const;
+export type ArchiveSort = (typeof ARCHIVE_SORTS)[number];
 
 export interface ArchiveCollection {
   id: string;

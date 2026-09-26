@@ -9,6 +9,9 @@ export interface PublicProfile {
   full_name: string;
   avatar_url: string | null;
   grade: string | null;
+  education_level: string | null;
+  detected_level: string | null;
+  level_confidence: number;
   bio: string | null;
   solution_count: number;
   question_count: number;

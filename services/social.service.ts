@@ -42,7 +42,7 @@ export async function getPublicProfile(targetUserId: string, requestingUserId?: 
   const db = getSupabaseAdmin();
   const { data: user, error } = await db
     .from("users")
-    .select("id, full_name, avatar_url, grade, preferences")
+    .select("id, full_name, avatar_url, grade, education_level, detected_level, level_confidence, preferences")
     .eq("id", targetUserId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -84,6 +84,9 @@ export async function getPublicProfile(targetUserId: string, requestingUserId?: 
     full_name: user.full_name,
     avatar_url: user.avatar_url ?? null,
     grade: user.grade ?? null,
+    education_level: (user as any).education_level ?? null,
+    detected_level: (user as any).detected_level ?? null,
+    level_confidence: (user as any).level_confidence ?? 0,
     bio: prefs.bio ?? null,
     solution_count: solutionRes.count ?? 0,
     question_count: questionRes.count ?? 0,

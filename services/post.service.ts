@@ -599,6 +599,7 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeed
     like_count: raw.like_count ?? 0,
     comment_count: raw.comment_count ?? 0,
     save_count: raw.save_count ?? 0,
+    view_count: raw.view_count ?? 0,
     created_at: raw.created_at,
     author: {
       id: author.id,

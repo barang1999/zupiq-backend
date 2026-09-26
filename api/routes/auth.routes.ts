@@ -216,8 +216,10 @@ router.post(
   authRateLimit,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password, full_name, education_level, grade, language } =
+      const { email, password, full_name, education_level, grade, language, country_code } =
         req.body as CreateUserDTO;
+
+      console.log("[auth/register] body received:", { email, full_name, language, country_code, education_level, grade });
 
       if (!email || !password || !full_name) {
         throw new ValidationError("email, password, and full_name are required");
@@ -233,7 +235,9 @@ router.post(
         education_level,
         grade,
         language,
+        country_code,
       });
+      console.log("[auth/register] createUser succeeded, user.id:", user.id);
 
       await ensureSubscriptionSeed(user.id);
       await ensurePremiumTesterPlan(user.id, user.email);
@@ -358,8 +362,10 @@ router.post(
   authRateLimit,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { idToken } = req.body;
+      const { idToken, country_code, language } = req.body;
       if (!idToken) throw new ValidationError("idToken is required");
+
+      logger.info("[auth:google] request body — language:", language, "country_code:", country_code);
 
       const { uid, email, name, picture } = await verifyOAuthIdentity(idToken);
       logger.info("[auth:google] token verified", { email });
@@ -400,7 +406,8 @@ router.post(
               full_name: name ?? email.split("@")[0],
               avatar_url: picture ?? null,
               education_level: "high_school",
-              language: "en",
+              language: language ?? "en",
+              country_code: country_code ?? null,
               preferences: {},
               created_at: nowISO(),
               updated_at: nowISO(),
@@ -410,7 +417,7 @@ router.post(
 
           if (error) throw new Error(error.message);
           existingUser = newUser;
-          logger.info("[auth:google] created OAuth user", { userId: id, email });
+          logger.info("[auth:google] created OAuth user", { userId: id, email, language: language ?? "en", country_code: country_code ?? null });
         } catch (err) {
           logger.error("[auth:google] Supabase user insert failed", {
             email,
@@ -448,8 +455,10 @@ router.post(
   authRateLimit,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { identityToken, email, givenName, familyName } = req.body;
+      const { identityToken, email, givenName, familyName, country_code, language } = req.body;
       if (!identityToken) throw new ValidationError("identityToken is required");
+
+      logger.info("[auth:apple] request body — language:", language, "country_code:", country_code, "email:", email);
 
       // Verify identity token with Apple (10s timeout — the JWKS fetch can hang)
       const applePayload = await Promise.race([
@@ -504,7 +513,8 @@ router.post(
             full_name: fullName,
             avatar_url: null,
             education_level: "high_school",
-            language: "en",
+            language: language ?? "en",
+            country_code: country_code ?? null,
             preferences: {},
             created_at: nowISO(),
             updated_at: nowISO(),
@@ -514,6 +524,7 @@ router.post(
 
         if (error) throw new Error(error.message);
         existingUser = newUser;
+        logger.info("[auth:apple] created OAuth user", { userId: id, language: language ?? "en", country_code: country_code ?? null });
 
         // Send welcome email for new Apple sign-ups
         const { password_hash: _, ...newPublicUser } = existingUser as any;

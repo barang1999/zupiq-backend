@@ -132,10 +132,25 @@ const BLOCKED_KEYWORDS_UNICODE: { kw: string; category: ModerationCategory }[] =
   ...UNICODE_KEYWORDS_EXTENDED,
 ];
 
+// Escapes a string for use inside a RegExp literal.
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Returns true if `text` contains `kw`.
+// Multi-word phrases → plain substring match (spaces act as natural delimiters).
+// Single words → whole-word match (\b…\b) to avoid false positives where a
+// short keyword appears as a substring inside a legitimate English word
+// (e.g. a 2-letter keyword in LATIN_KEYWORDS_EXTENDED matching inside "for").
+function latinKwMatches(text: string, kw: string): boolean {
+  if (kw.includes(" ")) return text.includes(kw);
+  return new RegExp(`\\b${escapeRegExp(kw)}\\b`).test(text);
+}
+
 function layer1Check(text: string): ModerationResult | null {
   const lower = text.toLowerCase();
   for (const kw of BLOCKED_KEYWORDS) {
-    if (lower.includes(kw)) {
+    if (latinKwMatches(lower, kw)) {
       const ADULT_KW = ["porn", "nude", "naked", "sex tape", "erotic", "xxx", "hentai", "masturbat", "onlyfans"];
       const VIOLENCE_KW = ["kill", "die", "suicide", "self harm"];
       const SPAM_KW = ["buy cocaine", "buy weed", "buy meth", "drug dealer"];
@@ -146,6 +161,7 @@ function layer1Check(text: string): ModerationResult | null {
         SPAM_KW.some(k => kw.includes(k)) ? "spam" :
         PROFANITY_KW.some(k => kw.includes(k)) ? "harassment" :
         "hate_speech";
+      logger.debug("[moderation] L1 matched keyword", { kw, category });
       return {
         allowed: false,
         category,

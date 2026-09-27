@@ -65,12 +65,21 @@ export async function createPost(userId: string, dto: CreatePostDTO): Promise<Po
     }
   }
 
+  // Validate the shared post exists and is public
+  if (dto.shared_from_post_id) {
+    const original = await db.from("posts").select("id,user_id,visibility").eq("id", dto.shared_from_post_id).maybeSingle();
+    if (original.error) throw new Error(original.error.message);
+    if (!original.data) throw new ValidationError("The post you are trying to share does not exist.");
+    if (original.data.visibility !== "public") throw new ValidationError("You can only share public posts.");
+  }
+
   const { data, error } = await db
     .from("posts")
     .insert({
       user_id: userId,
       session_id: dto.session_id ?? null,
       collection_id: dto.type === "collection" ? dto.collection_id : null,
+      shared_from_post_id: dto.shared_from_post_id ?? null,
       type: dto.type,
       visibility: dto.visibility ?? "public",
       topic: dto.topic ?? null,
@@ -84,6 +93,16 @@ export async function createPost(userId: string, dto: CreatePostDTO): Promise<Po
     .select()
     .single();
   if (error) throw new Error(error.message);
+
+  // Increment share_count on the original post (fire-and-forget)
+  if (dto.shared_from_post_id) {
+    (async () => {
+      try {
+        const { data } = await db.from("posts").select("share_count").eq("id", dto.shared_from_post_id!).maybeSingle();
+        if (data) await db.from("posts").update({ share_count: (data.share_count ?? 0) + 1 }).eq("id", dto.shared_from_post_id!);
+      } catch { /* fire-and-forget */ }
+    })();
+  }
 
   const post = data as Post;
   if (dto.type === "collection") {
@@ -139,7 +158,7 @@ export async function getPostById(postId: string, requestingUserId?: string): Pr
     .select(`
       *,
       users!posts_user_id_fkey (id, full_name, avatar_url, grade),
-      study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+      study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
     .eq("id", postId)
@@ -152,13 +171,14 @@ export async function getPostById(postId: string, requestingUserId?: string): Pr
   if (requestingUserId) {
     const [likeRes, saveRes] = await Promise.all([
       db.from("post_likes").select("post_id").eq("post_id", postId).eq("user_id", requestingUserId).maybeSingle(),
-      db.from("post_saves").select("post_id").eq("post_id", postId).eq("user_id", requestingUserId).maybeSingle(),
+      db.from("archive_items").select("id").eq("user_id", requestingUserId).eq("source_type", "post").eq("source_id", postId).maybeSingle(),
     ]);
     is_liked = !!likeRes.data;
     is_saved = !!saveRes.data;
   }
 
-  return buildFeedItem(data, is_liked, is_saved);
+  const sharedPostsMap = await fetchSharedPostsMap(data.shared_from_post_id ? [data.shared_from_post_id] : []);
+  return buildFeedItem(data, is_liked, is_saved, false, sharedPostsMap);
 }
 
 export async function getForYouFeed(
@@ -176,7 +196,7 @@ export async function getForYouFeed(
     .select(`
       *,
       users!posts_user_id_fkey (id, full_name, avatar_url, grade, reputation_score),
-      study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+      study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
     .eq("visibility", "public")
@@ -196,7 +216,7 @@ export async function getForYouFeed(
   const authorIds = Array.from(new Set(data.map((p: any) => p.user_id).filter(Boolean)));
   const [likesRes, savesRes, userRes, interestsRes, followsRes] = await Promise.all([
     db.from("post_likes").select("post_id").eq("user_id", userId).in("post_id", postIds),
-    db.from("post_saves").select("post_id").eq("user_id", userId).in("post_id", postIds),
+    db.from("archive_items").select("source_id").eq("user_id", userId).eq("source_type", "post").in("source_id", postIds),
     db.from("users").select("detected_level, grade, preferences").eq("id", userId).maybeSingle(),
     db.from("user_topic_interests").select("topic, interest_score").eq("user_id", userId),
     authorIds.length
@@ -204,7 +224,7 @@ export async function getForYouFeed(
       : Promise.resolve({ data: [] as any[], error: null }),
   ]);
   const likedIds = new Set((likesRes.data ?? []).map((r: any) => r.post_id));
-  const savedIds = new Set((savesRes.data ?? []).map((r: any) => r.post_id));
+  const savedIds = new Set((savesRes.data ?? []).map((r: any) => r.source_id));
   const followingIds = new Set((followsRes.data ?? []).map((r: any) => r.following_id));
   const userProfile = (userRes.data ?? {}) as {
     detected_level?: string | null;
@@ -270,7 +290,9 @@ export async function getForYouFeed(
     initialAuthorCounts,
   );
   const diversified = [...pinnedOwn, ...rankedRemainder].map(({ post }) => post);
-  return diversified.map((p: any) => buildFeedItem(p, likedIds.has(p.id), savedIds.has(p.id)));
+  const sharedIds = [...new Set(diversified.map((p: any) => p.shared_from_post_id).filter(Boolean))];
+  const sharedPostsMap = await fetchSharedPostsMap(sharedIds);
+  return diversified.map((p: any) => buildFeedItem(p, likedIds.has(p.id), savedIds.has(p.id), followingIds.has(p.user_id), sharedPostsMap));
 }
 
 export async function getFollowingFeed(
@@ -293,7 +315,7 @@ export async function getFollowingFeed(
     .select(`
       *,
       users!posts_user_id_fkey (id, full_name, avatar_url, grade),
-      study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+      study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
     .in("user_id", followingIds)
@@ -308,12 +330,14 @@ export async function getFollowingFeed(
   const postIds = (data ?? []).map((p: any) => p.id);
   const [likesRes, savesRes] = await Promise.all([
     db.from("post_likes").select("post_id").eq("user_id", userId).in("post_id", postIds),
-    db.from("post_saves").select("post_id").eq("user_id", userId).in("post_id", postIds),
+    db.from("archive_items").select("source_id").eq("user_id", userId).eq("source_type", "post").in("source_id", postIds),
   ]);
   const likedIds = new Set((likesRes.data ?? []).map((r: any) => r.post_id));
-  const savedIds = new Set((savesRes.data ?? []).map((r: any) => r.post_id));
+  const savedIds = new Set((savesRes.data ?? []).map((r: any) => r.source_id));
+  const sharedIds = [...new Set((data ?? []).map((p: any) => p.shared_from_post_id).filter(Boolean))];
+  const sharedPostsMap = await fetchSharedPostsMap(sharedIds);
 
-  return (data ?? []).map((p: any) => buildFeedItem(p, likedIds.has(p.id), savedIds.has(p.id)));
+  return (data ?? []).map((p: any) => buildFeedItem(p, likedIds.has(p.id), savedIds.has(p.id), true, sharedPostsMap));
 }
 
 export async function getMyPosts(
@@ -328,7 +352,7 @@ export async function getMyPosts(
     .select(`
       *,
       users!posts_user_id_fkey (id, full_name, avatar_url, grade),
-      study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+      study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
     .eq("user_id", userId)
@@ -344,12 +368,14 @@ export async function getMyPosts(
   const postIds = data.map((post: any) => post.id);
   const [likesRes, savesRes] = await Promise.all([
     db.from("post_likes").select("post_id").eq("user_id", userId).in("post_id", postIds),
-    db.from("post_saves").select("post_id").eq("user_id", userId).in("post_id", postIds),
+    db.from("archive_items").select("source_id").eq("user_id", userId).eq("source_type", "post").in("source_id", postIds),
   ]);
   const likedIds = new Set((likesRes.data ?? []).map((row: any) => row.post_id));
-  const savedIds = new Set((savesRes.data ?? []).map((row: any) => row.post_id));
+  const savedIds = new Set((savesRes.data ?? []).map((row: any) => row.source_id));
+  const sharedIds = [...new Set(data.map((p: any) => p.shared_from_post_id).filter(Boolean))];
+  const sharedPostsMap = await fetchSharedPostsMap(sharedIds);
 
-  return data.map((post: any) => buildFeedItem(post, likedIds.has(post.id), savedIds.has(post.id)));
+  return data.map((post: any) => buildFeedItem(post, likedIds.has(post.id), savedIds.has(post.id), false, sharedPostsMap));
 }
 
 export async function getUserPosts(
@@ -378,7 +404,7 @@ export async function getUserPosts(
     .select(`
       *,
       users!posts_user_id_fkey (id, full_name, avatar_url, grade),
-      study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+      study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
     .eq("user_id", targetUserId)
@@ -399,12 +425,14 @@ export async function getUserPosts(
   const postIds = data.map((post: any) => post.id);
   const [likesRes, savesRes] = await Promise.all([
     db.from("post_likes").select("post_id").eq("user_id", requestingUserId).in("post_id", postIds),
-    db.from("post_saves").select("post_id").eq("user_id", requestingUserId).in("post_id", postIds),
+    db.from("archive_items").select("source_id").eq("user_id", requestingUserId).eq("source_type", "post").in("source_id", postIds),
   ]);
   const likedIds = new Set((likesRes.data ?? []).map((row: any) => row.post_id));
-  const savedIds = new Set((savesRes.data ?? []).map((row: any) => row.post_id));
+  const savedIds = new Set((savesRes.data ?? []).map((row: any) => row.source_id));
+  const sharedIds = [...new Set(data.map((p: any) => p.shared_from_post_id).filter(Boolean))];
+  const sharedPostsMap = await fetchSharedPostsMap(sharedIds);
 
-  return data.map((post: any) => buildFeedItem(post, likedIds.has(post.id), savedIds.has(post.id)));
+  return data.map((post: any) => buildFeedItem(post, likedIds.has(post.id), savedIds.has(post.id), !isOwner && canSeeFollowerPosts, sharedPostsMap));
 }
 
 export async function getSavedPosts(
@@ -421,7 +449,7 @@ export async function getSavedPosts(
       posts (
         *,
         users!posts_user_id_fkey (id, full_name, avatar_url, grade),
-        study_sessions!posts_session_id_fkey (problem, image_url, breakdown_json),
+        study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
         archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
       )
     `)
@@ -450,13 +478,23 @@ export async function logInteraction(
   durationMs?: number
 ): Promise<void> {
   const db = getSupabaseAdmin();
-  await db
+  console.log(`[logInteraction] event=${eventType} post=${postId} user=${userId} duration=${durationMs ?? null}`);
+  const { error, status } = await db
     .from("user_post_interactions")
     .upsert(
       { user_id: userId, post_id: postId, event_type: eventType, duration_ms: durationMs ?? null, created_at: new Date().toISOString() },
       { onConflict: "user_id,post_id,event_type" }
     );
-  // Errors are silently swallowed — interaction logging must never break the main flow
+  if (error) {
+    console.error(`[logInteraction] upsert failed: status=${status}`, error);
+  } else {
+    console.log(`[logInteraction] upsert ok: status=${status} (201=inserted/trigger fired, 200/204=updated/no trigger)`);
+  }
+  // Check resulting view_count on the post for visibility
+  if (eventType === "view") {
+    const { data: post } = await db.from("posts").select("id, view_count").eq("id", postId).maybeSingle();
+    console.log(`[logInteraction] post view_count after upsert:`, post?.view_count ?? "column missing or post not found");
+  }
 }
 
 // ─── Personalized ranking ────────────────────────────────────────────────────
@@ -582,7 +620,61 @@ function clamp01(value: number): number {
 
 // ─── Feed item builder ────────────────────────────────────────────────────────
 
-function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeedItem {
+async function fetchSharedPostsMap(ids: string[]): Promise<Map<string, any>> {
+  if (!ids.length) return new Map();
+  const db = getSupabaseAdmin();
+  const { data } = await db
+    .from("posts")
+    .select(`
+      id, user_id, type, topic, caption, image_url, file_url, file_name,
+      like_count, comment_count, verified, created_at,
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      study_sessions!posts_session_id_fkey (problem),
+      archive_collections!posts_collection_id_fkey (id, name, description, color, icon, archive_collection_items(count))
+    `)
+    .in("id", ids);
+  const map = new Map<string, any>();
+  for (const row of data ?? []) map.set(row.id, row);
+  return map;
+}
+
+function buildSharedFrom(raw: any): import("../models/post.model.js").SharedFromPost | null {
+  if (!raw) return null;
+  const author = raw.users ?? {};
+  const session = raw.study_sessions ?? null;
+  const collection = raw.archive_collections ?? null;
+  return {
+    id: raw.id,
+    user_id: raw.user_id,
+    type: raw.type,
+    topic: raw.topic ?? null,
+    caption: raw.caption ?? null,
+    image_url: raw.image_url ?? session?.image_url ?? null,
+    file_url: raw.file_url ?? null,
+    file_name: raw.file_name ?? null,
+    like_count: raw.like_count ?? 0,
+    comment_count: raw.comment_count ?? 0,
+    verified: raw.verified ?? false,
+    created_at: raw.created_at,
+    author: {
+      id: author.id,
+      full_name: author.full_name,
+      avatar_url: author.avatar_url ?? null,
+      grade: author.grade ?? null,
+    },
+    problem: session?.problem ?? null,
+    collection: collection ? {
+      id: collection.id,
+      name: collection.name,
+      description: collection.description ?? null,
+      color: collection.color ?? "#2563FF",
+      icon: collection.icon ?? null,
+      item_count: Number(collection.archive_collection_items?.[0]?.count ?? 0),
+    } : null,
+  };
+}
+
+function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean, is_following = false, sharedPostsMap: Map<string, any> = new Map()): PostFeedItem {
   const session = raw.study_sessions ?? null;
   const collection = raw.archive_collections ?? null;
   const author = raw.users ?? {};
@@ -591,6 +683,7 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeed
     user_id: raw.user_id,
     session_id: raw.session_id,
     collection_id: raw.collection_id ?? null,
+    shared_from_post_id: raw.shared_from_post_id ?? null,
     type: raw.type,
     visibility: raw.visibility,
     topic: raw.topic,
@@ -600,6 +693,7 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeed
     comment_count: raw.comment_count ?? 0,
     save_count: raw.save_count ?? 0,
     view_count: raw.view_count ?? 0,
+    share_count: raw.share_count ?? 0,
     created_at: raw.created_at,
     author: {
       id: author.id,
@@ -607,6 +701,9 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeed
       avatar_url: author.avatar_url ?? null,
       grade: author.grade ?? null,
     },
+    session_title: session?.title ?? null,
+    session_subject: session?.subject ?? null,
+    session_topic: session?.topic ?? null,
     caption: raw.caption ?? null,
     problem: session?.problem ?? null,
     image_url: raw.image_url ?? session?.image_url ?? null,
@@ -622,8 +719,10 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean): PostFeed
       icon: collection.icon ?? null,
       item_count: Number(collection.archive_collection_items?.[0]?.count ?? 0),
     } : null,
+    shared_from: raw.shared_from_post_id ? buildSharedFrom(sharedPostsMap.get(raw.shared_from_post_id) ?? null) : null,
     is_liked,
     is_saved,
+    is_following,
   };
 }
 

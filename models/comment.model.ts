@@ -3,11 +3,15 @@ export interface Comment {
   post_id: string;
   user_id: string;
   parent_id: string | null;
+  image_url: string | null;
   content: string;
   created_at: string;
 }
 
 export interface CommentWithAuthor extends Comment {
+  like_count: number;
+  reply_count: number;
+  is_liked: boolean;
   author: {
     id: string;
     full_name: string;
@@ -19,4 +23,5 @@ export interface CommentWithAuthor extends Comment {
 export interface CreateCommentDTO {
   content: string;
   parent_id?: string | null;
+  image_url?: string | null;
 }

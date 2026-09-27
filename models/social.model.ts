@@ -24,4 +24,6 @@ export interface PublicProfile {
   math_interests: Record<string, number>;
   learning_goals: string | null;
   is_following: boolean;
+  followers_count: number;
+  following_count: number;
 }

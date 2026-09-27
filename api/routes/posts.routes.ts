@@ -4,7 +4,7 @@ import { ValidationError } from "../middlewares/error.middleware.js";
 import { createPost, deletePost, getPostById, getForYouFeed, getFollowingFeed, getMyPosts, getSavedPosts, getUserPosts, logInteraction } from "../../services/post.service.js";
 import type { InteractionEventType } from "../../services/post.service.js";
 import { likePost, unlikePost, savePost, unsavePost } from "../../services/social.service.js";
-import { getComments, createComment, deleteComment } from "../../services/comment.service.js";
+import { getComments, getReplies, createComment, deleteComment, likeComment, unlikeComment } from "../../services/comment.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -12,9 +12,9 @@ router.use(requireAuth);
 // POST /api/posts — share a session
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { session_id, collection_id, type, visibility, topic, grade, caption, image_url, image_ocr_text, file_url, file_name } = req.body;
+    const { session_id, collection_id, shared_from_post_id, type, visibility, topic, grade, caption, image_url, image_ocr_text, file_url, file_name } = req.body;
     if (!type) throw new ValidationError("type is required");
-    const post = await createPost(req.user!.sub, { session_id, collection_id, type, visibility, topic, grade, caption, image_url, image_ocr_text, file_url, file_name });
+    const post = await createPost(req.user!.sub, { session_id, collection_id, shared_from_post_id, type, visibility, topic, grade, caption, image_url, image_ocr_text, file_url, file_name });
     res.status(201).json({ post });
   } catch (err) { next(err); }
 });
@@ -140,7 +140,7 @@ router.delete("/:id/save", async (req: Request, res: Response, next: NextFunctio
 router.get("/:id/comments", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { cursor } = req.query as Record<string, string>;
-    const items = await getComments(req.params.id, { cursor });
+    const items = await getComments(req.params.id, req.user!.sub, { cursor });
     res.json({ items, nextCursor: items[items.length - 1]?.created_at ?? null });
   } catch (err) { next(err); }
 });
@@ -148,9 +148,9 @@ router.get("/:id/comments", async (req: Request, res: Response, next: NextFuncti
 // POST /api/posts/:id/comments
 router.post("/:id/comments", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { content, parent_id } = req.body;
-    if (!content?.trim()) throw new ValidationError("content is required");
-    const comment = await createComment(req.params.id, req.user!.sub, { content, parent_id });
+    const { content, parent_id, image_url } = req.body;
+    if (!content?.trim() && !image_url) throw new ValidationError("content is required");
+    const comment = await createComment(req.params.id, req.user!.sub, { content: content ?? '', parent_id, image_url });
     logInteraction(req.user!.sub, req.params.id, "comment").catch(() => {});
     res.status(201).json({ comment });
   } catch (err) { next(err); }
@@ -160,6 +160,30 @@ router.post("/:id/comments", async (req: Request, res: Response, next: NextFunct
 router.delete("/:id/comments/:commentId", async (req: Request, res: Response, next: NextFunction) => {
   try {
     await deleteComment(req.params.commentId, req.user!.sub);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+// GET /api/posts/:id/comments/:commentId/replies
+router.get("/:id/comments/:commentId/replies", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const replies = await getReplies(req.params.commentId, req.user!.sub);
+    res.json({ items: replies });
+  } catch (err) { next(err); }
+});
+
+// POST /api/posts/:id/comments/:commentId/like
+router.post("/:id/comments/:commentId/like", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await likeComment(req.params.commentId, req.user!.sub);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/posts/:id/comments/:commentId/like
+router.delete("/:id/comments/:commentId/like", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await unlikeComment(req.params.commentId, req.user!.sub);
     res.status(204).send();
   } catch (err) { next(err); }
 });

@@ -63,7 +63,7 @@ export async function getPublicProfile(targetUserId: string, requestingUserId?: 
     .eq("type", type)
     .in("visibility", visiblePostTypes);
 
-  const [solutionRes, questionRes, resourceRes, topInterestsRes, topicInterestCountRes] = await Promise.all([
+  const [solutionRes, questionRes, resourceRes, topInterestsRes, topicInterestCountRes, followersRes, followingRes] = await Promise.all([
     visibleCount("solution"),
     visibleCount("question"),
     visibleCount("resource"),
@@ -77,6 +77,8 @@ export async function getPublicProfile(targetUserId: string, requestingUserId?: 
       .from("user_topic_interests")
       .select("topic", { count: "exact", head: true })
       .eq("user_id", targetUserId),
+    db.from("user_follows").select("follower_id", { count: "exact", head: true }).eq("following_id", targetUserId),
+    db.from("user_follows").select("following_id", { count: "exact", head: true }).eq("follower_id", targetUserId),
   ]);
 
   return {
@@ -99,5 +101,7 @@ export async function getPublicProfile(targetUserId: string, requestingUserId?: 
     math_interests: prefs.math_interests ?? {},
     learning_goals: prefs.learning_goals ?? null,
     is_following: !isOwner && !!followRes.data,
+    followers_count: followersRes.count ?? 0,
+    following_count: followingRes.count ?? 0,
   };
 }

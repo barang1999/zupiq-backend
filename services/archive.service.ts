@@ -653,7 +653,7 @@ export async function saveArchiveItem(userId: string, input: SaveArchiveItemInpu
     archive_item_id: itemRow.id,
   });
   if (membership.error && membership.error.code !== "23505") throw operational(membership.error.message);
-  if (collection.is_system) await syncLegacySavedState(userId, itemRow, true);
+  await syncLegacySavedState(userId, itemRow, true);
   return getArchiveItem(userId, itemRow.id);
 }
 
@@ -689,7 +689,7 @@ export async function addItemToCollection(userId: string, collectionId: string, 
     archive_item_id: itemId,
   });
   if (result.error && result.error.code !== "23505") throw operational(result.error.message);
-  if (collection.is_system) await syncLegacySavedState(userId, item, true);
+  await syncLegacySavedState(userId, item, true);
   return getArchiveItem(userId, itemId);
 }
 
@@ -704,7 +704,12 @@ export async function removeItemFromCollection(userId: string, collectionId: str
     .eq("collection_id", collection.id)
     .eq("archive_item_id", itemId);
   if (result.error) throw operational(result.error.message);
-  if (collection.is_system) await syncLegacySavedState(userId, item, false);
+  const remaining = await db
+    .from("archive_collection_items")
+    .select("archive_item_id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("archive_item_id", itemId);
+  if ((remaining.count ?? 0) === 0) await syncLegacySavedState(userId, item, false);
 }
 
 export async function moveItemToCollection(

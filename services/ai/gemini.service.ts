@@ -4646,11 +4646,31 @@ export function extractAnchorClaims(solutionText: string, functionName: string =
   while ((match = pattern.exec(solutionText)) !== null) {
     // If the character immediately after the captured y-number is a math
     // continuation operator, the y-value is part of a compound expression —
-    // e.g. "f(-1) = -1 \cdot e^{-1}", "f(-1) = -1/e", "f(3) = 9 - 8\ln(3)".
-    // The regex captured only the leading digit; skip to avoid a false
-    // mismatch in verifyDiagramBlocksAgainstSolution.
+    // e.g. "f(-1) = -1 \cdot e^{-1}", "f(-1) = -1/e", "f(3) = 9 - 8\ln(3)",
+    // "f(-1) = 4 - (-1) - 2e^1" (a real observed case: the "(" of "(-1)"
+    // right after the "-" wasn't in this character class at all, so the
+    // filter never caught it — the claimed y silently stayed the leading "4"
+    // instead of the actual evaluated result, ≈ -0.44).
     const afterMatch = solutionText.slice(match.index + match[0].length).trimStart();
-    if (/^[\\\/^*×÷]|^e\^|^[+-]\s*[\d\\]/.test(afterMatch)) continue;
+    if (/^[\\\/^*×÷]|^e\^|^[+-]\s*[\d\\(]/.test(afterMatch)) continue;
+
+    // If the character immediately before "NAME(" (skipping whitespace) is a
+    // binary operator, this isn't a standalone "f(x0) = y0" claim at all —
+    // it's one term of a larger sum whose "=" belongs to the whole sum, not
+    // to this term alone. Real observed case: a tangent-line substitution
+    // "y = f'(0)(x - 0) + f(0) = 1(x) + 2" — the regex matches "f(0) = 1"
+    // literally, but that "1" is what f'(0) substitutes to, multiplying
+    // "(x)"; it says nothing about f(0) itself (which is actually 2, stated
+    // two words earlier as "+ f(0)" itself came from "f(0) = 4 - 0 - ... =
+    // 2" on the line just above). Skipping this avoids manufacturing a
+    // "f(0) = 1" claim that later gets compared against the real f(0) = 2
+    // and flagged as a false mismatch.
+    // A run of 2+ dashes ("---") is a prose section divider in this codebase's
+    // test fixtures and solution text, never a chain of unary/binary minus
+    // signs — only a single trailing "-" (not preceded by another "-") counts
+    // as a genuine math continuation operator here.
+    const beforeMatch = solutionText.slice(0, match.index).trimEnd();
+    if (/[+*/]$/.test(beforeMatch) || /(?<!-)-$/.test(beforeMatch)) continue;
 
     const x = Number(match[1]);
     const y = Number(match[2]);

@@ -42,6 +42,37 @@ describe("extractAnchorClaims", () => {
       { x: 0, y: 0 },
     ]);
   });
+
+  it("skips a compound expression whose continuation opens with a parenthesized term, not a bare digit", () => {
+    // Real observed case: f(x)=4-x-2e^{-x}, "f(-1) = 4 - (-1) - 2e^1" (true
+    // value ≈ -0.44) — the old filter only recognized "+"/"-" directly
+    // followed by a digit or backslash as a compound-expression signal, so
+    // "- (-1)" (a "-" then a space then "(") slipped through and the
+    // claimed y silently stayed the leading "4".
+    expect(extractAnchorClaims("f(-1) = 4 - (-1) - 2e^1", "f")).toEqual([]);
+  });
+
+  it("skips a match where NAME(x0) is one addend of a larger sum, not a standalone claim", () => {
+    // Real observed case: a tangent-line substitution written as
+    // "y = f'(0)(x - 0) + f(0) = 1(x) + 2" — f'(0)=1 and f(0)=2 (stated on
+    // the line just above) are substituted directly into the formula; the
+    // "=" here belongs to the whole sum "f'(0)(x-0) + f(0)", not to "f(0)"
+    // alone, and "1" is f'(0)'s substituted value multiplying "(x)", not a
+    // claim that f(0)=1. Matching it as "f(0) = 1" manufactured a false
+    // anchor that then disagreed with the real f(0) = 2 stated elsewhere.
+    expect(extractAnchorClaims(
+      "f'(0) = 1\nf(0) = 2\ny = f'(0)(x - 0) + f(0) = 1(x) + 2 = x + 2",
+      "f",
+    )).toEqual([{ x: 0, y: 2 }]);
+  });
+
+  it("does not mistake a '---' section divider for a math continuation operator", () => {
+    // A run of 2+ dashes is a prose divider throughout this codebase's
+    // solution text, never a chain of unary/binary minus signs — only a
+    // single trailing "-" (not itself preceded by another "-") should read
+    // as "this claim continues into a compound expression".
+    expect(extractAnchorClaims("f(0) = 0\n---\ng(0) = 4", "g")).toEqual([{ x: 0, y: 4 }]);
+  });
 });
 
 describe("verifyDiagramBlocksAgainstSolution", () => {
@@ -494,6 +525,40 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     expect(spec.featurePoints).toEqual(expect.arrayContaining([
       expect.objectContaining({ point: [1, 0] }),
     ]));
+  });
+
+  it("survives verifyDiagramBlocksAgainstSolution even when a tangent-line substitution reads like a false anchor for the plotted function", () => {
+    // Real observed case: f(x)=4-x-2e^{-x}, problemIntent="variation", an
+    // oblique asymptote D: y=-x+4, and a tangent line derived at x=0 written
+    // as "y = f'(0)(x - 0) + f(0) = 1(x) + 2" (f'(0)=1 and f(0)=2 both
+    // substituted directly into the formula on the same line). Before the
+    // extractAnchorClaims fix, that line was misread as a literal claim
+    // "f(0) = 1", which then disagreed with the real f(0) = 2 anchor stated
+    // two lines above — verifyDiagramBlocksAgainstSolution treated that as a
+    // majority-mismatch and silently dropped an otherwise entirely correct
+    // diagram, so the user's explicit graph request produced no diagram at
+    // all in the exported solution.
+    const expProblem = "$f$ ជាអនុគមន៍កំណត់លើ $\\mathbb{R}$ ដោយ $f(x)=4-x-2e^{-x}$ មានក្រាប $(C)$។";
+    const expSolution = [
+      "បង្ហាញថាបន្ទាត់ $D: y = -x + 4$ ជាអាស៊ីមតូតទ្រេតនៃ $(C)$ ខាង $+\\infty$។",
+      "$f'(x) = -1 + 2e^{-x}$។",
+      "$f(0) = 4 - 0 - 2e^0 = 4 - 2 = 2$ នាំឱ្យ $A(0, 2)$។",
+      "$f'(0) = -1 + 2e^0 = -1 + 2 = 1$។",
+      "សមីការបន្ទាត់ប៉ះ៖ $y = f'(0)(x - 0) + f(0) = 1(x) + 2 = x + 2$។",
+    ].join("\n");
+    const expFinalAnswer = "$D: y=-x+4$ ជាអាស៊ីមតូតទ្រេត, បន្ទាត់ប៉ះត្រង់ $A$ គឺ $y=x+2$";
+
+    const inferred = inferConstructedFunctionGraphForExplicitGraphRequest(
+      expProblem,
+      expSolution,
+      [],
+      "variation",
+    );
+    expect(inferred).toHaveLength(1);
+    expect(inferred[0]?.diagramType).toBe("function-graph");
+
+    const verified = verifyDiagramBlocksAgainstSolution(inferred as any, expSolution, expFinalAnswer);
+    expect(verified).toHaveLength(1);
   });
 
   it("never overrides a diagram that isn't a sign-table (e.g. the AI already produced a real function-graph)", () => {

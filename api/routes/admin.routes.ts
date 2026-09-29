@@ -160,7 +160,7 @@ router.get("/users", requireAdminAuth, async (req: Request, res: Response, next:
     let userQuery = db
       .from("users")
       .select(
-        "id, email, full_name, avatar_url, education_level, created_at, preferences, subscriptions(plan_key, status, provider, billing_interval, current_period_end, cancel_at_period_end)",
+        "id, email, full_name, avatar_url, education_level, is_verified, created_at, preferences, subscriptions(plan_key, status, provider, billing_interval, current_period_end, cancel_at_period_end)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
@@ -192,6 +192,7 @@ router.get("/users", requireAdminAuth, async (req: Request, res: Response, next:
       full_name: string;
       avatar_url: string | null;
       education_level: string;
+      is_verified: boolean;
       created_at: string;
       preferences: Record<string, unknown> | null;
       subscriptions: SubRow | SubRow[] | null;
@@ -271,7 +272,7 @@ router.get(
         await Promise.all([
           db
             .from("users")
-            .select("id, email, full_name, avatar_url, education_level, language, created_at, updated_at, preferences")
+            .select("id, email, full_name, avatar_url, education_level, language, is_verified, created_at, updated_at, preferences")
             .eq("id", id)
             .single(),
           db
@@ -322,6 +323,42 @@ router.get(
         has_rated_app: (prefs?.has_rated_app as boolean | undefined) ?? null,
       };
       res.json({ user: enrichedUser, subscription, sessions: sessions ?? [], stats });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── PATCH /api/admin/users/:id/verification ────────────────────────────────
+
+router.patch(
+  "/users/:id/verification",
+  requireAdminAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { is_verified } = req.body as { is_verified?: unknown };
+      if (typeof is_verified !== "boolean") {
+        res.status(400).json({ error: "is_verified must be a boolean." });
+        return;
+      }
+
+      const db = getSupabaseAdmin();
+      const { data: user, error } = await db
+        .from("users")
+        .update({ is_verified, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("id, is_verified")
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+      if (!user) {
+        res.status(404).json({ error: "User not found." });
+        return;
+      }
+
+      logger.info("[admin] user verification updated", { userId: id, isVerified: is_verified });
+      res.json({ user });
     } catch (err) {
       next(err);
     }

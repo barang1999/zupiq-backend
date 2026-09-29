@@ -17,6 +17,7 @@ export interface CommentWithAuthor extends Comment {
     full_name: string;
     avatar_url: string | null;
     grade: string | null;
+    is_verified: boolean;
   };
 }
 

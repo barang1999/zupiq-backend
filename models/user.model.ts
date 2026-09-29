@@ -62,6 +62,7 @@ export interface User {
   country_code: string | null;
   preferences: UserPreferences;
   avatar_url: string | null;
+  is_verified: boolean;
   created_at: string;
   updated_at: string;
   // Progression cache — updated on session creation, read by getUserProgression
@@ -106,6 +107,7 @@ export const USER_TABLE_SQL = `
     language TEXT DEFAULT 'en',
     preferences TEXT DEFAULT '{}',
     avatar_url TEXT,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   )

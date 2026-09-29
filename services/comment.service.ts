@@ -13,7 +13,7 @@ export async function getComments(
 
   let query = db
     .from("post_comments")
-    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade)`)
+    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade, is_verified)`)
     .eq("post_id", postId)
     .is("parent_id", null)
     .order("created_at", { ascending: true })
@@ -54,6 +54,7 @@ export async function getComments(
       full_name: c.users.full_name,
       avatar_url: c.users.avatar_url ?? null,
       grade: c.users.grade ?? null,
+      is_verified: Boolean(c.users.is_verified),
     },
   }));
 }
@@ -66,7 +67,7 @@ export async function getReplies(
 
   const { data, error } = await db
     .from("post_comments")
-    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade)`)
+    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade, is_verified)`)
     .eq("parent_id", commentId)
     .order("created_at", { ascending: true });
 
@@ -101,6 +102,7 @@ export async function getReplies(
       full_name: r.users.full_name,
       avatar_url: r.users.avatar_url ?? null,
       grade: r.users.grade ?? null,
+      is_verified: Boolean(r.users.is_verified),
     },
   }));
 }
@@ -130,7 +132,7 @@ export async function createComment(
   const { data: comment, error } = await db
     .from("post_comments")
     .insert({ post_id: postId, user_id: userId, content: dto.content, parent_id: dto.parent_id ?? null, image_url: dto.image_url ?? null })
-    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade)`)
+    .select(`*, users!post_comments_user_id_fkey (id, full_name, avatar_url, grade, is_verified)`)
     .single();
   if (error) throw new Error(error.message);
   return {
@@ -149,6 +151,7 @@ export async function createComment(
       full_name: comment.users.full_name,
       avatar_url: comment.users.avatar_url ?? null,
       grade: comment.users.grade ?? null,
+      is_verified: Boolean(comment.users.is_verified),
     },
   };
 }

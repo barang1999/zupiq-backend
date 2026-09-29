@@ -157,7 +157,7 @@ export async function getPostById(postId: string, requestingUserId?: string): Pr
     .from("posts")
     .select(`
       *,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
@@ -195,7 +195,7 @@ export async function getForYouFeed(
     .from("posts")
     .select(`
       *,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade, reputation_score),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified, reputation_score),
       study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
@@ -314,7 +314,7 @@ export async function getFollowingFeed(
     .from("posts")
     .select(`
       *,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
@@ -351,7 +351,7 @@ export async function getMyPosts(
     .from("posts")
     .select(`
       *,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
@@ -403,7 +403,7 @@ export async function getUserPosts(
     .from("posts")
     .select(`
       *,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
     `)
@@ -448,7 +448,7 @@ export async function getSavedPosts(
       created_at,
       posts (
         *,
-        users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+        users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
         study_sessions!posts_session_id_fkey (title, subject, topic, problem, image_url, breakdown_json),
         archive_collections!posts_collection_id_fkey (id, name, description, color, icon, visibility, archive_collection_items(count))
       )
@@ -628,7 +628,7 @@ async function fetchSharedPostsMap(ids: string[]): Promise<Map<string, any>> {
     .select(`
       id, user_id, type, topic, caption, image_url, file_url, file_name,
       like_count, comment_count, verified, created_at,
-      users!posts_user_id_fkey (id, full_name, avatar_url, grade),
+      users!posts_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       study_sessions!posts_session_id_fkey (problem),
       archive_collections!posts_collection_id_fkey (id, name, description, color, icon, archive_collection_items(count))
     `)
@@ -661,6 +661,7 @@ function buildSharedFrom(raw: any): import("../models/post.model.js").SharedFrom
       full_name: author.full_name,
       avatar_url: author.avatar_url ?? null,
       grade: author.grade ?? null,
+      is_verified: Boolean(author.is_verified),
     },
     problem: session?.problem ?? null,
     collection: collection ? {
@@ -700,6 +701,7 @@ function buildFeedItem(raw: any, is_liked: boolean, is_saved: boolean, is_follow
       full_name: author.full_name,
       avatar_url: author.avatar_url ?? null,
       grade: author.grade ?? null,
+      is_verified: Boolean(author.is_verified),
     },
     session_title: session?.title ?? null,
     session_subject: session?.subject ?? null,

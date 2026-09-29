@@ -21,6 +21,7 @@ export interface ResourceWithAuthor extends Resource {
     full_name: string;
     avatar_url: string | null;
     grade: string | null;
+    is_verified: boolean;
   };
   post_like_count: number;
   post_comment_count: number;

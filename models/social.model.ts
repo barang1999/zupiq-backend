@@ -8,6 +8,7 @@ export interface PublicProfile {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  is_verified: boolean;
   grade: string | null;
   education_level: string | null;
   detected_level: string | null;

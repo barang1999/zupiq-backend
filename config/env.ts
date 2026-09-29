@@ -66,8 +66,10 @@ export const env = {
   UPLOAD_MAX_SIZE_MB: parseInt(optionalEnv("UPLOAD_MAX_SIZE_MB", "10"), 10),
   ALLOWED_FILE_TYPES: optionalEnv(
     "ALLOWED_FILE_TYPES",
-    "image/jpeg,image/png,image/webp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    "image/jpeg,image/png,image/webp,application/pdf,application/epub+zip,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ).split(","),
+  LIBREOFFICE_BIN: optionalEnv("LIBREOFFICE_BIN", "soffice"),
+  DOCUMENT_CONVERSION_TIMEOUT_MS: parseInt(optionalEnv("DOCUMENT_CONVERSION_TIMEOUT_MS", "90000"), 10),
 
   // Rate limiting
   RATE_LIMIT_WINDOW_MS: parseInt(optionalEnv("RATE_LIMIT_WINDOW_MS", "900000"), 10),

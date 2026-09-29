@@ -30,6 +30,7 @@ export interface PostAuthor {
   full_name: string;
   avatar_url: string | null;
   grade: string | null;
+  is_verified: boolean;
 }
 
 export interface SharedFromPost {

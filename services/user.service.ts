@@ -61,51 +61,330 @@ export async function createUser(dto: CreateUserDTO): Promise<PublicUser> {
 export async function getSuggestedUsers(
   userId: string,
   limit = 10
-): Promise<{ id: string; full_name: string; avatar_url: string | null; detected_level: string | null; level_confidence: number }[]> {
+): Promise<{ id: string; full_name: string; avatar_url: string | null; detected_level: string | null; level_confidence: number; is_verified: boolean }[]> {
   const db = getSupabaseAdmin();
 
-  // Get current user for scoring
-  const { data: me } = await db.from("users").select("preferences").eq("id", userId).single();
-  const mySubjects: string[] = (me?.preferences as any)?.subjects ?? [];
-  const myCountry: string | null = null; // country_code scoring deferred until schema cache refreshes
+  const userFields = "id, full_name, avatar_url, preferences, education_level, grade, country_code, detected_level, level_confidence, is_verified, created_at";
+  const [meResult, followsResult, myInterestsResult, activePostsResult, recentUsersResult] = await Promise.all([
+    db
+      .from("users")
+      .select("preferences, education_level, grade, country_code, detected_level, level_confidence")
+      .eq("id", userId)
+      .single(),
+    db
+      .from("user_follows")
+      .select("following_id, created_at")
+      .eq("follower_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(500),
+    db
+      .from("user_topic_interests")
+      .select("topic, interest_score")
+      .eq("user_id", userId)
+      .order("interest_score", { ascending: false })
+      .limit(12),
+    db
+      .from("posts")
+      .select("user_id, created_at")
+      .neq("user_id", userId)
+      .eq("visibility", "public")
+      .order("created_at", { ascending: false })
+      .limit(500),
+    db
+      .from("users")
+      .select(userFields)
+      .neq("id", userId)
+      .order("created_at", { ascending: false })
+      .limit(300),
+  ]);
 
-  // Get IDs the user already follows
-  const { data: follows } = await db.from("user_follows").select("following_id").eq("follower_id", userId);
-  const followedIds = new Set((follows ?? []).map((f: any) => f.following_id));
+  if (meResult.error) throw new AppError(meResult.error.message, 500);
+  if (followsResult.error) throw new AppError(followsResult.error.message, 500);
+  if (recentUsersResult.error) throw new AppError(recentUsersResult.error.message, 500);
 
-  // Fetch candidate pool (recent users, excluding self + already followed)
-  const { data: candidates, error } = await db
-    .from("users")
-    .select("id, full_name, avatar_url, preferences, detected_level, level_confidence")
-    .neq("id", userId)
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const me = meResult.data as any;
+  const followedIds = new Set((followsResult.data ?? []).map((follow: any) => String(follow.following_id)));
+  const followedList = Array.from(followedIds).slice(0, 100);
 
-  console.log("[suggestions] me — country:", myCountry, "subjects:", mySubjects);
-  console.log("[suggestions] already following:", followedIds.size, "ids");
-  console.log("[suggestions] candidates fetched:", candidates?.length ?? 0, "error:", error?.message ?? null);
+  // A second-degree connection is someone followed by a person I follow.
+  // Shared-follow rows find people who follow at least one of the same people I do.
+  const [secondDegreeResult, sharedFollowResult] = followedList.length > 0
+    ? await Promise.all([
+        db
+          .from("user_follows")
+          .select("follower_id, following_id")
+          .in("follower_id", followedList)
+          .limit(2000),
+        db
+          .from("user_follows")
+          .select("follower_id, following_id")
+          .in("following_id", followedList)
+          .neq("follower_id", userId)
+          .limit(2000),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
 
-  if (error || !candidates) return [];
+  const secondDegreeCounts = new Map<string, number>();
+  for (const relation of secondDegreeResult.data ?? []) {
+    const candidateId = String((relation as any).following_id);
+    if (candidateId === userId || followedIds.has(candidateId)) continue;
+    secondDegreeCounts.set(candidateId, (secondDegreeCounts.get(candidateId) ?? 0) + 1);
+  }
 
-  // Score and rank
-  const scored = (candidates as any[])
-    .filter((u) => !followedIds.has(u.id))
-    .map((u) => {
-      const theirSubjects: string[] = (u.preferences as any)?.subjects ?? [];
-      const subjectOverlap = mySubjects.filter((s) => theirSubjects.includes(s)).length;
-      const countryMatch = myCountry && u.country_code === myCountry ? 2 : 0;
-      return { ...u, _score: subjectOverlap * 3 + countryMatch };
+  const sharedFollowCounts = new Map<string, number>();
+  for (const relation of sharedFollowResult.data ?? []) {
+    const candidateId = String((relation as any).follower_id);
+    if (candidateId === userId || followedIds.has(candidateId)) continue;
+    sharedFollowCounts.set(candidateId, (sharedFollowCounts.get(candidateId) ?? 0) + 1);
+  }
+
+  const activityByUser = new Map<string, { lastActiveAt: number; postCount: number }>();
+  for (const post of activePostsResult.error ? [] : (activePostsResult.data ?? [])) {
+    const candidateId = String((post as any).user_id);
+    if (followedIds.has(candidateId)) continue;
+    const createdAt = new Date((post as any).created_at).getTime();
+    const current = activityByUser.get(candidateId);
+    activityByUser.set(candidateId, {
+      lastActiveAt: Math.max(current?.lastActiveAt ?? 0, Number.isFinite(createdAt) ? createdAt : 0),
+      postCount: (current?.postCount ?? 0) + 1,
+    });
+  }
+
+  // Pull graph-connected and active accounts into the pool even when they are
+  // older than the recent-user fallback window.
+  const priorityIds = Array.from(new Set([
+    ...Array.from(secondDegreeCounts.keys()),
+    ...Array.from(sharedFollowCounts.keys()),
+    ...Array.from(activityByUser.keys()),
+  ])).filter(candidateId => candidateId !== userId && !followedIds.has(candidateId));
+
+  const recentCandidates = (recentUsersResult.data ?? []) as any[];
+  const recentIds = new Set(recentCandidates.map(candidate => String(candidate.id)));
+  const missingPriorityIds = priorityIds.filter(candidateId => !recentIds.has(candidateId)).slice(0, 300);
+  const priorityUserResults = await Promise.all(
+    chunkSuggestionIds(missingPriorityIds, 100).map(candidateIds =>
+      db.from("users").select(userFields).in("id", candidateIds)
+    )
+  );
+  const priorityUsers = priorityUserResults.flatMap(result => result.error ? [] : (result.data ?? []));
+
+  const candidateMap = new Map<string, any>();
+  for (const candidate of [...recentCandidates, ...priorityUsers]) {
+    const candidateId = String(candidate.id);
+    if (candidateId !== userId && !followedIds.has(candidateId)) candidateMap.set(candidateId, candidate);
+  }
+  const candidates = Array.from(candidateMap.values());
+
+  const myTopics = new Set(
+    (myInterestsResult.error ? [] : (myInterestsResult.data ?? []))
+      .map((interest: any) => normalizeSuggestionValue(interest.topic))
+      .filter(Boolean)
+  );
+  const candidateTopicCounts = new Map<string, number>();
+  if (myTopics.size > 0 && candidates.length > 0) {
+    const candidateIdChunks = chunkSuggestionIds(candidates.map(candidate => String(candidate.id)), 100);
+    const topicResults = await Promise.all(candidateIdChunks.map(candidateIds => db
+      .from("user_topic_interests")
+      .select("user_id, topic")
+      .in("user_id", candidateIds)
+    ));
+    for (const result of topicResults) {
+      if (result.error) continue;
+      for (const interest of result.data ?? []) {
+        if (!myTopics.has(normalizeSuggestionValue((interest as any).topic))) continue;
+        const candidateId = String((interest as any).user_id);
+        candidateTopicCounts.set(candidateId, (candidateTopicCounts.get(candidateId) ?? 0) + 1);
+      }
+    }
+  }
+
+  const mySubjects = new Set(suggestionSubjects(me?.preferences));
+  const myLevel = suggestionLevel(me);
+  const myGrade = normalizeSuggestionValue(me?.grade);
+  const myCountry = normalizeSuggestionValue(me?.country_code);
+  const now = Date.now();
+
+  const ranked = candidates
+    .map(candidate => {
+      const candidateId = String(candidate.id);
+      const theirSubjects = new Set(suggestionSubjects(candidate.preferences));
+      const subjectOverlap = Array.from(mySubjects).filter(subject => theirSubjects.has(subject)).length;
+      const topicOverlap = candidateTopicCounts.get(candidateId) ?? 0;
+      const secondDegree = Math.min(secondDegreeCounts.get(candidateId) ?? 0, 3);
+      const sharedFollows = Math.min(sharedFollowCounts.get(candidateId) ?? 0, 3);
+      const sameGrade = Boolean(myGrade && myGrade === normalizeSuggestionValue(candidate.grade));
+      const sameLevel = Boolean(myLevel && myLevel === suggestionLevel(candidate));
+      const sameCountry = Boolean(myCountry && myCountry === normalizeSuggestionValue(candidate.country_code));
+      const activity = activityByUser.get(candidateId);
+      const ageDays = activity?.lastActiveAt ? (now - activity.lastActiveAt) / 86_400_000 : Number.POSITIVE_INFINITY;
+      const recencyScore = ageDays <= 7 ? 4 : ageDays <= 30 ? 3 : ageDays <= 90 ? 1 : 0;
+      const activityScore = recencyScore + Math.min(activity?.postCount ?? 0, 2);
+
+      const score =
+        secondDegree * 40 +
+        sharedFollows * 20 +
+        Math.min(subjectOverlap, 3) * 8 +
+        Math.min(topicOverlap, 5) * 4 +
+        (sameGrade ? 6 : 0) +
+        (sameLevel ? 4 : 0) +
+        (sameCountry ? 3 : 0) +
+        activityScore;
+
+      return {
+        candidate,
+        score,
+        activityAt: activity?.lastActiveAt ?? 0,
+        tieBreaker: suggestionTieBreaker(`${userId}:${candidateId}`),
+      };
     })
-    .sort((a, b) => b._score - a._score)
+    .sort((a, b) =>
+      b.score - a.score ||
+      b.activityAt - a.activityAt ||
+      a.tieBreaker - b.tieBreaker
+    )
     .slice(0, limit)
-    .map(({ _score, preferences, ...u }) => ({
-      ...u,
-      detected_level: u.detected_level ?? null,
-      level_confidence: u.level_confidence ?? 0,
+    .map(({ candidate }) => ({
+      id: candidate.id,
+      full_name: candidate.full_name,
+      avatar_url: candidate.avatar_url ?? null,
+      detected_level: candidate.detected_level ?? null,
+      level_confidence: candidate.level_confidence ?? 0,
+      is_verified: Boolean(candidate.is_verified),
     }));
 
-  console.log("[suggestions] returning", scored.length, "users:", scored.map(u => ({ id: u.id, name: u.full_name, country: u.country_code })));
-  return scored;
+  console.log("[suggestions] ranked", ranked.length, "from", candidates.length, "candidates", {
+    following: followedIds.size,
+    secondDegree: secondDegreeCounts.size,
+    sharedFollows: sharedFollowCounts.size,
+    active: activityByUser.size,
+    subjects: mySubjects.size,
+    topics: myTopics.size,
+  });
+  return ranked;
+}
+
+function normalizeSuggestionValue(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase().replace(/[\s-]+/g, "_") : "";
+}
+
+function suggestionSubjects(preferences: unknown): string[] {
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) return [];
+  const prefs = preferences as Record<string, unknown>;
+  const values: string[] = [];
+  for (const field of [prefs.subjects, prefs.preferred_subjects]) {
+    if (Array.isArray(field)) values.push(...field.filter((value): value is string => typeof value === "string"));
+  }
+  if (prefs.math_interests && typeof prefs.math_interests === "object" && !Array.isArray(prefs.math_interests)) {
+    values.push(...Object.entries(prefs.math_interests as Record<string, unknown>)
+      .filter(([, weight]) => Number(weight) > 0)
+      .map(([subject]) => subject));
+  }
+  return Array.from(new Set(values.map(normalizeSuggestionValue).filter(Boolean)));
+}
+
+function suggestionLevel(user: any): string {
+  const educationLevel = normalizeSuggestionValue(user?.education_level);
+  if (educationLevel && educationLevel !== "auto") return educationLevel;
+  return Number(user?.level_confidence ?? 0) >= 0.6
+    ? normalizeSuggestionValue(user?.detected_level)
+    : "";
+}
+
+function chunkSuggestionIds(ids: string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += size) chunks.push(ids.slice(index, index + size));
+  return chunks;
+}
+
+function suggestionTieBreaker(seed: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+// ─── User search ─────────────────────────────────────────────────────────────
+
+export type UserSearchResult = {
+  id: string;
+  full_name: string;
+  username: string | null;
+  avatar_url: string | null;
+  education_level: string | null;
+  detected_level: string | null;
+  level_confidence: number;
+  is_verified: boolean;
+  is_following: boolean;
+};
+
+export async function searchUsers(
+  userId: string,
+  rawQuery: string,
+  limit = 20
+): Promise<UserSearchResult[]> {
+  const db = getSupabaseAdmin();
+  const query = rawQuery
+    .trim()
+    .slice(0, 50)
+    .replace(/[^\p{L}\p{N}\s_.'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (query.length < 2) return [];
+
+  const resultLimit = Math.min(Math.max(limit, 1), 30);
+  const pattern = `%${query}%`;
+
+  // Search public display names and onboarding usernames independently, then
+  // merge the results. Separate queries avoid building a user-controlled
+  // PostgREST `or` expression.
+  const [nameResult, usernameResult] = await Promise.all([
+    db
+      .from("users")
+      .select("id, full_name, avatar_url, education_level, preferences, detected_level, level_confidence, is_verified")
+      .neq("id", userId)
+      .ilike("full_name", pattern)
+      .limit(resultLimit),
+    db
+      .from("users")
+      .select("id, full_name, avatar_url, education_level, preferences, detected_level, level_confidence, is_verified")
+      .neq("id", userId)
+      .ilike("preferences->>username", pattern)
+      .limit(resultLimit),
+  ]);
+
+  if (nameResult.error) throw new AppError(nameResult.error.message, 500);
+  // Older environments may not have preferences stored as jsonb. Name search
+  // should remain available there instead of failing the whole request.
+  const candidates = [...(nameResult.data ?? []), ...(usernameResult.error ? [] : (usernameResult.data ?? []))];
+  const uniqueCandidates = Array.from(new Map(candidates.map((candidate: any) => [candidate.id, candidate])).values())
+    .slice(0, resultLimit) as any[];
+
+  if (uniqueCandidates.length === 0) return [];
+
+  const candidateIds = uniqueCandidates.map(candidate => candidate.id);
+  const { data: follows, error: followsError } = await db
+    .from("user_follows")
+    .select("following_id")
+    .eq("follower_id", userId)
+    .in("following_id", candidateIds);
+
+  if (followsError) throw new AppError(followsError.message, 500);
+  const followedIds = new Set((follows ?? []).map((follow: any) => follow.following_id));
+
+  return uniqueCandidates.map((candidate: any) => ({
+    id: candidate.id,
+    full_name: candidate.full_name,
+    username: candidate.preferences?.username?.trim() || null,
+    avatar_url: candidate.avatar_url ?? null,
+    education_level: candidate.education_level ?? null,
+    detected_level: candidate.detected_level ?? null,
+    level_confidence: candidate.level_confidence ?? 0,
+    is_verified: Boolean(candidate.is_verified),
+    is_following: followedIds.has(candidate.id),
+  }));
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────

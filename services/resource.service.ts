@@ -38,7 +38,7 @@ export async function getResourceFeed(opts: {
     .from("resources")
     .select(`
       *,
-      users!resources_user_id_fkey (id, full_name, avatar_url, grade),
+      users!resources_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       posts!resources_post_id_fkey (like_count, comment_count)
     `)
     .order("created_at", { ascending: false })
@@ -52,7 +52,7 @@ export async function getResourceFeed(opts: {
 
   return (data ?? []).map((r: any) => ({
     ...r,
-    author: { id: r.users.id, full_name: r.users.full_name, avatar_url: r.users.avatar_url ?? null, grade: r.users.grade ?? null },
+    author: { id: r.users.id, full_name: r.users.full_name, avatar_url: r.users.avatar_url ?? null, grade: r.users.grade ?? null, is_verified: Boolean(r.users.is_verified) },
     post_like_count: r.posts?.like_count ?? 0,
     post_comment_count: r.posts?.comment_count ?? 0,
   }));
@@ -64,7 +64,7 @@ export async function getResourceById(resourceId: string): Promise<ResourceWithA
     .from("resources")
     .select(`
       *,
-      users!resources_user_id_fkey (id, full_name, avatar_url, grade),
+      users!resources_user_id_fkey (id, full_name, avatar_url, grade, is_verified),
       posts!resources_post_id_fkey (like_count, comment_count)
     `)
     .eq("id", resourceId)
@@ -73,7 +73,7 @@ export async function getResourceById(resourceId: string): Promise<ResourceWithA
   if (!data) return null;
   return {
     ...data,
-    author: { id: data.users.id, full_name: data.users.full_name, avatar_url: data.users.avatar_url ?? null, grade: data.users.grade ?? null },
+    author: { id: data.users.id, full_name: data.users.full_name, avatar_url: data.users.avatar_url ?? null, grade: data.users.grade ?? null, is_verified: Boolean(data.users.is_verified) },
     post_like_count: data.posts?.like_count ?? 0,
     post_comment_count: data.posts?.comment_count ?? 0,
   };

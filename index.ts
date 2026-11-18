@@ -23,6 +23,7 @@ import socialRoutes from "./api/routes/social.routes.js";
 import resourcesRoutes from "./api/routes/resources.routes.js";
 import archiveRoutes from "./api/routes/archive.routes.js";
 import documentsRoutes from "./api/routes/documents.routes.js";
+import adsRoutes from "./api/routes/ads.routes.js";
 
 // ─── Middlewares ──────────────────────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from "./api/middlewares/error.middleware.js";
@@ -120,6 +121,7 @@ export async function createApp(): Promise<Express> {
   app.use("/api/resources", resourcesRoutes);
   app.use("/api/archive", archiveRoutes);
   app.use("/api/documents", documentsRoutes);
+  app.use("/api/config/ads", adsRoutes);
 
   // ─── Error handling (must come last) ─────────────────────────────────────
 

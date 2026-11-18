@@ -3726,6 +3726,145 @@ export function inferEllipseBlocks(
   }]);
 }
 
+// A hyperbola's standard equation ("\frac{y^2}{A} - \frac{x^2}{B} = 1" or the
+// x/y-swapped horizontal-transverse form, or either's plain-slash spelling)
+// has no native shape in GeometryDiagram.js the way an ellipse does (no
+// "hyperbola" case in its shape switch) — it has to be plotted as a sampled
+// curve, exactly like an ordinary function-graph. That means the model's own
+// diagram-generation pass has to derive the right closed-form "y = ..." (or
+// "x = ...") expression itself from A and B, and nothing else in this
+// pipeline checks a plotted "points"-kind curve against the solution's own
+// derived vertices/asymptotes the way verifyDiagramBlocksAgainstSolution
+// does for named functions and line claims — a hyperbola's curve has no
+// function name ("f", "g", ...) for extractAnchorClaims to key off of, and
+// its branches are "points"-kind, not "linear", so neither existing check
+// applies. A real observed case: "9y^2 - 16x^2 = 144" reduces to
+// "y^2/16 - x^2/9 = 1" (a=4, b=3, vertices at (0,±4)) — the model plotted
+// "y = (4/3)\sqrt{x^2 + 36}" instead of the correct "y = (4/3)\sqrt{x^2+9}",
+// putting y(0) at 8 instead of the true vertex 4, with no asymptotes, no
+// feature points, and a viewport that didn't even include the real vertex.
+// Runs as an unconditional repair (like repairReciprocalIntervalDiagramBlocks
+// and friends) rather than only filling in when nothing was plotted, since
+// a wrong-but-non-empty curve otherwise passes the generic "useful" filter
+// untouched.
+export function repairHyperbolaDiagramBlocks(
+  problem: string,
+  solutionText: string,
+  normalized: ReturnType<typeof normalizeDiagramBlocks>,
+): ReturnType<typeof normalizeDiagramBlocks> {
+  const source = normalizeDigits(`${problem}\n${solutionText}`);
+  if (!/(hyperbola|អ៊ីពែបូល|អុីពែបូល|ហ៊ីពែបូល)/i.test(source)) return normalized;
+
+  // Vertical transverse axis (opens up/down): y^2/A - x^2/B = 1.
+  const verticalFracRegex = /\\frac\s*\{\s*y\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*-\s*\\frac\s*\{\s*x\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*&?\s*=\s*1/i;
+  const verticalSlashRegex = /y\^2\s*\/\s*(\d+(?:\.\d+)?)\s*-\s*x\^2\s*\/\s*(\d+(?:\.\d+)?)\s*=\s*1/i;
+  // Horizontal transverse axis (opens left/right): x^2/A - y^2/B = 1.
+  const horizontalFracRegex = /\\frac\s*\{\s*x\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*-\s*\\frac\s*\{\s*y\^2\s*\}\s*\{\s*(\d+(?:\.\d+)?)\s*\}\s*&?\s*=\s*1/i;
+  const horizontalSlashRegex = /x\^2\s*\/\s*(\d+(?:\.\d+)?)\s*-\s*y\^2\s*\/\s*(\d+(?:\.\d+)?)\s*=\s*1/i;
+
+  let orientation: "vertical" | "horizontal" | null = null;
+  let aSq: number | null = null; // transverse semi-axis squared — denominator of the positive term
+  let bSq: number | null = null; // conjugate semi-axis squared — denominator of the negative term
+
+  const mVFrac = source.match(verticalFracRegex);
+  const mVSlash = source.match(verticalSlashRegex);
+  const mHFrac = source.match(horizontalFracRegex);
+  const mHSlash = source.match(horizontalSlashRegex);
+  if (mVFrac || mVSlash) {
+    orientation = "vertical";
+    const m = (mVFrac ?? mVSlash)!;
+    aSq = Number(m[1]);
+    bSq = Number(m[2]);
+  } else if (mHFrac || mHSlash) {
+    orientation = "horizontal";
+    const m = (mHFrac ?? mHSlash)!;
+    aSq = Number(m[1]);
+    bSq = Number(m[2]);
+  }
+
+  // No recognizable equation form found — nothing reliable to draw from.
+  // Leave whatever was already there rather than replace it with a guess.
+  if (orientation === null || aSq === null || bSq === null || !(aSq > 0) || !(bSq > 0)) return normalized;
+
+  const a = Math.sqrt(aSq);
+  const b = Math.sqrt(bSq);
+  const c = Math.sqrt(aSq + bSq);
+  const asymptoteSlope = Number((orientation === "vertical" ? a / b : b / a).toFixed(6));
+
+  // Deliberately NOT passed as `featurePoints`: normalizeFunctionGraphSpec's
+  // "dropped-stale-feature-point" check (utils/diagram-blocks.ts) verifies
+  // each feature point's y against *every* sampled "points"-kind function
+  // covering its x — a rule written for a single corrected curve, where a
+  // point that doesn't lie on it really is stale. A hyperbola's two branches
+  // both cover the same x-range by nature, so a vertex on the upper branch
+  // (e.g. (0, a)) is checked against the lower branch too, disagrees there,
+  // and gets silently dropped — likewise a focus, which isn't on either
+  // branch at all. There's no per-point "which function this belongs to"
+  // opt-out in that check (unlike shadedRegions' functionIndex), so vertices
+  // and foci are left as unlabeled: still mathematically implied by where
+  // the curve sits in the viewport, without fighting a check that exists to
+  // catch a real, different failure mode elsewhere. (A separate pass,
+  // enrichFunctionGraphBlockWithDerivedLines inside verifyDiagramBlocksAgainstSolution,
+  // independently re-adds whichever of these the solution text states and
+  // can verify against functions[0]'s own latex — typically just the vertex
+  // on the branch that happens to be first in the array.)
+  //
+  // The pair of asymptote lines below DOES fit now that
+  // normalizeFunctionGraphSpec's function cap was raised from 3 to 4
+  // specifically for this — a real observed case: a reference textbook
+  // diagram for this exact problem draws both "y=+(a/b)x" and "y=-(a/b)x"
+  // crossing through the origin, and the app's diagram looked visibly
+  // incomplete without them.
+
+  let curveFunctions: Array<{ kind: "points"; latex: string; points: never[] }>;
+  let domain: [number, number];
+  let range: [number, number];
+
+  if (orientation === "vertical") {
+    // y = ±(a/b)√(x²+b²) — defined for every real x.
+    domain = [-b * 3, b * 3];
+    curveFunctions = [
+      { kind: "points", latex: `y=\\frac{${a}}{${b}}\\sqrt{x^2+${bSq}}`, points: [] },
+      { kind: "points", latex: `y=-\\frac{${a}}{${b}}\\sqrt{x^2+${bSq}}`, points: [] },
+    ];
+    const yAtEdge = (a / b) * Math.sqrt(domain[1] ** 2 + bSq);
+    const yMax = Math.max(yAtEdge, c) * 1.15;
+    range = [-yMax, yMax];
+  } else {
+    // y = ±(b/a)√(x²-a²) — undefined (and correctly skipped by point
+    // sampling) for |x| < a, giving the two disjoint branches their real gap.
+    domain = [-a * 3, a * 3];
+    curveFunctions = [
+      { kind: "points", latex: `y=\\frac{${b}}{${a}}\\sqrt{x^2-${aSq}}`, points: [] },
+      { kind: "points", latex: `y=-\\frac{${b}}{${a}}\\sqrt{x^2-${aSq}}`, points: [] },
+    ];
+    const yAtEdge = (b / a) * Math.sqrt(domain[1] ** 2 - aSq);
+    const yMax = Math.max(yAtEdge, c) * 1.15;
+    range = [-yMax, yMax];
+  }
+
+  const asymptoteFunctions = [
+    { kind: "linear" as const, latex: formatLineEquationLatex(asymptoteSlope, 0), params: { m: asymptoteSlope, b: 0 }, color: "muted" },
+    { kind: "linear" as const, latex: formatLineEquationLatex(-asymptoteSlope, 0), params: { m: -asymptoteSlope, b: 0 }, color: "muted" },
+  ];
+
+  const result = normalizeDiagramBlocks([{
+    diagramType: "function-graph",
+    functions: [...curveFunctions, ...asymptoteFunctions],
+    domain,
+    range: [Number(range[0].toFixed(2)), Number(range[1].toFixed(2))],
+    xAxisLabel: "x",
+    yAxisLabel: "y",
+  }]);
+  if (result.length) {
+    logger.info("[diagram:hyperbola-repair-succeeded]", { orientation, aSq, bSq, domain });
+  } else {
+    logger.warn("[diagram:hyperbola-repair-failed] normalizeDiagramBlocks-rejected-synthesized-spec", { orientation, aSq, bSq, domain });
+    return normalized;
+  }
+  return result;
+}
+
 function parseCoordinatePairs(text: string): Array<[number, number]> {
   const normalized = normalizeDigits(text);
   const matches = Array.from(normalized.matchAll(/\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/g));
@@ -5524,6 +5663,9 @@ ${DIAGRAM_SPEC_GUIDE}`,
 
   const inverseSquareIntervalRepair = repairInverseSquareIntervalDiagramBlocks(problem, solutionText, normalized, problemIntent);
   if (inverseSquareIntervalRepair !== normalized) return inverseSquareIntervalRepair;
+
+  const hyperbolaRepair = repairHyperbolaDiagramBlocks(problem, solutionText, normalized);
+  if (hyperbolaRepair !== normalized) return hyperbolaRepair;
 
   // A "function-graph" that only ever plotted the derived asymptote/tangent
   // lines, never the curve those lines were derived from, is a real diagram

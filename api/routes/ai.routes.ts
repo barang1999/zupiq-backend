@@ -644,7 +644,7 @@ router.post(
   "/chat",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { messages, subject, session_id, upload_id, step_id } = req.body;
+      const { messages, subject, session_id, upload_id, step_id, snapshot_url, highlight_key, snapshot_rect, display_content } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         throw new ValidationError("messages array is required");
@@ -726,9 +726,11 @@ router.post(
           session_id: sid,
           step_id: step_id ?? null,
           role: "user",
-          content: { text: lastUserMsg.content, segments: segmentMathContent(lastUserMsg.content) },
+          // display_content is what the user typed (no context prefix); fall back to full content.
+          content: { text: display_content ?? lastUserMsg.content, segments: segmentMathContent(display_content ?? lastUserMsg.content) },
           subject: subject ?? null,
-          created_at: nowISO()
+          created_at: nowISO(),
+          metadata: (snapshot_url || highlight_key || snapshot_rect) ? { snapshot_url: snapshot_url ?? null, highlight_key: highlight_key ?? null, ...(snapshot_rect ? { snapshot_rect } : {}) } : null,
         },
         {
           id: generateId(),
@@ -739,8 +741,10 @@ router.post(
           content: { text: chatResult.text, segments: aiSegments, ...(aiBlocks?.length ? { blocks: aiBlocks } : {}) },
           subject: subject ?? null,
           created_at: nowISO(),
+          // Mirror highlight_key so both messages in an exchange share the same partition key.
           metadata: {
-            visualTable: chatResult.visualTable ?? null
+            visualTable: chatResult.visualTable ?? null,
+            ...(highlight_key ? { highlight_key } : {}),
           }
         },
       ]);

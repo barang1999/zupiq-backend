@@ -659,10 +659,11 @@ router.post(
   requireAdminAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { subject, html, userIds } = req.body as {
+      const { subject, html, userIds, extraEmails } = req.body as {
         subject?: string;
         html?: string;
         userIds?: string[] | "all";
+        extraEmails?: string[];
       };
 
       if (!subject?.trim() || !html?.trim()) {
@@ -670,8 +671,11 @@ router.post(
         return;
       }
 
-      if (!userIds || (Array.isArray(userIds) && userIds.length === 0)) {
-        res.status(400).json({ error: "userIds must be 'all' or a non-empty array." });
+      const hasUserIds = userIds === "all" || (Array.isArray(userIds) && userIds.length > 0);
+      const hasExtraEmails = Array.isArray(extraEmails) && extraEmails.length > 0;
+
+      if (!hasUserIds && !hasExtraEmails) {
+        res.status(400).json({ error: "userIds must be 'all' or a non-empty array, or extraEmails must be provided." });
         return;
       }
 
@@ -682,13 +686,24 @@ router.post(
         const { data, error } = await db.from("users").select("email, full_name");
         if (error) throw new Error(error.message);
         recipients = (data ?? []) as { email: string; full_name: string }[];
-      } else {
+      } else if (Array.isArray(userIds) && userIds.length > 0) {
         const { data, error } = await db
           .from("users")
           .select("email, full_name")
           .in("id", userIds);
         if (error) throw new Error(error.message);
         recipients = (data ?? []) as { email: string; full_name: string }[];
+      }
+
+      // Merge extra (non-user) emails, deduplicating against existing recipients
+      if (hasExtraEmails) {
+        const existingEmails = new Set(recipients.map((r) => r.email.toLowerCase()));
+        for (const email of extraEmails!) {
+          if (!existingEmails.has(email.toLowerCase())) {
+            recipients.push({ email, full_name: email.split("@")[0] });
+            existingEmails.add(email.toLowerCase());
+          }
+        }
       }
 
       if (recipients.length === 0) {

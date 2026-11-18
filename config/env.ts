@@ -121,6 +121,18 @@ export const env = {
   TEST_PREMIUM_PASSWORD: optionalEnv("TEST_PREMIUM_PASSWORD", ""),
   TEST_PREMIUM_FULL_NAME: optionalEnv("TEST_PREMIUM_FULL_NAME", "Jenny"),
 
+  // AdMob / Ads
+  ADS_ENABLED: optionalEnv("ADS_ENABLED", "false") === "true",
+  ADS_IOS_INTERSTITIAL_ENABLED: optionalEnv("ADS_IOS_INTERSTITIAL_ENABLED", "false") === "true",
+  ADS_ROLLOUT_PERCENT: parseInt(optionalEnv("ADS_ROLLOUT_PERCENT", "0"), 10),
+  ADS_MIN_GENERATIONS_BEFORE_FIRST: parseInt(optionalEnv("ADS_MIN_GENERATIONS_BEFORE_FIRST", "3"), 10),
+  ADS_MIN_MINUTES_SINCE_INSTALL: parseInt(optionalEnv("ADS_MIN_MINUTES_SINCE_INSTALL", "1440"), 10),
+  ADS_MIN_SECONDS_BETWEEN_ADS: parseInt(optionalEnv("ADS_MIN_SECONDS_BETWEEN_ADS", "900"), 10),
+  ADS_MIN_ACTIONS_BETWEEN_ADS: parseInt(optionalEnv("ADS_MIN_ACTIONS_BETWEEN_ADS", "2"), 10),
+  ADS_MAX_PER_SESSION: parseInt(optionalEnv("ADS_MAX_PER_SESSION", "2"), 10),
+  ADS_MAX_PER_LOCAL_DAY: parseInt(optionalEnv("ADS_MAX_PER_LOCAL_DAY", "3"), 10),
+  ADS_KILL_SWITCH: optionalEnv("ADS_KILL_SWITCH", "true") === "true",
+
   // VIP users — comma-separated list of email addresses that automatically
   // receive pro access without going through the payment flow.
   // Example: VIP_EMAILS=alice@example.com,bob@example.com

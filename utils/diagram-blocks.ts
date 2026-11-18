@@ -2388,7 +2388,15 @@ function normalizeFunctionGraphSpec(input: Record<string, unknown>, warnings: st
       };
     })
     .filter(Boolean)
-    .slice(0, 3);
+    // Was capped at 3 — too tight for a hyperbola: its two branches (each a
+    // separate "points"-kind function, since one "y=f(x)" curve can't carry
+    // two y-values per x) already use both slots that would otherwise go to
+    // its pair of symmetric asymptote lines, forcing one of the two to be
+    // dropped and leaving a visibly asymmetric diagram (a real observed
+    // case: a textbook reference diagram for the same problem showed both
+    // asymptotes crossing through the origin; the app's own diagram, sharing
+    // this 3-function cap, could only ever show one).
+    .slice(0, 4);
 
   let normalizedFeaturePoints = featurePoints
     .map((point) => {

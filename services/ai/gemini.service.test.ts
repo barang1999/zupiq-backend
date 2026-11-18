@@ -7,7 +7,7 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it, vi } from "vitest";
-import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferEllipseBlocks, inferInequalityFeasibleRegionBlocks, inferSolidGeometryBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferEllipseBlocks, inferInequalityFeasibleRegionBlocks, inferSolidGeometryBlocks, repairHyperbolaDiagramBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { logger } from "../../utils/logger.js";
 
@@ -731,10 +731,17 @@ describe("inferConstructedFunctionGraphForExplicitGraphRequest", () => {
     const blocks = inferConstructedFunctionGraphForExplicitGraphRequest(curveWordProblem, constructionNotesSolutionText, []);
     const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
     const linearFns = (spec.functions as Array<Record<string, unknown>>).filter((f) => f.kind === "linear");
-    expect(linearFns.length).toBe(2);
+    // 3, not 2: normalizeFunctionGraphSpec's overall function cap was raised
+    // from 3 to 4 (to fit a hyperbola's 2 curve branches + 2 asymptote
+    // lines) — this text derives a *third* genuine companion line too
+    // ("ចំណុចរបត់ ... មានបន្ទាត់ប៉ះផ្ដេក y = 4", the horizontal tangent at the
+    // inflection point), which the old cap of 3 (1 curve + up to 2
+    // companions) was silently trimming, not deliberately excluding.
+    expect(linearFns.length).toBe(3);
     const paramSets = linearFns.map((f) => f.params as { m: number; b: number });
     expect(paramSets.some((p) => p.m === -1 && p.b === 2)).toBe(true); // (D): y = 2 - x
     expect(paramSets.some((p) => p.m === -1 && Math.abs(p.b - (Math.E + 2)) < 1e-3)).toBe(true); // (Δ): y = -x + e + 2
+    expect(paramSets.some((p) => p.m === 0 && p.b === 4)).toBe(true); // horizontal tangent y = 4 at the inflection point
   });
 
   it("adds feature points that are independently verified to lie on the curve or a derived line, not just echoed from the prose", () => {
@@ -1191,6 +1198,97 @@ describe("inferEllipseBlocks", () => {
   it("returns nothing (not a hardcoded default ellipse) when no recognizable equation form is present at all", () => {
     const blocks = inferEllipseBlocks("គេឱ្យរេលីបមួយ។ រកចម្ងាយ។", "គ្មានសមីការច្បាស់លាស់នៅទីនេះ។", []);
     expect(blocks).toEqual([]);
+  });
+});
+
+describe("repairHyperbolaDiagramBlocks", () => {
+  // Real observed case: "9y^2 - 16x^2 = 144" reduces to "y^2/16 - x^2/9 = 1"
+  // (a=4, b=3, so vertices at (0,±4)) — the AI's own diagram-generation pass
+  // plotted "y = \frac{4}{3}\sqrt{x^2 + 36}" instead of the correct
+  // "y = \frac{4}{3}\sqrt{x^2 + 9}", putting the vertex at y=8 instead of the
+  // true y=4, with a viewport that didn't even include x=0's real value.
+  // Nothing else in the pipeline catches this: extractAnchorClaims needs a
+  // named function ("f", "g", ...) to key off of, and verifyDiagramBlocksAgainstSolution's
+  // line-claim check only looks at "linear"-kind functions, not "points".
+  const problem = "២. គេមានសមីការ $9y^2 - 16x^2 = 144$។ បង្ហាញថាសមីការនេះជាសមីការអ៊ីពែបូល។ រកកូអរដោនេនៃកំពូលទាំងពីរ និងកំណុំទាំងពីរនៃអ៊ីពែបូលនេះ។ រកសមីការអាស៊ីមតូតរបស់អ៊ីពែបូលនេះ និងសង់អ៊ីពែបូលនេះ។";
+  const solutionText = [
+    "ចែកអង្គទាំងពីរនឹង $144$៖",
+    "$$\\begin{aligned} \\frac{9y^2}{144} - \\frac{16x^2}{144} &= \\frac{144}{144} \\\\ \\frac{y^2}{16} - \\frac{x^2}{9} &= 1 \\end{aligned}$$",
+    "នេះជាសមីការស្តង់ដានៃអ៊ីពែបូល។",
+    "យើងមាន $a^2 = 16 \\Rightarrow a = 4$ និង $b^2 = 9 \\Rightarrow b = 3$។",
+    "កំពូលទាំងពីរ៖ $V_1(0, 4)$ និង $V_2(0, -4)$",
+    "សមីការអាស៊ីមតូត៖ $y = \\pm \\frac{4}{3}x$",
+  ].join("\n");
+
+  it("plots the correct closed-form curve, not the AI's own miscalculated one", () => {
+    const blocks = repairHyperbolaDiagramBlocks(problem, solutionText, []);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.diagramType).toBe("function-graph");
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    expect(functions).toHaveLength(4);
+    expect(functions[0]?.latex).toBe("y=\\frac{4}{3}\\sqrt{x^2+9}");
+    expect(functions[1]?.latex).toBe("y=-\\frac{4}{3}\\sqrt{x^2+9}");
+  });
+
+  it("also plots both asymptote lines, matching a reference diagram that shows them crossing at the origin", () => {
+    const blocks = repairHyperbolaDiagramBlocks(problem, solutionText, []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const linearFns = (spec.functions as Array<Record<string, unknown>>).filter((f) => f.kind === "linear");
+    expect(linearFns).toHaveLength(2);
+    const paramSets = linearFns.map((f) => f.params as { m: number; b: number });
+    expect(paramSets.some((p) => Math.abs(p.m - 4 / 3) < 1e-4 && p.b === 0)).toBe(true);
+    expect(paramSets.some((p) => Math.abs(p.m + 4 / 3) < 1e-4 && p.b === 0)).toBe(true);
+  });
+
+  it("the plotted curve's own sampled points put the vertex at the true y=4, not a miscalculated y=8", () => {
+    const blocks = repairHyperbolaDiagramBlocks(problem, solutionText, []);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<{ points: [number, number][] }>;
+    const vertexSample = functions[0].points.find((p) => Math.abs(p[0]) < 0.01);
+    expect(vertexSample?.[1]).toBeCloseTo(4, 1);
+  });
+
+  it("overrides an existing wrong-but-non-empty function-graph (the AI's own miscalculated one), not just an empty diagram", () => {
+    const wrongBlocks = normalizeDiagramBlocks([{
+      diagramType: "function-graph",
+      spec: {
+        type: "function-graph",
+        domain: [-8, 8],
+        range: [7.5, 14],
+        functions: [{ kind: "points", latex: "y=\\frac{4}{3}\\sqrt{x^2+36}", points: [] }],
+        featurePoints: [],
+      },
+    }]);
+    const blocks = repairHyperbolaDiagramBlocks(problem, solutionText, wrongBlocks);
+    expect(blocks).not.toBe(wrongBlocks);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<Record<string, unknown>>;
+    expect(functions[0]?.latex).toBe("y=\\frac{4}{3}\\sqrt{x^2+9}");
+  });
+
+  it("handles the horizontal-transverse-axis form (x^2/a^2 - y^2/b^2 = 1) too", () => {
+    const horizontalProblem = "អ៊ីពែបូលមានសមីការ $\\frac{x^2}{9} - \\frac{y^2}{16} = 1$។";
+    const blocks = repairHyperbolaDiagramBlocks(horizontalProblem, "", []);
+    expect(blocks).toHaveLength(1);
+    const spec = (blocks[0] as { spec?: Record<string, unknown> })?.spec as Record<string, unknown>;
+    const functions = spec.functions as Array<{ latex: string; points: [number, number][] }>;
+    expect(functions[0]?.latex).toBe("y=\\frac{4}{3}\\sqrt{x^2-9}");
+    // Vertex at x=3 (a=3): curve is undefined for |x|<3, so the branch
+    // should have no sampled points inside that gap.
+    expect(functions[0].points.every((p) => Math.abs(p[0]) >= 2.9)).toBe(true);
+  });
+
+  it("does nothing when the problem never mentions a hyperbola at all", () => {
+    const blocks = repairHyperbolaDiagramBlocks("រកតម្លៃ x។", "x = 5។", []);
+    expect(blocks).toEqual([]);
+  });
+
+  it("leaves an unrelated diagram untouched when no recognizable hyperbola equation is found despite the keyword", () => {
+    const vagueProblem = "អ៊ីពែបូលមួយមាន។ រកលក្ខណៈរបស់វា។";
+    const existing = normalizeDiagramBlocks([{ diagramType: "sign-table", rows: [{ label: "x", cells: ["-∞", "+∞"] }] }]);
+    const blocks = repairHyperbolaDiagramBlocks(vagueProblem, "គ្មានសមីការច្បាស់លាស់។", existing);
+    expect(blocks).toBe(existing);
   });
 });
 

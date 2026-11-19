@@ -220,6 +220,27 @@ async function buildContextualAIOptions(
   return aiOptions;
 }
 
+async function buildHighlightFocusContext(
+  req: Request,
+  sessionId: string | undefined,
+  focusText: string,
+): Promise<string | null> {
+  if (!sessionId || !focusText) return null;
+  const session = await getSessionById(sessionId, req.user!.sub);
+  if (!session) return null;
+
+  const breakdown = parseJsonDeep(session.breakdown_json) as any;
+  const finalAnswer = String(breakdown?.finalAnswer ?? (session as any).final_answer ?? '').trim();
+  const overview = String(breakdown?.insights?.simpleBreakdown ?? '').trim();
+  return `FOCUSED TUTORING CONTEXT:
+Original problem: ${String(session.problem ?? '').slice(0, 1200)}
+${finalAnswer ? `Final answer: ${finalAnswer.slice(0, 500)}` : ''}
+${overview ? `Solution overview: ${overview.slice(0, 600)}` : ''}
+
+Selected focus (answer the student's question about this region, while staying consistent with the problem):
+${focusText.slice(0, 1800)}`;
+}
+
 function clip(text: string, max = 180): string {
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
@@ -644,7 +665,7 @@ router.post(
   "/chat",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { messages, subject, session_id, upload_id, step_id, snapshot_url, highlight_key, snapshot_rect, display_content } = req.body;
+      const { messages, subject, session_id, upload_id, step_id, snapshot_url, highlight_key, snapshot_rect, display_content, highlight_context, focus_rect_version } = req.body;
 
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         throw new ValidationError("messages array is required");
@@ -668,6 +689,12 @@ router.post(
         step_id,
         referenceQuery: typeof lastUserMessage?.content === "string" ? lastUserMessage.content : "",
       });
+      const focusText = typeof highlight_context === "string" ? highlight_context.trim().slice(0, 1800) : "";
+      const focusRectVersion = focus_rect_version === 2 ? 2 : null;
+      if (focusText && !step_id) {
+        const focusSessionContext = await buildHighlightFocusContext(req, session_id, focusText);
+        if (focusSessionContext) aiOptions.stepContext = focusSessionContext;
+      }
       console.log("[ChatDebug] aiOptions resolved:", {
         hasStepContext: !!aiOptions.stepContext,
         stepContextLength: aiOptions.stepContext?.length ?? 0,
@@ -730,7 +757,7 @@ router.post(
           content: { text: display_content ?? lastUserMsg.content, segments: segmentMathContent(display_content ?? lastUserMsg.content) },
           subject: subject ?? null,
           created_at: nowISO(),
-          metadata: (snapshot_url || highlight_key || snapshot_rect) ? { snapshot_url: snapshot_url ?? null, highlight_key: highlight_key ?? null, ...(snapshot_rect ? { snapshot_rect } : {}) } : null,
+          metadata: (snapshot_url || highlight_key || snapshot_rect || focusText) ? { snapshot_url: snapshot_url ?? null, highlight_key: highlight_key ?? null, ...(snapshot_rect ? { snapshot_rect } : {}), ...(focusRectVersion ? { focus_rect_version: focusRectVersion } : {}), ...(focusText ? { highlight_context: focusText } : {}) } : null,
         },
         {
           id: generateId(),
@@ -745,6 +772,8 @@ router.post(
           metadata: {
             visualTable: chatResult.visualTable ?? null,
             ...(highlight_key ? { highlight_key } : {}),
+            ...(focusRectVersion ? { focus_rect_version: focusRectVersion } : {}),
+            ...(focusText ? { highlight_context: focusText } : {}),
           }
         },
       ]);

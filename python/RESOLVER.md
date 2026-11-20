@@ -139,6 +139,13 @@ python scripts/reindex_problem_embeddings.py
 
 ## Database Schema
 
+The resolver uses the same `SUPABASE_SCHEMA` as the Node API. In local
+development this is normally `dev`; production uses `public`. The resolver
+loads `python/.env` for `DATABASE_URL` and then the backend's
+`.env.<NODE_ENV>` for the schema. Do not leave the resolver on PostgreSQL's
+default `public` search path while the API writes sessions to `dev`, or the
+`problem_embeddings.session_id` foreign key will reject new feedback indexes.
+
 Table: `problem_embeddings` (pgvector required)
 
 | Column | Type | Description |

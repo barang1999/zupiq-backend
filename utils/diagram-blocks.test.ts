@@ -1344,3 +1344,71 @@ describe("per-function labelSvg (real MathJax rendering for on-graph labels)", (
     expect(blocks).toEqual([]);
   });
 });
+
+describe("physics diagram normalization", () => {
+  it("keeps a grounded free-body spec and drops friction without an explicit motion assertion", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "free-body",
+      physicsFamily: "newtonian-mechanics",
+      problemIntent: "net-force",
+      spec: { object: { shape: "block", label: "m" }, inclineDeg: 30, vectors: [
+        { role: "weight", directionDeg: 270, symbol: "mg" },
+        { role: "friction", directionDeg: 30, symbol: "f" },
+        { role: "normal", directionDeg: 120, symbol: "N" },
+      ] },
+    }]);
+    const spec = blocks[0]?.spec as Record<string, any>;
+    expect(blocks[0]?.physicsFamily).toBe("newtonian-mechanics");
+    expect(blocks[0]?.physicsIntent).toBe("free-body");
+    expect(spec.vectors).toHaveLength(2);
+    expect(spec.vectors.map((v: any) => v.role)).not.toContain("friction");
+  });
+
+  it("retains typed motion units and rejects incomplete motion data", () => {
+    const good = normalizeDiagramBlocks([{ diagramType: "motion", physicsFamily: "kinematics", spec: { quantity: "velocity", xUnit: "s", yUnit: "m/s", points: [[0, 0], [2, 4]] } }]);
+    expect((good[0]?.spec as any).yUnit).toBe("m/s");
+    expect(good[0]?.physicsIntent).toBe("motion-graph");
+    expect(normalizeDiagramBlocks([{ diagramType: "motion", spec: { points: [[0, 0]] } }])).toEqual([]);
+  });
+
+  it("keeps only connected circuit components", () => {
+    const blocks = normalizeDiagramBlocks([{ diagramType: "circuit", physicsFamily: "electric-circuits", spec: { nodes: [{ id: "a", position: [0, 0] }, { id: "b", position: [4, 0] }], components: [{ kind: "resistor", from: "a", to: "b", label: "R" }, { kind: "battery", from: "a", to: "missing" }] } }]);
+    const spec = blocks[0]?.spec as Record<string, any>;
+    expect(spec.components).toHaveLength(1);
+    expect(spec.components[0].kind).toBe("resistor");
+  });
+
+  it("closes a connected battery circuit when the model omitted only its return wire", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: [
+          { id: "n1", position: [0, 0] }, { id: "n2", position: [2, 0] },
+          { id: "n3", position: [4, 2] }, { id: "n4", position: [4, -2] }, { id: "n5", position: [6, 0] },
+        ],
+        components: [
+          { id: "bat", kind: "battery", from: "n1", to: "n2", label: "12 V" },
+          { id: "sw", kind: "switch", from: "n2", to: "n5", label: "Switch" },
+          { id: "r1", kind: "resistor", from: "n5", to: "n3", label: "R1 = 4 Ω" },
+          { id: "r2", kind: "resistor", from: "n3", to: "n4", label: "R2 = 6 Ω" },
+          { id: "r3", kind: "resistor", from: "n3", to: "n4", label: "R3 = 3 Ω" },
+        ],
+      },
+    }]);
+    const repaired = blocks[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toHaveLength(6);
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "n1", to: "n4" }));
+    expect(components.filter((component) => component.kind === "switch")).toHaveLength(1);
+    expect(repaired.warnings).toContain("repaired-open-circuit");
+    expect(repaired.warnings).toContain("canonical-circuit-layout");
+    expect(repaired.spec.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "n1", position: [0, 0] }),
+      expect.objectContaining({ id: "n2", position: [2, 0] }),
+      expect.objectContaining({ id: "n5", position: [4, 0] }),
+      expect.objectContaining({ id: "n3", position: [6, 0] }),
+      expect.objectContaining({ id: "n4", position: [6, 3] }),
+    ]));
+  });
+});

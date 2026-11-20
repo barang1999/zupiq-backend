@@ -10,8 +10,9 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     pricing: { monthly: 0, annual: null, currency: "USD" },
     entitlements: {
       basic_breakdowns: true,
+      step_breakdown_explain: false,
       deep_dive_access: true,
-      daily_deep_dive_token_limit: 150000,
+      daily_deep_dive_token_limit: 12000,
       knowledge_maps: false,
       knowledge_map_export: false,
       ai_tutor: false,
@@ -30,6 +31,7 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     pricing: { monthly: 5, annual: null, currency: "USD" },
     entitlements: {
       basic_breakdowns: true,
+      step_breakdown_explain: false,
       deep_dive_access: true,
       daily_deep_dive_token_limit: 120000,
       knowledge_maps: true,
@@ -50,6 +52,7 @@ export const PLAN_CATALOG: Record<PlanKey, PlanCatalogItem> = {
     pricing: { monthly: 9.99, annual: null, currency: "USD" },
     entitlements: {
       basic_breakdowns: true,
+      step_breakdown_explain: true,
       deep_dive_access: true,
       daily_deep_dive_token_limit: 500000,
       knowledge_maps: true,

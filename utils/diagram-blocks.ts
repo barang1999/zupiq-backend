@@ -75,7 +75,14 @@ export type DiagramType =
   | "venn-diagram"
   | "solid-geometry"
   | "pie-chart"
-  | "tree-diagram";
+  | "tree-diagram"
+  | "free-body"
+  | "motion"
+  | "circuit";
+
+export type PhysicsFamily = "newtonian-mechanics" | "kinematics" | "electric-circuits";
+export type PhysicsProblemIntent = "net-force" | "force-resolution" | "kinematic-analysis" | "circuit-analysis";
+export type PhysicsDiagramIntent = "free-body" | "force-components" | "motion-graph" | "circuit-topology";
 
 export type DiagramMathFamily =
   | "linear"
@@ -125,8 +132,10 @@ export type DiagramRenderBlock = {
   type: "diagram";
   diagramType: DiagramType;
   mathFamily?: DiagramMathFamily;
-  problemIntent?: DiagramProblemIntent;
+  physicsFamily?: PhysicsFamily;
+  problemIntent?: DiagramProblemIntent | PhysicsProblemIntent;
   diagramIntent?: DiagramIntent;
+  physicsIntent?: PhysicsDiagramIntent;
   renderTemplate?: string;
   spec: Record<string, unknown>;
   renderer: "zupiq-svg";
@@ -185,6 +194,9 @@ const DIAGRAM_TYPES = new Set<DiagramType>([
   "solid-geometry",
   "pie-chart",
   "tree-diagram",
+  "free-body",
+  "motion",
+  "circuit",
 ]);
 
 function stableStringify(value: unknown): string {
@@ -280,6 +292,7 @@ function normalizeMathFamily(value: unknown): DiagramMathFamily | undefined {
 
 function inferMathFamily(diagramType: DiagramType, spec: Record<string, unknown>): DiagramMathFamily {
   if (diagramType !== "function-graph") {
+    if (["free-body", "motion", "circuit"].includes(diagramType)) return "unknown";
     if (diagramType === "venn-diagram") return "venn";
     return diagramType as DiagramMathFamily;
   }
@@ -312,6 +325,21 @@ function defaultDiagramIntent(problemIntent: DiagramProblemIntent | undefined): 
 
 function normalizeRenderTemplate(value: unknown, fallback: unknown): string | undefined {
   return cleanToken(value, 64) || cleanToken(fallback, 64);
+}
+
+function normalizePhysicsFamily(value: unknown): PhysicsFamily | undefined {
+  const normalized = cleanToken(value);
+  return normalized && ["newtonian-mechanics", "kinematics", "electric-circuits"].includes(normalized) ? normalized as PhysicsFamily : undefined;
+}
+
+function normalizePhysicsProblemIntent(value: unknown): PhysicsProblemIntent | undefined {
+  const normalized = cleanToken(value);
+  return normalized && ["net-force", "force-resolution", "kinematic-analysis", "circuit-analysis"].includes(normalized) ? normalized as PhysicsProblemIntent : undefined;
+}
+
+function normalizePhysicsIntent(value: unknown): PhysicsDiagramIntent | undefined {
+  const normalized = cleanToken(value);
+  return normalized && ["free-body", "force-components", "motion-graph", "circuit-topology"].includes(normalized) ? normalized as PhysicsDiagramIntent : undefined;
 }
 
 function asFiniteNumber(value: unknown, fallback: number): number {
@@ -520,9 +548,9 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       const item = shape as Record<string, unknown>;
       let shapeType = String(item.shape || item.type || "").toLowerCase().trim();
       if (shapeType === "rectangle" || shapeType === "square") {
-        shapeType = "polygon";
+        shapeType = item.center && item.width !== undefined && item.height !== undefined ? "rect" : "polygon";
       }
-      if (!["triangle", "polygon", "circle", "ellipse", "segment", "line", "arrow", "angle", "arc", "semicircle", "sector", "point"].includes(shapeType)) return null;
+      if (!["triangle", "polygon", "rect", "circle", "ellipse", "segment", "line", "arrow", "angle", "arc", "semicircle", "sector", "sine-wave", "point"].includes(shapeType)) return null;
       const vertices = Array.isArray(item.vertices)
         ? item.vertices.map(asPoint).filter(Boolean).slice(0, 8)
         : [];
@@ -535,6 +563,10 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       const radius = asFiniteNumber(item.radius, Number.NaN);
       const rx = asFiniteNumber(item.rx, Number.NaN);
       const ry = asFiniteNumber(item.ry, Number.NaN);
+      const width = asFiniteNumber(item.width, Number.NaN);
+      const height = asFiniteNumber(item.height, Number.NaN);
+      const cornerRadius = asFiniteNumber(item.cornerRadius, Number.NaN);
+      const amplitude = asFiniteNumber(item.amplitude, Number.NaN);
       const startAngle = asFiniteNumber(item.startAngle, Number.NaN);
       const endAngle = asFiniteNumber(item.endAngle, Number.NaN);
       return {
@@ -549,6 +581,10 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
         radius: Number.isFinite(radius) ? radius : undefined,
         rx: Number.isFinite(rx) ? rx : undefined,
         ry: Number.isFinite(ry) ? ry : undefined,
+        width: Number.isFinite(width) ? width : undefined,
+        height: Number.isFinite(height) ? height : undefined,
+        cornerRadius: Number.isFinite(cornerRadius) ? cornerRadius : undefined,
+        amplitude: Number.isFinite(amplitude) ? amplitude : undefined,
         startAngle: Number.isFinite(startAngle) ? startAngle : undefined,
         endAngle: Number.isFinite(endAngle) ? endAngle : undefined,
         labels: Array.isArray(item.labels) ? item.labels.map((label) => String(label).slice(0, 16)).slice(0, 8) : undefined,
@@ -561,10 +597,12 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
       if (!shape) return false;
       if (shape.shape === "circle") return Boolean(shape.center) && Number.isFinite(shape.radius);
       if (shape.shape === "ellipse") return Boolean(shape.center) && Number.isFinite(shape.rx) && Number.isFinite(shape.ry);
+      if (shape.shape === "rect") return Boolean(shape.center) && Number.isFinite(shape.width) && Number.isFinite(shape.height);
       if (shape.shape === "arc") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "semicircle") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "sector") return Boolean(shape.center) && Number.isFinite(shape.radius) && Number.isFinite(shape.startAngle) && Number.isFinite(shape.endAngle);
       if (shape.shape === "arrow" || shape.shape === "line") return Boolean(shape.start) && Boolean(shape.end);
+      if (shape.shape === "sine-wave") return Boolean(shape.start) && Boolean(shape.end);
       if (shape.shape === "angle") return Boolean(shape.vertex) && Boolean(shape.from) && Boolean(shape.to);
       if (shape.shape === "point") return Array.isArray(shape.vertices) && shape.vertices.length > 0;
       return Array.isArray(shape.vertices) && shape.vertices.length >= 2;
@@ -605,10 +643,279 @@ function normalizeGeometrySpec(input: Record<string, unknown>, warnings: string[
 
   return {
     type: "geometry",
-    shapes: normalizedShapes.slice(0, 12),
+    // Physics schematics such as transformers can need several winding arcs,
+    // two complete external loops, and a resistor zigzag. Twelve cuts those
+    // diagrams off halfway through the load; twenty-four still bounds model
+    // output while preserving one complete instructional schematic.
+    shapes: normalizedShapes.slice(0, 24),
     options,
     labels: normalizedLabels.slice(0, 12),
   };
+}
+
+function normalizeFreeBodySpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const rawObject = input.object && typeof input.object === "object" ? input.object as Record<string, unknown> : {};
+  const shapeValue = String(rawObject.shape || "").toLowerCase();
+  const shape = ["block", "particle", "vehicle"].includes(shapeValue) ? shapeValue : "block";
+  const vectors = (Array.isArray(input.vectors) ? input.vectors : []).map((raw) => {
+    if (!raw || typeof raw !== "object") return null;
+    const item = raw as Record<string, unknown>;
+    const directionDeg = asFiniteNumber(item.directionDeg, Number.NaN);
+    const role = cleanToken(item.role, 32);
+    if (!Number.isFinite(directionDeg) || !role) return null;
+    // Friction needs an explicit physical assertion rather than a prose guess.
+    if (role === "friction" && item.opposesMotion !== true) return null;
+    return { role, directionDeg: ((directionDeg % 360) + 360) % 360, symbol: typeof item.symbol === "string" ? item.symbol.slice(0, 24) : role, color: normalizeDiagramColor(typeof item.color === "string" ? item.color : "primary"), magnitude: Number.isFinite(asFiniteNumber(item.magnitude, Number.NaN)) ? asFiniteNumber(item.magnitude, 1) : undefined };
+  }).filter(Boolean).slice(0, 8);
+  if (!vectors.length) warnings.push("empty-free-body");
+  return { type: "free-body", object: { shape, label: typeof rawObject.label === "string" ? rawObject.label.slice(0, 24) : undefined }, inclineDeg: Math.max(-80, Math.min(80, asFiniteNumber(input.inclineDeg, 0))), vectors };
+}
+
+function normalizeMotionSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const quantity = cleanToken(input.quantity, 24);
+  const normalizedQuantity = ["position", "velocity", "acceleration"].includes(quantity || "") ? quantity : "position";
+  const points = (Array.isArray(input.points) ? input.points : []).map(asPoint).filter(Boolean).slice(0, 80);
+  if (points.length < 2) warnings.push("empty-motion");
+  return { type: "motion", quantity: normalizedQuantity, xUnit: typeof input.xUnit === "string" ? input.xUnit.slice(0, 12) : "s", yUnit: typeof input.yUnit === "string" ? input.yUnit.slice(0, 12) : (normalizedQuantity === "position" ? "m" : normalizedQuantity === "velocity" ? "m/s" : "m/s²"), points, title: typeof input.title === "string" ? input.title.slice(0, 48) : undefined };
+}
+
+function normalizeCircuitSpec(input: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  const nodes = (Array.isArray(input.nodes) ? input.nodes : []).map((raw, index) => {
+    if (!raw || typeof raw !== "object") return null;
+    const item = raw as Record<string, unknown>; const position = asPoint(item.position);
+    return position ? { id: String(item.id || `n${index}`).slice(0, 24), position } : null;
+  }).filter(Boolean).slice(0, 16);
+  const nodeIds = new Set(nodes.map((node: any) => node.id));
+  const components = (Array.isArray(input.components) ? input.components : []).map((raw, index) => {
+    if (!raw || typeof raw !== "object") return null;
+    const item = raw as Record<string, unknown>; const kind = cleanToken(item.kind, 24); const from = String(item.from || "").slice(0, 24); const to = String(item.to || "").slice(0, 24);
+    const alternateTo = kind === "switch" && typeof item.alternateTo === "string" ? item.alternateTo.slice(0, 24) : undefined;
+    const state = kind === "switch" && (item.state === "open" || item.state === "closed") ? item.state : undefined;
+    const annotation = kind === "switch" && typeof item.annotation === "string" ? item.annotation.slice(0, 32) : undefined;
+    const transistorBase = kind === "npn-transistor" && typeof item.base === "string" ? item.base.slice(0, 24) : undefined;
+    if (!kind || !["wire", "resistor", "battery", "ac-source", "switch", "lamp", "capacitor", "inductor", "diode", "npn-transistor"].includes(kind) || !nodeIds.has(from) || !nodeIds.has(to) || from === to) return null;
+    if (kind === "npn-transistor" && (!transistorBase || !nodeIds.has(transistorBase))) return null;
+    return {
+      id: String(item.id || `c${index}`).slice(0, 24), kind, from, to,
+      ...(alternateTo && nodeIds.has(alternateTo) && alternateTo !== from && alternateTo !== to ? { alternateTo } : {}),
+      ...(state ? { state } : {}),
+      ...(annotation ? { annotation } : {}),
+      ...(transistorBase ? { base: transistorBase } : {}),
+      label: typeof item.label === "string" ? item.label.slice(0, 24) : undefined,
+    };
+  }).filter(Boolean).slice(0, 20);
+
+  // A circuit used to compute current must be a closed connected topology.
+  // Models sometimes provide every meaningful component, but omit the final
+  // return wire. When the graph has exactly two dangling ends and one battery,
+  // joining those ends is the only non-speculative repair: it closes the
+  // existing loop without inventing a component or changing any branch.
+  const usedNodeIds = new Set<string>();
+  const neighborsByNode = new Map<string, Set<string>>();
+  components.forEach((component: any) => {
+    const endpoints = [
+      component.to,
+      ...(component.kind === "switch" && component.alternateTo ? [component.alternateTo] : []),
+      ...(component.kind === "npn-transistor" && component.base ? [component.base] : []),
+    ];
+    usedNodeIds.add(component.from);
+    endpoints.forEach((endpoint) => {
+      usedNodeIds.add(endpoint);
+      const fromNeighbors = neighborsByNode.get(component.from) || new Set<string>();
+      fromNeighbors.add(endpoint);
+      neighborsByNode.set(component.from, fromNeighbors);
+      const toNeighbors = neighborsByNode.get(endpoint) || new Set<string>();
+      toNeighbors.add(component.from);
+      neighborsByNode.set(endpoint, toNeighbors);
+    });
+  });
+  const firstUsedNode = usedNodeIds.values().next().value as string | undefined;
+  const reachable = new Set<string>(firstUsedNode ? [firstUsedNode] : []);
+  const pending = firstUsedNode ? [firstUsedNode] : [];
+  while (pending.length) {
+    const current = pending.pop()!;
+    components.forEach((component: any) => {
+      const endpoints = [component.to, ...(component.kind === "switch" && component.alternateTo ? [component.alternateTo] : [])];
+      const adjacent = component.from === current ? endpoints : endpoints.includes(current) ? [component.from] : [];
+      adjacent.forEach((nodeId) => {
+        if (!reachable.has(nodeId)) {
+          reachable.add(nodeId);
+          pending.push(nodeId);
+        }
+      });
+    });
+  }
+  // Parallel components count as one electrical neighbor: a pair of parallel
+  // resistors ends at one dangling junction, not two independent exits.
+  const danglingNodeIds = [...usedNodeIds].filter((id) => neighborsByNode.get(id)?.size === 1);
+  const hasBattery = components.some((component: any) => component.kind === "battery");
+  if (hasBattery && usedNodeIds.size >= 2 && reachable.size === usedNodeIds.size && danglingNodeIds.length === 2 && components.length < 20) {
+    components.push({
+      id: `repair-wire-${danglingNodeIds[0]}-${danglingNodeIds[1]}`.slice(0, 24),
+      kind: "wire",
+      from: danglingNodeIds[0],
+      to: danglingNodeIds[1],
+      label: undefined,
+    });
+    warnings.push("repaired-open-circuit");
+  }
+
+  // A single series path feeding one parallel pair is common in introductory
+  // resistance problems. The model's node positions are not part of the
+  // topology contract and are often diagonal, so lay this narrow, unambiguous
+  // shape out as a textbook loop.
+  //
+  // Battery layout: source and series elements across the top (y=0), the
+  // parallel pair on the bottom-right (y=3). Classic DC resistance circuit.
+  //
+  // AC-source layout: source vertical on the left column (x=0), series
+  // elements along the bottom row (y=2), the parallel pair on the right
+  // column directly above the last series node (y=0). This keeps the return
+  // wire horizontal (branchEnd and source.from share y=0), avoiding the
+  // diagonal that the battery layout would produce for rectifier circuits.
+  const battery = components.find((component: any) => component.kind === "battery") as Record<string, any> | undefined;
+  const acSource = components.find((component: any) => component.kind === "ac-source") as Record<string, any> | undefined;
+  const layoutSourceForParallel = battery || acSource;
+  const connectionGroups = new Map<string, Array<Record<string, any>>>();
+  components.forEach((component: any) => {
+    const key = [component.from, component.to].sort().join("::");
+    connectionGroups.set(key, [...(connectionGroups.get(key) || []), component]);
+  });
+  const parallelGroups = [...connectionGroups.values()].filter((group) => group.length >= 2 && group.every((component) => component.kind !== "wire"));
+  if (layoutSourceForParallel && parallelGroups.length === 1) {
+    const parallelGroup = parallelGroups[0];
+    const parallelEndpoints = [parallelGroup[0].from, parallelGroup[0].to] as [string, string];
+    const excludedComponentIds = new Set([layoutSourceForParallel.id, ...parallelGroup.map((component) => component.id)]);
+    const queue: Array<{ nodeId: string; path: string[] }> = [{ nodeId: layoutSourceForParallel.to, path: [layoutSourceForParallel.to] }];
+    const visited = new Set<string>([layoutSourceForParallel.to]);
+    let seriesPath: string[] | null = null;
+    while (queue.length && !seriesPath) {
+      const current = queue.shift()!;
+      if (parallelEndpoints.includes(current.nodeId) && current.nodeId !== layoutSourceForParallel.to) {
+        seriesPath = current.path;
+        break;
+      }
+      components.forEach((component: any) => {
+        if (excludedComponentIds.has(component.id)) return;
+        const adjacent = component.from === current.nodeId ? component.to : component.to === current.nodeId ? component.from : null;
+        if (adjacent && !visited.has(adjacent) && adjacent !== layoutSourceForParallel.from) {
+          visited.add(adjacent);
+          queue.push({ nodeId: adjacent, path: [...current.path, adjacent] });
+        }
+      });
+    }
+    if (seriesPath) {
+      const branchStart = seriesPath[seriesPath.length - 1];
+      const branchEnd = parallelEndpoints[0] === branchStart ? parallelEndpoints[1] : parallelEndpoints[0];
+      const positions = new Map<string, [number, number]>([[layoutSourceForParallel.from, [0, 0]]]);
+      if (acSource) {
+        // Vertical source layout: source.to at [0,2], series steps right along y=2,
+        // branchEnd directly above branchStart so the return wire is horizontal.
+        seriesPath.forEach((nodeId, index) => positions.set(nodeId, [index * 2, 2]));
+        positions.set(branchEnd, [(seriesPath.length - 1) * 2, 0]);
+      } else {
+        // Battery layout (unchanged): series along y=0, branchEnd at y=3.
+        seriesPath.forEach((nodeId, index) => positions.set(nodeId, [(index + 1) * 2, 0]));
+        positions.set(branchEnd, [seriesPath.length * 2, 3]);
+      }
+      nodes.forEach((node: any) => {
+        const position = positions.get(node.id);
+        if (position) node.position = position;
+      });
+      warnings.push("canonical-circuit-layout");
+    }
+  }
+  // Wire-bridged near-parallel layout: source → series path → wire → two components sharing
+  // one far endpoint → return. Classic example: half-wave rectifier where C connects the
+  // post-diode junction (n2) directly to the load top (n5), while R_L connects via an
+  // intermediate wire node (n3). C and RL share n5 but have different near endpoints bridged
+  // by the wire n2–n3, so the exact-parallel check above never fires. Without this pass,
+  // both C and RL render as diagonals converging at a distant corner.
+  // Supports both battery and ac-source as the driving source.
+  if (!warnings.includes("canonical-circuit-layout")) {
+    const layoutSource = (battery || components.find((c: any) => c.kind === "ac-source")) as Record<string, any> | undefined;
+    if (layoutSource) {
+      const bridgeWires = components.filter((c: any) => c.kind === "wire");
+      const nonSourceNonWire = components.filter((c: any) => c.kind !== "wire" && c.id !== layoutSource.id);
+      let appliedLayout = false;
+      outer: for (let i = 0; i < nonSourceNonWire.length && !appliedLayout; i++) {
+        for (let j = i + 1; j < nonSourceNonWire.length && !appliedLayout; j++) {
+          const compA = nonSourceNonWire[i] as Record<string, any>;
+          const compB = nonSourceNonWire[j] as Record<string, any>;
+          // Find the shared endpoint (far node) and each component's near endpoint
+          let farNodeId: string | null = null;
+          let nearA: string | null = null;
+          let nearB: string | null = null;
+          if (compA.from === compB.from) { farNodeId = compA.from; nearA = compA.to; nearB = compB.to; }
+          else if (compA.from === compB.to) { farNodeId = compA.from; nearA = compA.to; nearB = compB.from; }
+          else if (compA.to === compB.from) { farNodeId = compA.to; nearA = compA.from; nearB = compB.to; }
+          else if (compA.to === compB.to) { farNodeId = compA.to; nearA = compA.from; nearB = compB.from; }
+          if (!farNodeId || !nearA || !nearB || nearA === nearB) continue;
+          // Near endpoints must be bridged by exactly one wire
+          const bridgeWire = bridgeWires.find((w: any) =>
+            (w.from === nearA && w.to === nearB) || (w.from === nearB && w.to === nearA)
+          );
+          if (!bridgeWire) continue;
+          // BFS from layoutSource.to to find the series path reaching nearA or nearB
+          const excludedIds = new Set([layoutSource.id, compA.id, compB.id, bridgeWire.id]);
+          const bfsQueue: Array<{ nodeId: string; path: string[] }> = [{ nodeId: layoutSource.to, path: [layoutSource.to] }];
+          const bfsVisited = new Set<string>([layoutSource.to]);
+          let seriesPath: string[] | null = null;
+          let reachedNear: string | null = null;
+          while (bfsQueue.length && !seriesPath) {
+            const current = bfsQueue.shift()!;
+            if ((current.nodeId === nearA || current.nodeId === nearB) && current.nodeId !== layoutSource.to) {
+              seriesPath = current.path;
+              reachedNear = current.nodeId;
+              break;
+            }
+            components.forEach((c: any) => {
+              if (excludedIds.has(c.id)) return;
+              const adj = c.from === current.nodeId ? c.to : c.to === current.nodeId ? c.from : null;
+              if (adj && !bfsVisited.has(adj) && adj !== layoutSource.from) {
+                bfsVisited.add(adj);
+                bfsQueue.push({ nodeId: adj, path: [...current.path, adj] });
+              }
+            });
+          }
+          if (!seriesPath || !reachedNear) continue;
+          // Assign rectangular positions: source vertical on the left, series path along
+          // the bottom row (y=2), wire-end and far node on the right column (x=max, y=2 and y=0).
+          // seriesPath[0] = layoutSource.to → placed at [0, 2] (directly below layoutSource.from).
+          // Each subsequent series node steps right by 2. The wire-end sits one step past the
+          // last series node; the far node sits directly above the wire-end.
+          const wireEnd = reachedNear === nearA ? nearB : nearA;
+          const positions = new Map<string, [number, number]>([[layoutSource.from, [0, 0]]]);
+          seriesPath.forEach((nodeId, index) => positions.set(nodeId, [index * 2, 2]));
+          const wireEndX = seriesPath.length * 2;
+          positions.set(wireEnd, [wireEndX, 2]);
+          positions.set(farNodeId, [wireEndX, 0]);
+          nodes.forEach((node: any) => {
+            const p = positions.get(node.id);
+            if (p) node.position = p;
+          });
+          // Reroute the component that connects to reachedNear (the series-path junction) so
+          // that it shares wireEnd as its near endpoint instead. n2 and n3 are the same
+          // electrical node via the bridge wire, so this is topology-preserving: both
+          // components now share identical from/to endpoints and the renderer draws them as
+          // adjacent vertical lanes rather than one diagonal and one vertical.
+          const compToReroute = reachedNear === nearA ? compA : compB;
+          if (compToReroute.from === reachedNear) {
+            compToReroute.from = wireEnd;
+          } else {
+            compToReroute.to = wireEnd;
+          }
+          warnings.push("canonical-circuit-layout");
+          appliedLayout = true;
+          break outer;
+        }
+      }
+    }
+  }
+  const connectedNodeIdsForCleanup = new Set(components.flatMap((c: any) => c.base ? [c.from, c.to, c.base] : [c.from, c.to]));
+  const cleanedNodes = nodes.filter((node: any) => connectedNodeIdsForCleanup.has(node.id));
+  if (cleanedNodes.length < 2 || !components.length) warnings.push("empty-circuit");
+  return { type: "circuit", nodes: cleanedNodes, components };
 }
 
 function evalFnAt(fn: Record<string, unknown>, x: number): number {
@@ -3789,6 +4096,10 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
       diagramType = "solid-geometry";
     } else if (Array.isArray(spec.sectors) || Array.isArray(raw.sectors) || Array.isArray(spec.slices) || Array.isArray(raw.slices)) {
       diagramType = "pie-chart";
+    } else if (Array.isArray(spec.vectors) || Array.isArray(raw.vectors)) {
+      diagramType = "free-body";
+    } else if (Array.isArray(spec.components) || Array.isArray(raw.components)) {
+      diagramType = "circuit";
     } else if (Array.isArray(spec.nodes) || Array.isArray(raw.nodes)) {
       diagramType = "tree-diagram";
     }
@@ -3809,10 +4120,17 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
             : diagramType === "function-graph" ? normalizeFunctionGraphSpec(inputSpec, warnings)
               : diagramType === "pie-chart" ? normalizePieChartSpec(inputSpec, warnings)
                 : diagramType === "tree-diagram" ? normalizeTreeDiagramSpec(inputSpec, warnings)
+                : diagramType === "free-body" ? normalizeFreeBodySpec(inputSpec, warnings)
+                : diagramType === "motion" ? normalizeMotionSpec(inputSpec, warnings)
+                : diagramType === "circuit" ? normalizeCircuitSpec(inputSpec, warnings)
                   : normalizeSolidGeometrySpec(inputSpec, warnings);
   const problemIntent = normalizeProblemIntent(raw.problemIntent ?? inputSpec.problemIntent);
   const diagramIntent = normalizeDiagramIntent(raw.diagramIntent ?? inputSpec.diagramIntent) || defaultDiagramIntent(problemIntent);
   const mathFamily = normalizeMathFamily(raw.mathFamily ?? inputSpec.mathFamily) || inferMathFamily(diagramType, spec);
+  const physicsFamily = normalizePhysicsFamily(raw.physicsFamily ?? inputSpec.physicsFamily);
+  const physicsIntent = normalizePhysicsIntent(raw.physicsIntent ?? inputSpec.physicsIntent)
+    || (diagramType === "free-body" ? "free-body" : diagramType === "motion" ? "motion-graph" : diagramType === "circuit" ? "circuit-topology" : undefined);
+  const physicsProblemIntent = normalizePhysicsProblemIntent(raw.problemIntent ?? inputSpec.problemIntent);
   const renderTemplate = diagramType === "function-graph"
     ? normalizeRenderTemplate(spec.graphStyle ?? inputSpec.graphStyle ?? inputSpec.template, raw.renderTemplate ?? inputSpec.renderTemplate)
     : normalizeRenderTemplate(raw.renderTemplate ?? inputSpec.renderTemplate, spec.graphStyle ?? inputSpec.graphStyle ?? inputSpec.template);
@@ -3821,6 +4139,9 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
     mathFamily,
     ...(problemIntent ? { problemIntent } : {}),
     ...(diagramIntent ? { diagramIntent } : {}),
+    ...(physicsFamily ? { physicsFamily } : {}),
+    ...(physicsProblemIntent ? { problemIntent: physicsProblemIntent } : {}),
+    ...(physicsIntent ? { physicsIntent } : {}),
     ...(renderTemplate ? { renderTemplate } : {}),
   };
 
@@ -3828,8 +4149,11 @@ export function normalizeDiagramBlock(block: unknown): DiagramRenderBlock | null
     type: "diagram",
     diagramType,
     mathFamily,
+    ...(physicsFamily ? { physicsFamily } : {}),
     ...(problemIntent ? { problemIntent } : {}),
     ...(diagramIntent ? { diagramIntent } : {}),
+    ...(physicsProblemIntent ? { problemIntent: physicsProblemIntent } : {}),
+    ...(physicsIntent ? { physicsIntent } : {}),
     ...(renderTemplate ? { renderTemplate } : {}),
     spec: enrichedSpec,
     renderer: "zupiq-svg",
@@ -3963,6 +4287,9 @@ const CRITICAL_WARNINGS = new Set([
   "empty-venn-diagram",
   "empty-pie-chart",
   "empty-tree-diagram",
+  "empty-free-body",
+  "empty-motion",
+  "empty-circuit",
 ]);
 
 export function normalizeDiagramBlocks(blocks: unknown): DiagramRenderBlock[] {

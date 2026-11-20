@@ -19,7 +19,22 @@ def _get_conn():
     # Strip pgbouncer=true — it's a Supabase hint for their pooler proxy,
     # not a valid psycopg2 DSN parameter.
     dsn = re.sub(r"[&?]pgbouncer=true", "", os.environ["DATABASE_URL"])
-    return psycopg2.connect(dsn)
+    schema = os.getenv("SUPABASE_SCHEMA", "public").strip() or "public"
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
+        raise RuntimeError("SUPABASE_SCHEMA must be a simple PostgreSQL schema name")
+
+    conn = psycopg2.connect(dsn)
+    try:
+        # Supabase's REST client in the Node API explicitly uses
+        # SUPABASE_SCHEMA (dev locally, public in production). psycopg2 would
+        # otherwise silently use public, causing an FK miss for sessions saved
+        # by the API in dev.study_sessions.
+        with conn.cursor() as cur:
+            cur.execute(f'SET search_path TO "{schema}", public')
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _vec_literal(embedding: list[float]) -> str:

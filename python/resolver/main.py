@@ -2,9 +2,18 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path
 
 from dotenv import load_dotenv
+# The resolver keeps its own DATABASE_URL in python/.env, while the Node API
+# keeps the active Supabase schema in zupiq-backend/.env.<NODE_ENV>. Load both
+# without overriding the resolver credentials so local development indexes the
+# same dev schema as the API instead of PostgreSQL's default public schema.
 load_dotenv()
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+NODE_ENV = os.getenv("NODE_ENV", "development")
+load_dotenv(BACKEND_ROOT / f".env.{NODE_ENV}")
+load_dotenv(BACKEND_ROOT / ".env")
 
 from fastapi import FastAPI, HTTPException
 
@@ -32,6 +41,10 @@ def _semantic_signature_match(incoming: str, cached: str) -> tuple[bool, list[st
     return incoming_tokens == cached_tokens, incoming_tokens, cached_tokens
 
 logging.basicConfig(level=logging.INFO)
+# httpx includes query parameters in its INFO request log. The embedding API
+# key is supplied as a query parameter, so keep transport logs at WARNING and
+# retain only the resolver's redacted, application-level diagnostics.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Zupiq Resolver", version="1.0.0")

@@ -1,7 +1,7 @@
 import { Content, Part, Type } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
-import { buildFunctionGraphIntentDiagramBlock, evaluateLatexAt, evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
+import { buildFunctionGraphIntentDiagramBlock, evaluateLatexAt, evaluateLatexWithBindings, latexReferencesVariable, normalizeDiagramBlocks, type DiagramRenderBlock } from "../../utils/diagram-blocks.js";
 import { buildMathBlocks, buildRenderBlocks, type RenderBlock } from "../../utils/render-blocks.js";
 import { toPlainTitleText } from "../../utils/plain-title.js";
 import { getGeminiClient } from "./core/client.js";
@@ -887,7 +887,10 @@ Diagram spec examples:
 - function-graph reciprocal integral/area: use problemIntent="integral" and diagramIntent="shaded-interval"; include shadedRegions [{"from":a,"to":b,"baseline":0,"functionIndex":0,"color":"primary"}].
 - function-graph trigonometric textbook wave: {"graphStyle":"trig-wave","functions":[{"kind":"sine","params":{"a":1,"b":1,"c":0,"d":0},"latex":"f(x)=\\sin x"}],"domain":[0,6.28318],"range":[-1.25,1.25],"xTicks":[{"value":0,"label":"0"},{"value":1.5708,"label":"\\pi/2","major":true},{"value":3.14159,"label":"\\pi"},{"value":4.71239,"label":"3\\pi/2","major":true},{"value":6.28318,"label":"2\\pi"}],"yTicks":[{"value":-1,"label":"-1"},{"value":0,"label":"0","major":true},{"value":1,"label":"1"}],"guideLines":[{"orientation":"vertical","value":1.5708,"from":0,"to":1,"label":"\\pi/2","color":"focus"},{"orientation":"vertical","value":4.71239,"from":0,"to":-1,"label":"3\\pi/2","color":"focus"},{"orientation":"horizontal","value":1,"from":0,"to":1.5708,"color":"focus"},{"orientation":"horizontal","value":-1,"from":0,"to":4.71239,"color":"focus"}]}
 - solid-geometry: {"shape":"cylinder"|"cone"|"sphere"|"cube"|"cuboid"|"pyramid"|"prism"|"frustum","params":{"r":4,"h":10}} — use named math params per shape: cylinder/cone→{r,h}; sphere→{r}; cube→{a}; cuboid→{l,w,h}; pyramid→{a,h}; prism→{a,h}; frustum→{r,R,h}. Do NOT use a dimensions field.
-- tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}`;
+- tree-diagram: {"rootLabel":"Start","nodes":[{"id":"start","label":"Start"},{"id":"R1","parentId":"start","label":"R","branchLabel":"3/5"},{"id":"B1","parentId":"start","label":"B","branchLabel":"2/5"}]}
+- free-body: {"object":{"shape":"block","label":"m"},"inclineDeg":30,"vectors":[{"role":"weight","directionDeg":270,"symbol":"mg"},{"role":"normal","directionDeg":120,"symbol":"N"},{"role":"friction","directionDeg":30,"symbol":"f","opposesMotion":true}]}
+- motion: {"quantity":"velocity","xUnit":"s","yUnit":"m/s","points":[[0,0],[2,4],[5,4]]}
+- circuit: {"nodes":[{"id":"a","position":[0,0]},{"id":"b","position":[4,0]}],"components":[{"id":"r1","kind":"resistor","from":"a","to":"b","label":"R"}]}. Circuit kinds: wire, resistor, inductor, capacitor, battery, ac-source, switch, lamp, diode, npn-transistor. A two-position switch uses alternateTo for its second valid terminal. An npn-transistor uses from=emitter node, to=collector node, and a required base field for the base node ID.`;
 
 const KHMER_DIGITS: Record<string, string> = {
   "០": "0",
@@ -4504,7 +4507,7 @@ const diagramBlockSchema = {
   items: {
     type: Type.OBJECT,
     properties: {
-      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "venn-diagram", "solid-geometry", "pie-chart", "tree-diagram"] },
+      diagramType: { type: Type.STRING, enum: ["geometry", "function-graph", "number-line", "sign-table", "venn-diagram", "solid-geometry", "pie-chart", "tree-diagram", "free-body", "motion", "circuit"] },
       mathFamily: {
         type: Type.STRING,
         nullable: true,
@@ -4519,6 +4522,16 @@ const diagramBlockSchema = {
         type: Type.STRING,
         nullable: true,
         enum: ["interval-points", "secant-interval", "shaded-interval", "point-check", "function-value", "variation", "range", "basic-graph", "unknown"],
+      },
+      physicsFamily: {
+        type: Type.STRING,
+        nullable: true,
+        enum: ["newtonian-mechanics", "kinematics", "electric-circuits"],
+      },
+      physicsIntent: {
+        type: Type.STRING,
+        nullable: true,
+        enum: ["free-body", "force-components", "motion-graph", "circuit-topology"],
       },
       renderTemplate: { type: Type.STRING, nullable: true },
       spec: { type: Type.OBJECT },
@@ -5329,6 +5342,562 @@ export function verifySolutionCompleteness(solutionText: string, finalAnswer: st
   }
 }
 
+/**
+ * Keeps typed physics extraction reachable for legacy sessions stored as
+ * "General". Eligibility only starts the structured pipeline; circuit
+ * topology is still normalized and validated before it can be rendered.
+ */
+export function isDiagramExtractionCandidate(
+  subject: unknown,
+  problem: string,
+  solutionText: string,
+  finalAnswer?: string,
+): boolean {
+  const normalizedSubject = `${subject || ""}`.toLowerCase();
+  const source = `${problem}\n${solutionText}\n${finalAnswer ?? ""}`.toLowerCase();
+  return normalizedSubject.includes("math")
+    || normalizedSubject.includes("physics")
+    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|cone|sphere|prism|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection|pie.?chart|piechart|force|resultant|vector|tree|probability)/i.test(source)
+    || /\b(?:circuit|resistor|resistance|voltage|current|battery|electric(?:al)?|series|parallel|ohm)\b|\\omega|Ω|\br\s*_\s*\{?\s*(?:total|eq)\s*\}?/i.test(source)
+    || /(សៀគ្វី|រេស៊ីស្តង់|តង់ស្យុង|ចរន្ត|អគ្គិសនី|ថ្មពិល|ស៊េរី|ប៉ារ៉ាឡែល|កម្លាំង|ល្បឿន|ការបង្កើនល្បឿន)/.test(source)
+    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|កោន|ព្រីស|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ|មែកធាង|ប្រូបាប)/.test(source);
+}
+
+/**
+ * Rebuilds the standard RC timing circuit when the source explicitly names a
+ * battery, R1/R2, a capacitor, and a two-position switch. The model often
+ * draws only the two resistor branches, which loses both the source and the
+ * capacitor needed to explain the stated time constants. `alternateTo`
+ * records the second SPDT terminal without pretending both positions are
+ * closed at once.
+ */
+export function repairExplicitRcTwoPositionSwitchCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasTwoPositionSwitch = /two[\s-]*position\s+switch/i.test(source);
+  const hasBattery = /\bbattery\b|\bV\s*=/i.test(source);
+  const hasCapacitor = /\bcapacitor\b|\bC\s*=/i.test(source);
+  const hasR1 = /\bR\s*_?\{?1\}?\b/i.test(source);
+  const hasR2 = /\bR\s*_?\{?2\}?\b/i.test(source);
+  if (!hasTwoPositionSwitch || !hasBattery || !hasCapacitor || !hasR1 || !hasR2) return blocks;
+
+  const voltage = source.match(/(?:\bV\s*=\s*)?(\d+(?:\.\d+)?)\s*(?:\\text\{\s*V\s*\}|\bV\b)/i)?.[1];
+  const capacitance = source.match(/\bC\s*=\s*\$?\s*(\d+(?:\.\d+)?)\s*\\text\{\s*\}\s*\\mu\s*\\text\{\s*F\s*\}/i)?.[1];
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const resistor = (index: number) => existingComponents.find((component) =>
+      component.kind === "resistor" && new RegExp(`\\br\\s*_?\\{?${index}\\}?\\b`, "i").test(`${String(component.label || "")} ${String(component.id || "")}`)
+    );
+    const r1 = resistor(1); const r2 = resistor(2);
+    if (!r1 || !r2) return block;
+
+    const existingSwitch = existingComponents.find((component) => component.kind === "switch");
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "source-negative", position: [0, 0] }, { id: "source-positive", position: [2, 0] },
+          { id: "switch-common", position: [4, 0] }, { id: "switch-r1", position: [6, -2] },
+          { id: "switch-r2", position: [6, 2] }, { id: "r1-end", position: [8, -2] },
+          { id: "r2-end", position: [8, 2] }, { id: "capacitor-positive", position: [10, 0] },
+          { id: "capacitor-negative", position: [10, 3] },
+        ],
+        components: [
+          { id: "battery", kind: "battery", from: "source-negative", to: "source-positive", label: voltage ? `${voltage} V` : "Battery" },
+          { id: "supply-wire", kind: "wire", from: "source-positive", to: "switch-common" },
+          { id: "switch", kind: "switch", from: "switch-common", to: "switch-r1", alternateTo: "switch-r2", label: existingSwitch?.label || "S" },
+          { id: "r1", kind: "resistor", from: "switch-r1", to: "r1-end", label: r1.label },
+          { id: "r2", kind: "resistor", from: "switch-r2", to: "r2-end", label: r2.label },
+          { id: "r1-output", kind: "wire", from: "r1-end", to: "capacitor-positive" },
+          { id: "r2-output", kind: "wire", from: "r2-end", to: "capacitor-positive" },
+          { id: "capacitor", kind: "capacitor", from: "capacitor-positive", to: "capacitor-negative", label: capacitance ? `${capacitance} μF` : "Capacitor" },
+          { id: "return-wire", kind: "wire", from: "capacitor-negative", to: "source-negative" },
+        ],
+      },
+    }])[0];
+    return normalized
+      ? { ...normalized, warnings: [...(normalized.warnings || []), "repaired-explicit-rc-two-position-circuit"] }
+      : block;
+  });
+}
+
+/**
+ * Rebuilds the standard two-mesh Kirchhoff diagram: the E1/R1 and E2/R2
+ * branches form separate outer loops around a shared R3 branch. Models often
+ * collapse E2 and R3 onto the same endpoints, which falsely makes them
+ * parallel and cannot represent the two loop equations in the solution.
+ */
+export function repairExplicitKirchhoffTwoLoopCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasKirchhoffContext = /kirchhoff|គីរចូហ្វ/i.test(source);
+  const hasLeftLoop = /e\s*_?\{?1\}?[\s\S]{0,160}r\s*_?\{?1\}?[\s\S]{0,160}r\s*_?\{?3\}?/i.test(source);
+  const hasRightLoop = /e\s*_?\{?2\}?[\s\S]{0,160}r\s*_?\{?2\}?[\s\S]{0,160}r\s*_?\{?3\}?/i.test(source);
+  if (!hasKirchhoffContext || !hasLeftLoop || !hasRightLoop) return blocks;
+
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const component = (kind: string, symbol: string, index: number) => existingComponents.find((item) =>
+      item.kind === kind && new RegExp(`\\b${symbol}\\s*_?\\{?${index}\\}?\\b`, "i").test(`${String(item.label || "")} ${String(item.id || "")}`)
+    );
+    const e1 = component("battery", "e", 1); const e2 = component("battery", "e", 2);
+    const r1 = component("resistor", "r", 1); const r2 = component("resistor", "r", 2); const r3 = component("resistor", "r", 3);
+    if (!e1 || !e2 || !r1 || !r2 || !r3) return block;
+
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "top", position: [6, 0] }, { id: "bottom", position: [6, 4] },
+          { id: "left-r1", position: [4, 0] }, { id: "left-source", position: [2, 0] },
+          { id: "left-bottom", position: [2, 4] }, { id: "right-r2", position: [8, 0] },
+          { id: "right-source", position: [10, 0] }, { id: "right-bottom", position: [10, 4] },
+        ],
+        components: [
+          { id: "r1", kind: "resistor", from: "top", to: "left-r1", label: r1.label },
+          { id: "e1", kind: "battery", from: "left-r1", to: "left-source", label: e1.label },
+          { id: "left-side", kind: "wire", from: "left-source", to: "left-bottom" },
+          { id: "left-return", kind: "wire", from: "left-bottom", to: "bottom" },
+          { id: "r3", kind: "resistor", from: "top", to: "bottom", label: r3.label },
+          { id: "r2", kind: "resistor", from: "top", to: "right-r2", label: r2.label },
+          { id: "e2", kind: "battery", from: "right-r2", to: "right-source", label: e2.label },
+          { id: "right-side", kind: "wire", from: "right-source", to: "right-bottom" },
+          { id: "right-return", kind: "wire", from: "right-bottom", to: "bottom" },
+        ],
+      },
+    }])[0];
+    return normalized
+      ? { ...normalized, warnings: [...(normalized.warnings || []), "repaired-explicit-kirchhoff-two-loop-circuit"] }
+      : block;
+  });
+}
+
+/**
+ * Rebuilds an explicitly stated Wheatstone bridge. The four arm resistors
+ * form a diamond, R5 (or the galvanometer) bridges its top and bottom nodes,
+ * and the battery supplies the left/right bridge terminals externally. This
+ * avoids malformed model output that places the battery in parallel with an
+ * arm or connects the central branch to a side node.
+ */
+export function repairExplicitWheatstoneBridgeCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasBridge = /wheatstone|ស្ពាន/i.test(source);
+  const resistorNamesPresent = [1, 2, 3, 4, 5].every((index) => new RegExp(`\\br\\s*_?\\{?${index}\\}?\\b`, "i").test(source));
+  if (!hasBridge || !resistorNamesPresent) return blocks;
+
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const resistor = (index: number) => existingComponents.find((item) =>
+      item.kind === "resistor" && new RegExp(`\\b(?:r|res)\\s*_?\\{?${index}\\}?\\b`, "i").test(`${String(item.label || "")} ${String(item.id || "")}`)
+    );
+    const r1 = resistor(1); const r2 = resistor(2); const r3 = resistor(3); const r4 = resistor(4); const r5 = resistor(5);
+    const battery = existingComponents.find((item) => item.kind === "battery");
+    if (!r1 || !r2 || !r3 || !r4 || !r5 || !battery) return block;
+
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "source-negative", position: [0, 2] }, { id: "source-positive", position: [1, 2] },
+          { id: "left", position: [2, 2] }, { id: "top", position: [5, 0] },
+          { id: "right", position: [8, 2] }, { id: "bottom", position: [5, 4] },
+        ],
+        components: [
+          { id: "battery", kind: "battery", from: "source-negative", to: "source-positive", label: battery.label },
+          { id: "supply-wire", kind: "wire", from: "source-positive", to: "left" },
+          { id: "r1", kind: "resistor", from: "left", to: "top", label: r1.label },
+          { id: "r2", kind: "resistor", from: "top", to: "right", label: r2.label },
+          { id: "r3", kind: "resistor", from: "left", to: "bottom", label: r3.label },
+          { id: "r4", kind: "resistor", from: "bottom", to: "right", label: r4.label },
+          { id: "r5", kind: "resistor", from: "top", to: "bottom", label: r5.label },
+          { id: "return-wire", kind: "wire", from: "right", to: "source-negative" },
+        ],
+      },
+    }])[0];
+    return normalized
+      ? { ...normalized, warnings: [...(normalized.warnings || []), "repaired-explicit-wheatstone-bridge"] }
+      : block;
+  });
+}
+
+/** Rebuilds an explicitly stated series RLC circuit with AC source symbols. */
+export function repairExplicitSeriesRlcCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasSeriesRlc = /(?:series\s+RLC|RLC[\s\S]{0,80}(?:series|ជាស៊េរី))/i.test(source);
+  const hasAcSource = /\bAC\b|V\s*_?\{?rms\}?/i.test(source);
+  if (!hasSeriesRlc || !hasAcSource) return blocks;
+
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const labelled = (expression: RegExp) => existingComponents.find((item) => expression.test(`${String(item.label || "")} ${String(item.id || "")}`));
+    const resistor = labelled(/\bR\b/i);
+    const inductor = labelled(/\bL\b/i);
+    const capacitor = existingComponents.find((item) => item.kind === "capacitor") || labelled(/\bC\b/i);
+    const sourceComponent = existingComponents.find((item) => item.kind === "ac-source" || item.kind === "battery") || labelled(/V\s*_?\{?rms\}?/i);
+    if (!resistor || !inductor || !capacitor || !sourceComponent) return block;
+
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "source-negative", position: [0, 2] }, { id: "source-positive", position: [0, 0] },
+          { id: "after-r", position: [2, 0] }, { id: "after-l", position: [4, 0] },
+          { id: "after-c", position: [6, 0] }, { id: "right-top", position: [8, 0] },
+          { id: "right-bottom", position: [8, 2] },
+        ],
+        components: [
+          { id: "ac-source", kind: "ac-source", from: "source-negative", to: "source-positive", label: sourceComponent.label || "V_{rms}" },
+          { id: "r", kind: "resistor", from: "source-positive", to: "after-r", label: resistor.label || "R" },
+          { id: "l", kind: "inductor", from: "after-r", to: "after-l", label: inductor.label || "L" },
+          { id: "c", kind: "capacitor", from: "after-l", to: "after-c", label: capacitor.label || "C" },
+          { id: "top-wire", kind: "wire", from: "after-c", to: "right-top" },
+          { id: "right-wire", kind: "wire", from: "right-top", to: "right-bottom" },
+          { id: "return-wire", kind: "wire", from: "right-bottom", to: "source-negative" },
+        ],
+      },
+    }])[0];
+    return normalized
+      ? { ...normalized, warnings: [...(normalized.warnings || []), "repaired-explicit-series-rlc-circuit"] }
+      : block;
+  });
+}
+
+/** Builds the Faraday/Lenz scene for a rectangular loop entering a field. */
+export function inferMovingLoopInductionBlocks(
+  problem: string,
+  solutionText: string,
+): RenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasMovingLoop = /(rectangular\s+(?:conducting\s+)?loop|loop[\s\S]{0,100}(?:moves|entering)|ស៊ុមចតុកោណ)/i.test(source);
+  const hasInduction = /(faraday|lenz|induced\s+(?:emf|electromotive|current)|magnetic\s+(?:field|flux)|\bEMF\b)/i.test(source);
+  if (!hasMovingLoop || !hasInduction) return [];
+
+  const emf = source.match(/(?:\\mathcal\{E\}|EMF)[\s\S]{0,80}?=\s*(\d+(?:\.\d+)?)\s*\\text\{\s*V\s*\}/i)?.[1];
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    physicsFamily: "electric-circuits",
+    physicsIntent: "circuit-topology",
+    renderTemplate: "moving-loop-induction",
+    spec: {
+      type: "geometry",
+      shapes: [
+        { shape: "polygon", vertices: [[4, 0], [9, 0], [9, 6], [4, 6]], color: "muted" },
+        { shape: "polygon", vertices: [[1.5, 1], [5, 1], [5, 5], [1.5, 5]], color: "primary" },
+        { shape: "arrow", start: [0, 3], end: [1.25, 3], label: "v", color: "primary" },
+        { shape: "arrow", start: [4.35, 4.35], end: [2.25, 4.35], label: "I (CCW)", color: "primary" },
+      ],
+      labels: [
+        { text: "B into page", position: [6.5, 5.35], color: "muted" },
+        { text: "×   ×   ×", position: [6.5, 4.1], color: "muted" },
+        { text: "×   ×   ×", position: [6.5, 2.9], color: "muted" },
+        { text: "×   ×   ×", position: [6.5, 1.7], color: "muted" },
+        { text: emf ? `EMF = ${emf} V` : "Induced EMF", position: [2.9, 0.35], color: "primary" },
+      ],
+      options: { xMin: -0.5, xMax: 9.5, yMin: -0.4, yMax: 6.5, grid: false, showOrigin: false },
+    },
+  }]);
+}
+
+/** Builds a magnetic-field/coil scene for the torque-on-current-loop formula. */
+export function inferCurrentCoilTorqueBlocks(problem: string, solutionText: string, finalAnswer?: string): RenderBlock[] {
+  const source = `${problem}\n${solutionText}\n${finalAnswer ?? ""}`;
+  const hasCoilTorque = /(rectangular\s+coil|current[\s-]*carrying\s+coil|របុំខ្សែចម្លង)[\s\S]{0,240}(?:torque|ម៉ូម៉ង់)|(?:torque|ម៉ូម៉ង់)[\s\S]{0,240}(?:N\s*\\times\s*I\s*\\times\s*A\s*\\times\s*B|sin\s*\(?\\theta)/i.test(source);
+  if (!hasCoilTorque) return [];
+  const torque = source.match(/\\tau\s*(?:&\s*)?=\s*(\d+(?:\.\d+)?)\s*\\text\{\s*N\s*\}/i)?.[1];
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    physicsFamily: "electric-circuits",
+    physicsIntent: "circuit-topology",
+    renderTemplate: "magnetic-coil-torque",
+    spec: {
+      type: "geometry",
+      shapes: [
+        { shape: "polygon", vertices: [[0, 1], [1.4, 1], [1.4, 5], [0, 5]], color: "red", fill: "rgba(220,38,38,0.12)" },
+        { shape: "polygon", vertices: [[8.6, 1], [10, 1], [10, 5], [8.6, 5]], color: "primary", fill: "rgba(37,99,255,0.12)" },
+        { shape: "polygon", vertices: [[3.2, 1.5], [6.4, 2.25], [6.4, 4.75], [3.2, 4]], color: "muted" },
+        { shape: "arrow", start: [1.7, 1.55], end: [8.2, 1.55], color: "focus" },
+        { shape: "arrow", start: [1.7, 2.8], end: [8.2, 2.8], color: "focus" },
+        { shape: "arrow", start: [1.7, 4.05], end: [8.2, 4.05], color: "focus" },
+        { shape: "arrow", start: [3.2, 3.72], end: [3.2, 1.82], label: "I", color: "primary" },
+        { shape: "arrow", start: [6.4, 2.55], end: [6.4, 4.45], label: "I", color: "primary" },
+        { shape: "arrow", start: [2.35, 2.35], end: [2.35, 3.7], label: "F", color: "warm" },
+        { shape: "arrow", start: [7.25, 3.7], end: [7.25, 2.35], label: "F", color: "warm" },
+      ],
+      labels: [
+        { text: "N", position: [0.7, 3.15], color: "red" },
+        { text: "S", position: [9.3, 3.15], color: "primary" },
+        { text: "uniform B", position: [7.25, 5.25], color: "focus" },
+        { text: "current-carrying coil", position: [4.8, 0.85], color: "muted" },
+        { text: torque ? `τ = ${torque} N·m` : "τ = N I A B sin θ", position: [5, 0.35], color: "primary" },
+      ],
+      options: { xMin: -0.4, xMax: 10.4, yMin: -0.4, yMax: 6, grid: false, showOrigin: false },
+    },
+  }]);
+}
+
+/** Marks the switching event in a transient RL circuit without changing its topology. */
+export function annotateExplicitRlTransientSwitchCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasRl = /\bRL\b|\bL\s*=\s*\d|inductor|បូប៊ីន/i.test(source);
+  const hasClosingEvent = /switch[\s\S]{0,80}(?:close|closing)|(?:close|closing)[\s\S]{0,80}switch|បិទកុងតាក់/i.test(source);
+  const hasTransientCurrent = /I\s*\(\s*t\s*\)|time constant|\btau\b|\tau/i.test(source);
+  if (!hasRl || !hasClosingEvent || !hasTransientCurrent) return blocks;
+
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const components = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    if (!components.some((component) => component.kind === "switch")) return block;
+    return normalizeDiagramBlocks([{
+      ...block,
+      spec: {
+        ...spec,
+        components: components.map((component) => component.kind === "switch"
+          ? { ...component, state: "open", annotation: "closes at t = 0" }
+          : component),
+      },
+    }])[0] as DiagramRenderBlock;
+  });
+}
+
+/** Builds a step-down transformer schematic when the solution states winding ratios. */
+export function inferStepDownTransformerBlocks(problem: string, solutionText: string): RenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasTransformer = /transformer|ត្រង់ស្វូ|ប្លង់សង់ស្យូមែ/i.test(source);
+  const hasStepDown = /step[\s-]*down|V\s*_?\{?s\}?\s*\/\s*V\s*_?\{?p\}?|N\s*_?\{?s\}?\s*\/\s*N\s*_?\{?p\}?/i.test(source);
+  if (!hasTransformer || !hasStepDown) return [];
+  const secondaryVoltageMatches = [...source.matchAll(/(?:V\s*_?\{?s\}?|&)\s*=\s*(\d+(?:\.\d+)?)\s*\\text\{\s*V(?:\s*RMS)?\s*\}/gi)];
+  const secondaryVoltage = secondaryVoltageMatches.at(-1)?.[1];
+  const numericFractions = [...source.matchAll(/\\frac\{\s*(\d+)\s*\}\{\s*(\d+)\s*\}/g)];
+  const windingRatio = source.match(/V\s*_?\{?s\}?[\s\S]{0,500}?\\frac\{\s*(\d+)\s*\}\{\s*(\d+)\s*\}/i) ?? numericFractions[0];
+  const secondaryTurns = source.match(/N\s*_?\{?s\}?\s*(?:&\s*)?=\s*(\d+)/i)?.[1] ?? windingRatio?.[1];
+  const primaryTurns = source.match(/N\s*_?\{?p\}?\s*(?:&\s*)?=\s*(\d+)/i)?.[1] ?? windingRatio?.[2];
+  const primaryVoltage = source.match(/V\s*_?\{?p\}?\s*(?:&\s*)?=\s*(\d+(?:\.\d+)?)\s*\\text\{\s*V(?:\s*RMS)?\s*\}/i)?.[1]
+    ?? source.match(/V\s*_?\{?s\}?[\s\S]{0,240}?&\s*=\s*(\d+(?:\.\d+)?)\s*\\text\{\s*V(?:\s*RMS)?\s*\}/i)?.[1];
+  const loadResistance = source.match(/(?:resistive\s+load|R)\s*(?:=|is|of)?\s*(\d+(?:\.\d+)?)[\s\\{}]*(?:\\text\{\s*\})?\s*\\Omega/i)?.[1];
+  return normalizeDiagramBlocks([{
+    diagramType: "geometry",
+    physicsFamily: "electric-circuits",
+    physicsIntent: "circuit-topology",
+    renderTemplate: "step-down-transformer",
+    spec: {
+      type: "geometry",
+      shapes: [
+        { shape: "rect", center: [5, 3.3], width: 1.7, height: 4.8, cornerRadius: 0.16, color: "muted", fill: "rgba(100,116,139,0.12)" },
+        { shape: "rect", center: [5, 3.3], width: 0.82, height: 3.7, cornerRadius: 0.08, color: "muted", fill: "none" },
+        { shape: "circle", center: [1.3, 3.3], radius: 0.55, color: "muted" },
+        { shape: "sine-wave", start: [0.98, 3.3], end: [1.62, 3.3], amplitude: 0.18, color: "muted" },
+        { shape: "line", start: [1.3, 3.85], end: [1.3, 4.75], color: "muted" },
+        { shape: "line", start: [1.3, 4.75], end: [3, 4.75], color: "muted" },
+        { shape: "line", start: [1.3, 2.75], end: [1.3, 1.75], color: "muted" },
+        { shape: "line", start: [1.3, 1.75], end: [3, 1.75], color: "muted" },
+        { shape: "arc", center: [3, 4.45], radius: 0.3, startAngle: 90, endAngle: 270, color: "muted" },
+        { shape: "arc", center: [3, 3.85], radius: 0.3, startAngle: 90, endAngle: 270, color: "muted" },
+        { shape: "arc", center: [3, 3.25], radius: 0.3, startAngle: 90, endAngle: 270, color: "muted" },
+        { shape: "arc", center: [3, 2.65], radius: 0.3, startAngle: 90, endAngle: 270, color: "muted" },
+        { shape: "arc", center: [3, 2.05], radius: 0.3, startAngle: 90, endAngle: 270, color: "muted" },
+        { shape: "arc", center: [7, 4.45], radius: 0.3, startAngle: -90, endAngle: 90, color: "muted" },
+        { shape: "arc", center: [7, 3.85], radius: 0.3, startAngle: -90, endAngle: 90, color: "muted" },
+        { shape: "arc", center: [7, 3.25], radius: 0.3, startAngle: -90, endAngle: 90, color: "muted" },
+        { shape: "arc", center: [7, 2.65], radius: 0.3, startAngle: -90, endAngle: 90, color: "muted" },
+        { shape: "arc", center: [7, 2.05], radius: 0.3, startAngle: -90, endAngle: 90, color: "muted" },
+        { shape: "line", start: [7, 4.75], end: [8.7, 4.75], color: "muted" },
+        { shape: "line", start: [8.7, 4.75], end: [8.7, 4], color: "muted" },
+        { shape: "line", start: [7, 1.75], end: [8.7, 1.75], color: "muted" },
+        { shape: "line", start: [8.7, 1.75], end: [8.7, 2.6], color: "muted" },
+        { shape: "rect", center: [8.7, 3.3], width: 0.6, height: 1.4, cornerRadius: 0.1, color: "muted", fill: "none" },
+      ],
+      labels: [
+        { text: primaryVoltage ? `${primaryVoltage} V AC` : "AC input", position: [1.35, 5.85], color: "muted" },
+        { text: "50 Hz", position: [1.3, 1.15], color: "muted" },
+        { text: "Iron core", position: [5, 6.05], color: "muted" },
+        { text: "magnetic flux", position: [5, 3.3], color: "muted" },
+        { text: "Primary", position: [3, 0.78], color: "muted" },
+        { text: primaryTurns ? `${primaryTurns} turns` : "Np turns", position: [3, 0.36], color: "muted" },
+        { text: "Secondary", position: [7, 0.78], color: "muted" },
+        { text: secondaryTurns ? `${secondaryTurns} turns` : "Ns turns", position: [7, 0.36], color: "muted" },
+        { text: loadResistance ? `${loadResistance} Ω` : "R load", position: [8.7, 3.3], color: "muted" },
+        { text: secondaryVoltage ? `Vs = ${secondaryVoltage} V` : "step-down output", position: [7.8, 1.15], color: "muted" },
+      ],
+      options: { xMin: 0.2, xMax: 9.4, yMin: 0, yMax: 6.35, grid: false, showOrigin: false },
+    },
+  }]);
+}
+
+/**
+ * The renderer needs topology, but circuit models sometimes turn a stated
+ * parallel pair into two open branches. For the unambiguous introductory
+ * pattern R1 in series with R2 || R3, rebuild the topology from the finished
+ * solution and preserve the labels the model extracted. This is deliberately
+ * narrower than general circuit inference: it only runs when the solution
+ * explicitly states both relationships.
+ */
+export function repairExplicitSeriesParallelCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasParallelR2R3 = /r\s*_?\{?2\}?\s*(?:and|&|,)?\s*r\s*_?\{?3\}?[\s\S]{0,160}\bparallel\b|r\s*_?\{?3\}?\s*(?:and|&|,)?\s*r\s*_?\{?2\}?[\s\S]{0,160}\bparallel\b|r\s*_?\{?23\}?[\s\S]{0,160}\bparallel\b/i.test(source);
+  const hasSeriesR1 = /r\s*_?\{?1\}?[\s\S]{0,160}\bseries\b/i.test(source);
+  if (!hasParallelR2R3 || !hasSeriesR1) return blocks;
+
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const findResistor = (index: number) => existingComponents.find((component) =>
+      component.kind === "resistor" && new RegExp(`\\br\\s*_?\\{?${index}\\}?\\b`, "i").test(`${String(component.label || "")} ${String(component.id || "")}`)
+    );
+    let r1 = findResistor(1);
+    let r2 = findResistor(2);
+    let r3 = findResistor(3);
+    const resistors = existingComponents.filter((component) => component.kind === "resistor");
+    if ((!r1 || !r2 || !r3) && resistors.length === 3) {
+      // Some models label resistors only by their values. If two malformed
+      // branch components already meet at one junction, that is the only
+      // defensible candidate for the explicitly stated parallel pair.
+      const inferredParallelPair = resistors.filter((component, _index, all) =>
+        all.filter((other) => other.from === component.from || other.to === component.to).length >= 2
+      );
+      if (inferredParallelPair.length === 2) {
+        r2 ||= inferredParallelPair[0];
+        r3 ||= inferredParallelPair[1];
+        r1 ||= resistors.find((component) => !inferredParallelPair.includes(component));
+      }
+    }
+    const battery = existingComponents.find((component) => component.kind === "battery");
+    if (!r1 || !r2 || !r3 || !battery) return block;
+
+    const switchComponent = existingComponents.find((component) => component.kind === "switch");
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "source-negative", position: [0, 0] },
+          { id: "source-positive", position: [2, 0] },
+          { id: "series-middle", position: [4, 0] },
+          { id: "branch-start", position: [6, 0] },
+          { id: "branch-end", position: [6, 3] },
+        ],
+        components: [
+          { id: "battery", kind: "battery", from: "source-negative", to: "source-positive", label: battery.label },
+          ...(switchComponent
+            ? [{ id: "switch", kind: "switch", from: "source-positive", to: "series-middle", label: switchComponent.label || "Switch" }]
+            : [{ id: "supply-wire", kind: "wire", from: "source-positive", to: "series-middle" }]),
+          { id: "r1", kind: "resistor", from: "series-middle", to: "branch-start", label: r1.label },
+          { id: "r2", kind: "resistor", from: "branch-start", to: "branch-end", label: r2.label },
+          { id: "r3", kind: "resistor", from: "branch-start", to: "branch-end", label: r3.label },
+          { id: "return-wire", kind: "wire", from: "branch-end", to: "source-negative" },
+        ],
+      },
+    }])[0];
+    if (!normalized) return block;
+    return {
+      ...normalized,
+      warnings: [...(normalized.warnings || []), "repaired-explicit-series-parallel-circuit"],
+    };
+  });
+}
+
+/** Rebuilds the explicitly stated (R1 + R2) || (R3 + R4) battery circuit. */
+export function repairExplicitTwoBranchCircuit(
+  problem: string,
+  solutionText: string,
+  blocks: DiagramRenderBlock[],
+): DiagramRenderBlock[] {
+  const source = `${problem}\n${solutionText}`;
+  const hasBranchOne = /branch\s*1[\s\S]{0,120}r\s*_?\{?1\}?[\s\S]{0,80}r\s*_?\{?2\}?[\s\S]{0,120}\bseries\b/i.test(source);
+  const hasBranchTwo = /branch\s*2[\s\S]{0,120}r\s*_?\{?3\}?[\s\S]{0,80}r\s*_?\{?4\}?[\s\S]{0,120}\bseries\b/i.test(source);
+  const hasParallelBranches = /(?:two\s+parallel\s+branches|branches?[\s\S]{0,120}\bparallel\b)/i.test(source);
+  if (!hasBranchOne || !hasBranchTwo || !hasParallelBranches) return blocks;
+
+  const voltage = source.match(/(\d+(?:\.\d+)?)\s*(?:\\text\{\s*V\s*\}|\bV\b)/i)?.[1];
+  return blocks.map((block) => {
+    if (block.type !== "diagram" || block.diagramType !== "circuit") return block;
+    const spec = block.spec as Record<string, unknown>;
+    const existingComponents = Array.isArray(spec.components) ? spec.components as Array<Record<string, unknown>> : [];
+    const resistor = (index: number) => existingComponents.find((component) =>
+      component.kind === "resistor" && new RegExp(`\\br\\s*_?\\{?${index}\\}?\\b`, "i").test(`${String(component.label || "")} ${String(component.id || "")}`)
+    );
+    const r1 = resistor(1); const r2 = resistor(2); const r3 = resistor(3); const r4 = resistor(4);
+    if (!r1 || !r2 || !r3 || !r4) return block;
+
+    const normalized = normalizeDiagramBlocks([{
+      ...block,
+      physicsFamily: "electric-circuits",
+      physicsIntent: "circuit-topology",
+      spec: {
+        ...spec,
+        nodes: [
+          { id: "source-negative", position: [0, 0] }, { id: "source-positive", position: [2, 0] },
+          { id: "split", position: [4, 0] }, { id: "top-start", position: [4, -2] },
+          { id: "top-middle", position: [6, -2] }, { id: "top-end", position: [8, -2] },
+          { id: "bottom-start", position: [4, 2] }, { id: "bottom-middle", position: [6, 2] },
+          { id: "bottom-end", position: [8, 2] }, { id: "join", position: [10, 0] },
+        ],
+        components: [
+          { id: "battery", kind: "battery", from: "source-negative", to: "source-positive", label: voltage ? `${voltage} V` : "Battery" },
+          { id: "supply-wire", kind: "wire", from: "source-positive", to: "split" },
+          { id: "top-entry", kind: "wire", from: "split", to: "top-start" },
+          { id: "r1", kind: "resistor", from: "top-start", to: "top-middle", label: r1.label },
+          { id: "r2", kind: "resistor", from: "top-middle", to: "top-end", label: r2.label },
+          { id: "top-exit", kind: "wire", from: "top-end", to: "join" },
+          { id: "bottom-entry", kind: "wire", from: "split", to: "bottom-start" },
+          { id: "r3", kind: "resistor", from: "bottom-start", to: "bottom-middle", label: r3.label },
+          { id: "r4", kind: "resistor", from: "bottom-middle", to: "bottom-end", label: r4.label },
+          { id: "bottom-exit", kind: "wire", from: "bottom-end", to: "join" },
+          { id: "return-wire", kind: "wire", from: "join", to: "source-negative" },
+        ],
+      },
+    }])[0];
+    return normalized
+      ? { ...normalized, warnings: [...(normalized.warnings || []), "repaired-explicit-two-branch-circuit"] }
+      : block;
+  });
+}
+
 async function extractDiagramBlocksForSolution(
   problem: string,
   solutionText: string,
@@ -5337,13 +5906,7 @@ async function extractDiagramBlocksForSolution(
   problemIntent?: ProblemIntent,
   usageOut?: { current: ChatUsage },
 ): Promise<RenderBlock[]> {
-  const subject = `${options.subject || ""}`.toLowerCase();
-  const source = `${problem}\n${solutionText}`.toLowerCase();
-  const likelyUseful = subject.includes("math")
-    || subject.includes("physics")
-    || /(geometry|triangle|circle|graph|plot|number line|inequal|interval|sign table|variation|derivative|cube|pyramid|cylinder|cone|sphere|prism|coordinate|parabola|quadratic|linear function|venn|set|sets|union|intersection|pie.?chart|piechart|force|resultant|vector|tree|probability)/i.test(source)
-    || /[\u1780-\u17FF]*(ត្រីកោណ|រង្វង់|ក្រាប|អនុគមន៍|វិសមភាព|ចន្លោះ|តារាងសញ្ញា|គូប|ពីរ៉ាមីត|កោន|ព្រីស|ដ្យាក្រាម|សំណុំ|ប្រសព្វ|ត្រួតស៊ី|ចំណិតជុំ|កម្លាំង|កែង|ពីតាហ្គ័រ|មែកធាង|ប្រូបាប)/.test(source);
-  if (!likelyUseful) return [];
+  if (!isDiagramExtractionCandidate(options.subject, problem, solutionText, finalAnswer)) return [];
 
   if (/(rhombus|រ៉ូមប៊ីស)/i.test(problem + "\n" + solutionText)) {
     let d1 = 12;
@@ -5421,16 +5984,18 @@ async function extractDiagramBlocksForSolution(
   }
 
   const result = await generateStructuredJson<{ diagramBlocks?: unknown[] }>({
-    prompt: `Decide whether this solved math problem needs a visual diagram. Return JSON only.
+    prompt: `Decide whether this solved math or physics problem needs a visual diagram. Return JSON only.
 
 If a diagram helps, return exactly ONE diagramBlock (choose the single most helpful diagram type) in this exact structure:
 {
   "diagramBlocks": [
     {
-      "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart" | "tree-diagram",
+      "diagramType": "geometry" | "function-graph" | "number-line" | "sign-table" | "venn-diagram" | "solid-geometry" | "pie-chart" | "tree-diagram" | "free-body" | "motion" | "circuit",
       "mathFamily": "linear" | "quadratic" | "rational-reciprocal" | "inverse-square" | "rational-even" | "trigonometric" | "geometry" | "number-line" | "unknown",
+      "physicsFamily": "newtonian-mechanics" | "kinematics" | "electric-circuits",
       "problemIntent": "average-rate" | "point-membership" | "range" | "integral" | "function-value" | "variation" | "other",
       "diagramIntent": "interval-points" | "secant-interval" | "shaded-interval" | "point-check" | "function-value" | "variation" | "range" | "basic-graph",
+      "physicsIntent": "free-body" | "force-components" | "motion-graph" | "circuit-topology",
       "renderTemplate": "reciprocal-interval" | "trig-wave" | "cartesian-standard" | string,
       "spec": { ... }
     }
@@ -5457,6 +6022,7 @@ DIAGRAM SELECTION RULES (CRITICAL):
 7. When a "function-graph" shows a piecewise-defined function (the solution splits into cases like "for x > 0 ... for x < 0 ...", or has a jump/removable discontinuity), every piece that is NOT valid across the whole graph MUST carry its own "domain":[min,max] matching exactly which x-values that piece applies to (e.g. [0,3] for "x ≥ 0", not the graph's overall domain) — never rely on a note like "(x \\ge 0)" written inside "latex"; that text is never parsed as structured data. Two pieces sharing the graph's full domain with no per-piece "domain" render as two overlapping full lines/curves instead of two separate rays/branches meeting at the split — always split "domain" between the pieces so they don't overlap. Mark which side is included with "closed":true/false on the featurePoint at the split (the piece whose domain includes that x gets the closed dot; the other gets an open one).
 8. If the problem discusses a function in the abstract — its coefficients are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", asking about general asymptote/root behavior across all their possible values), never invent placeholder numbers for those letters (e.g. plugging in a=1,b=0,c=0 and silently dropping the rest) — that plots a completely different, unrelated function and misrepresents the problem. Either return {"diagramBlocks":[]}, or if a picture would genuinely help illustrate the general case, pick one concrete, fully-numeric example that actually exhibits the behavior being discussed (e.g. one specific choice of a,b,c,p,q,r producing two vertical asymptotes) and say in the diagram that it's an illustrative example — never claim it IS the problem's own (unspecified) function.
 9. When the solution derives auxiliary straight lines for a curve — an oblique/horizontal asymptote, a tangent, a secant — and asks to sketch them together with the curve itself (e.g. "construct L1, L2 and the graph C", "សង់បន្ទាត់ (D) និងក្រាប (C)"), "functions" MUST include the curve's own function (its "latex", e.g. "y = f(x) = x - 1 + 2e^{-x}") as functions[0] — the derived lines are ADDITIONAL entries in "functions", never a replacement for the curve being graphed. A "function-graph" whose every "functions" entry is "linear" while the problem defines and asks to graph a non-linear f(x) is missing its primary curve and is not a complete diagram.
+10. For physics, select a physics-specific type instead of geometry when it clarifies the solution: "free-body" for forces, "motion" for position/velocity/acceleration against time, and "circuit" for connected electrical components. Set physicsFamily to "newtonian-mechanics" | "kinematics" | "electric-circuits" and physicsIntent to "free-body" | "force-components" | "motion-graph" | "circuit-topology". Do not use an unscaled arrow length to claim a force magnitude. A friction vector requires "opposesMotion":true. Circuit components must join named nodes; never output arbitrary SVG paths. Include every component explicitly named in the problem or finished solution (including a switch); never silently replace or omit it. Use shared endpoints for a stated parallel branch and preserve each component's stated value in its label. For an RC circuit with a two-position switch, include battery, both resistors, capacitor, and switch; use kind:"capacitor" and a switch alternateTo node for its second position. A smoothing or filter capacitor that is stated to be in parallel with a load resistor must share that resistor's exact from and to node IDs — never place it as a series element on the same horizontal wire as the diode or series path. For a source–diode–parallel-RC rectifier circuit, use a rectangular layout: source on the left column (vertical, e.g. nodes [0,0]→[0,2]), diode horizontal on the bottom row, parallel C and R_L on the right column (both vertical, sharing the same two node IDs, e.g. from:[4,2] to:[4,0]), return wire horizontal on the top row. The ac-source MUST always be included as an explicit component — a rectifier circuit with no source component is incomplete and must not be returned. For an NPN BJT switching circuit use kind:"npn-transistor" with from=emitter node, to=collector node, base=base node ID; never omit the transistor. CRITICAL: ALL circuit connections must be orthogonal — from and to nodes must share the same position[0] OR the same position[1]; a diagonal lamp or resistor will render incorrectly. The base node must be at a DIFFERENT position[0] than the emitter/collector column and at position[1] equal to the average of emitter and collector y-values so the base wire is horizontal. Use this exact node and component layout for a BJT LED driver: nodes {gnd_top:[0,0], vcc_p:[6,0], gnd:[0,4], vin_p:[2,4], base:[2,3], emitter:[4,4], collector:[4,2], rc_junc:[6,2]}; components: vcc_bat(gnd_top→vcc_p, horizontal top rail), gnd_wire(gnd_top→gnd, vertical left column), rc(vcc_p→rc_junc, vertical right column), led(rc_junc→collector, horizontal — same y=2), bjt(from=emitter,to=collector,base=base), emitter_wire(emitter→gnd, horizontal bottom rail), vin_bat(gnd→vin_p, horizontal bottom rail), rb(vin_p→base, vertical middle column). Scale the specific x/y values to fit the problem's component count but preserve all orthogonal connections and the base-node placement rule.
 
 CRITICAL: Limit diagram blocks to a maximum of ONE block. Choose the single most helpful diagram type. Never generate multiple diagram blocks.
 Every diagramBlock you return MUST have both "diagramType" and a fully populated "spec" with all required fields. If you cannot determine the complete spec values from the problem and solution, return {"diagramBlocks":[]} instead. Never return a diagramBlock with an empty or incomplete spec.
@@ -5573,7 +6139,20 @@ ${DIAGRAM_SPEC_GUIDE}`,
   });
 
   if (usageOut) usageOut.current = result.usage;
-  const normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
+  let normalized = normalizeDiagramBlocks(result.data?.diagramBlocks);
+  normalized = repairExplicitRcTwoPositionSwitchCircuit(problem, solutionText, normalized);
+  normalized = repairExplicitKirchhoffTwoLoopCircuit(problem, solutionText, normalized);
+  normalized = repairExplicitWheatstoneBridgeCircuit(problem, solutionText, normalized);
+  normalized = repairExplicitSeriesRlcCircuit(problem, solutionText, normalized);
+  normalized = annotateExplicitRlTransientSwitchCircuit(problem, solutionText, normalized);
+  normalized = repairExplicitSeriesParallelCircuit(problem, solutionText, normalized);
+  normalized = repairExplicitTwoBranchCircuit(problem, solutionText, normalized);
+  const inductionFallback = inferMovingLoopInductionBlocks(problem, solutionText);
+  if (inductionFallback.length) return inductionFallback;
+  const coilTorqueFallback = inferCurrentCoilTorqueBlocks(problem, solutionText, finalAnswer);
+  if (coilTorqueFallback.length) return coilTorqueFallback;
+  const transformerFallback = inferStepDownTransformerBlocks(problem, solutionText);
+  if (transformerFallback.length) return transformerFallback;
   // Filter out blocks the normalizer flagged as empty (AI produced a diagram type but no data).
   // This lets the inferVennDiagramBlocks fallback recover values from the solution text.
   //
@@ -6031,8 +6610,8 @@ Rules:
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 19. problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
-20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
-21. Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use these as routing fields, then put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
+20. Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram", "free-body", "motion", "circuit".
+21. Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, physicsFamily, physicsIntent, renderTemplate. Use these as routing fields, then put drawable primitives inside spec. A circuit must use physicsFamily="electric-circuits", physicsIntent="circuit-topology", named nodes, and components with valid from/to node IDs. Preserve every component explicitly named in the problem or finished solution, including a switch; never silently replace or omit it. RC circuits must include their battery and capacitor as well as their resistors; a two-position switch records its other terminal as alternateTo. For NPN BJT switching circuits use kind:"npn-transistor" with from=emitter node, to=collector node, base=base node ID; never omit the transistor. ALL connections must be orthogonal (same position[0] or same position[1]). Base node must be at a different position[0] than emitter/collector and at their y midpoint. Standard layout: nodes {gnd_top:[0,0],vcc_p:[6,0],gnd:[0,4],vin_p:[2,4],base:[2,3],emitter:[4,4],collector:[4,2],rc_junc:[6,2]}; vcc_bat horizontal top, gnd_wire vertical left, rc vertical right, led horizontal (rc_junc→collector same y), bjt vertical, emitter_wire horizontal bottom, vin_bat horizontal bottom, rb vertical middle. A smoothing or filter capacitor stated to be in parallel with a load resistor must share that resistor's exact from and to node IDs — never place it as a series element on the same horizontal wire as the diode or series path. For a source–diode–parallel-RC rectifier circuit, use a rectangular layout: source on the left column (vertical, e.g. nodes [0,0]→[0,2]), diode horizontal on the bottom row, parallel C and R_L on the right column (both vertical, sharing the same two node IDs, e.g. from:[4,2] to:[4,0]), return wire horizontal on the top row. The ac-source MUST always be included as an explicit component — a rectifier circuit with no source component is incomplete and must not be returned. For an NPN BJT switching circuit use kind:"npn-transistor" with from=emitter node, to=collector node, base=base node ID; never omit the transistor. CRITICAL: ALL circuit connections must be orthogonal — from and to nodes must share the same position[0] OR the same position[1]; a diagonal lamp or resistor will render incorrectly. The base node must be at a DIFFERENT position[0] than the emitter/collector column and at position[1] equal to the average of emitter and collector y-values so the base wire is horizontal. Use this exact node and component layout for a BJT LED driver: nodes {gnd_top:[0,0], vcc_p:[6,0], gnd:[0,4], vin_p:[2,4], base:[2,3], emitter:[4,4], collector:[4,2], rc_junc:[6,2]}; components: vcc_bat(gnd_top→vcc_p, horizontal top rail), gnd_wire(gnd_top→gnd, vertical left column), rc(vcc_p→rc_junc, vertical right column), led(rc_junc→collector, horizontal — same y=2), bjt(from=emitter,to=collector,base=base), emitter_wire(emitter→gnd, horizontal bottom rail), vin_bat(gnd→vin_p, horizontal bottom rail), rb(vin_p→base, vertical middle column). Scale the specific x/y values to fit the problem's component count but preserve all orthogonal connections and the base-node placement rule. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 22. For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
 23. Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
 24. For a "function-graph" showing a piecewise-defined function (cases like "for x > 0 ... for x < 0 ...", a jump or removable discontinuity), every piece not valid across the whole graph MUST carry its own "domain":[min,max] for exactly the x-values that piece applies to — never rely on a note like "(x \\ge 0)" written inside "latex", which is never parsed as structured data. Without a per-piece "domain", both pieces render as overlapping full lines/curves across the entire graph instead of separate rays/branches meeting at the split. Mark the split with "closed":true/false on each piece's featurePoint there.
@@ -6269,8 +6848,8 @@ Rules for solutionText:
   * For Physics: "mechanics", "electromagnetism", "thermodynamics", "optics-waves", "modern-physics".
   * For Chemistry: "general-chemistry", "organic-chemistry", "inorganic-chemistry", "physical-chemistry", "biochemistry".
 - problemIntent: Required. Classify the requested task, not just the formula. Use exactly one of "average-rate", "point-membership", "range", "integral", "function-value", "variation", "other".
-- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram".
-- Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, renderTemplate. Use metadata for routing and put drawable primitives inside spec. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
+- Optional diagramBlocks: include only when a visual meaningfully helps. Output structured diagram JSON only, never SVG/HTML. Supported diagramType values: "number-line", "sign-table", "venn-diagram", "geometry", "function-graph", "solid-geometry", "pie-chart", "tree-diagram", "free-body", "motion", "circuit".
+- Each diagramBlock may include metadata next to spec: mathFamily, problemIntent, diagramIntent, physicsFamily, physicsIntent, renderTemplate. Use metadata for routing and put drawable primitives inside spec. A circuit must use physicsFamily="electric-circuits", physicsIntent="circuit-topology", named nodes, and components with valid from/to node IDs. Preserve every component explicitly named in the problem or finished solution, including a switch; never silently replace or omit it. RC circuits must include their battery and capacitor as well as their resistors; a two-position switch records its other terminal as alternateTo. For NPN BJT switching circuits use kind:"npn-transistor" with from=emitter node, to=collector node, base=base node ID; never omit the transistor. ALL connections must be orthogonal (same position[0] or same position[1]). Base node must be at a different position[0] than emitter/collector and at their y midpoint. Standard layout: nodes {gnd_top:[0,0],vcc_p:[6,0],gnd:[0,4],vin_p:[2,4],base:[2,3],emitter:[4,4],collector:[4,2],rc_junc:[6,2]}; vcc_bat horizontal top, gnd_wire vertical left, rc vertical right, led horizontal (rc_junc→collector same y), bjt vertical, emitter_wire horizontal bottom, vin_bat horizontal bottom, rb vertical middle. A smoothing or filter capacitor stated to be in parallel with a load resistor must share that resistor's exact from and to node IDs — never place it as a series element on the same horizontal wire as the diode or series path. For a source–diode–parallel-RC rectifier circuit, use a rectangular layout: source on the left column (vertical, e.g. nodes [0,0]→[0,2]), diode horizontal on the bottom row, parallel C and R_L on the right column (both vertical, sharing the same two node IDs, e.g. from:[4,2] to:[4,0]), return wire horizontal on the top row. The ac-source MUST always be included as an explicit component — a rectifier circuit with no source component is incomplete and must not be returned. For an NPN BJT switching circuit use kind:"npn-transistor" with from=emitter node, to=collector node, base=base node ID; never omit the transistor. CRITICAL: ALL circuit connections must be orthogonal — from and to nodes must share the same position[0] OR the same position[1]; a diagonal lamp or resistor will render incorrectly. The base node must be at a DIFFERENT position[0] than the emitter/collector column and at position[1] equal to the average of emitter and collector y-values so the base wire is horizontal. Use this exact node and component layout for a BJT LED driver: nodes {gnd_top:[0,0], vcc_p:[6,0], gnd:[0,4], vin_p:[2,4], base:[2,3], emitter:[4,4], collector:[4,2], rc_junc:[6,2]}; components: vcc_bat(gnd_top→vcc_p, horizontal top rail), gnd_wire(gnd_top→gnd, vertical left column), rc(vcc_p→rc_junc, vertical right column), led(rc_junc→collector, horizontal — same y=2), bjt(from=emitter,to=collector,base=base), emitter_wire(emitter→gnd, horizontal bottom rail), vin_bat(gnd→vin_p, horizontal bottom rail), rb(vin_p→base, vertical middle column). Scale the specific x/y values to fit the problem's component count but preserve all orthogonal connections and the base-node placement rule. Example: {"diagramType":"function-graph","mathFamily":"inverse-square","problemIntent":"average-rate","diagramIntent":"secant-interval","renderTemplate":"reciprocal-interval","spec":{"functions":[...],"featurePoints":[...],"guideLines":[],"shadedRegions":[]}}.
 - For a function-graph on a limit/continuity/root-existence problem, the plotted function MUST be the exact function named in the problem (e.g. the expression whose limit is taken) — never an intermediate expression that only appears partway through your own derivation (an algebraic rewrite, a simplified denominator, a substitution).
 - Never guess a "sign-table"'s sign cells — actually work out the sign of the named function/expression at a real test value in each interval before emitting one. Sign-tables are for monotonicity/inequality problems specifically — the solution must actually discuss increasing/decreasing behavior or a sign across multiple intervals. A straightforward limit that resolves by direct substitution or a single L'Hôpital application doesn't need a sign-table, or any diagram at all — omit diagramBlocks entirely for those, including "solve for an unknown constant using a derivative" problems (computing one derivative and evaluating it once is not monotonicity analysis).
 - If the problem discusses a function in the abstract — coefficients that are letters standing for arbitrary/undetermined constants (e.g. "y = (ax²+bx+c)/(px²+qx+r) where a,b,c,p,q,r are real numbers", a general case analysis over their possible values) — never invent placeholder numbers for those letters (e.g. a=1,b=0,c=0, silently dropping the rest of the expression); that plots an unrelated function. Omit diagramBlocks entirely, or use one concrete fully-numeric example that actually shows the behavior discussed and is clearly labeled as an example, never as the problem's own (unspecified) function.

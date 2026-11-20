@@ -7,9 +7,278 @@
 // the solution. See DIAGRAM_STRUCTURE_JSON_GUIDE.md's "Wrong Function
 // Selected" section for the full story.
 import { describe, expect, it, vi } from "vitest";
-import { backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferEllipseBlocks, inferInequalityFeasibleRegionBlocks, inferSolidGeometryBlocks, repairHyperbolaDiagramBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
+import { annotateExplicitRlTransientSwitchCircuit, backfillMissingPrimaryCurveInFunctionGraphBlocks, checkConstantSolvingFinalAnswer, checkExtremaValueClaims, checkSolutionCompleteness, extractAnchorClaims, extractLineEquationClaims, inferConstructedFunctionGraphForExplicitGraphRequest, inferEllipseBlocks, inferInequalityFeasibleRegionBlocks, inferSolidGeometryBlocks, inferStepDownTransformerBlocks, isDiagramExtractionCandidate, repairExplicitKirchhoffTwoLoopCircuit, repairExplicitRcTwoPositionSwitchCircuit, repairExplicitSeriesParallelCircuit, repairExplicitSeriesRlcCircuit, repairExplicitTwoBranchCircuit, repairExplicitWheatstoneBridgeCircuit, repairHyperbolaDiagramBlocks, repairNestedDollarsInsideAligned, verifyDiagramBlocksAgainstSolution } from "./gemini.service.js";
 import { normalizeDiagramBlocks } from "../../utils/diagram-blocks.js";
 import { logger } from "../../utils/logger.js";
+
+describe("isDiagramExtractionCandidate", () => {
+  it("allows a General legacy session whose completed circuit solution retains only resistance notation", () => {
+    expect(isDiagramExtractionCandidate(
+      "General",
+      "គណនាចរន្តក្នុងសៀគ្វី",
+      "ដូចនេះ $R_{total} = 6\\ \\Omega$",
+      "$R_{total} = 6\\ \\Omega$, $I = 2\\ \\text{A}$",
+    )).toBe(true);
+  });
+
+  it("allows English circuit vocabulary for a General legacy session", () => {
+    expect(isDiagramExtractionCandidate("General", "Find the total resistance of the circuit.", "", undefined)).toBe(true);
+  });
+
+  it("does not send an unrelated General arithmetic result to extraction", () => {
+    expect(isDiagramExtractionCandidate("General", "What is 2 + 2?", "The answer is 4.", "$4$")).toBe(false);
+  });
+});
+
+describe("repairExplicitSeriesParallelCircuit", () => {
+  it("rebuilds the stated R1 + (R2 || R3) topology when model branches are open", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: ["n1", "n2", "n3", "n4", "n5", "n6"].map((id, index) => ({ id, position: [index, 0] })),
+        components: [
+          { kind: "battery", from: "n1", to: "n2", label: "12 V" },
+          { kind: "switch", from: "n2", to: "n6", label: "Switch" },
+          { kind: "resistor", from: "n6", to: "n5", label: "4 Ω" },
+          { kind: "resistor", from: "n5", to: "n3", label: "6 Ω" },
+          { kind: "resistor", from: "n5", to: "n4", label: "3 Ω" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitSeriesParallelCircuit(
+      "Find total resistance.",
+      "The equivalent resistance R_{23} is for the parallel combination. R_1 is in series with the parallel group.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "branch-end", to: "source-negative" }));
+    expect(components.filter((component) => component.kind === "resistor" && component.from === "branch-start" && component.to === "branch-end")).toHaveLength(2);
+    expect(repaired.warnings).toContain("repaired-explicit-series-parallel-circuit");
+  });
+
+  it("does not invent a switch when the explicitly stated circuit has none", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: ["n1", "n2", "n3", "n4", "n5"].map((id, index) => ({ id, position: [index, 0] })),
+        components: [
+          { kind: "battery", from: "n1", to: "n2", label: "12 V" },
+          { id: "r1", kind: "resistor", from: "n2", to: "n3", label: "R1 (4 Ω)" },
+          { id: "r2", kind: "resistor", from: "n3", to: "n4", label: "R2 (6 Ω)" },
+          { id: "r3", kind: "resistor", from: "n3", to: "n4", label: "R3 (3 Ω)" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitSeriesParallelCircuit(
+      "Find total resistance.",
+      "R_2 and R_3 are in parallel. R_1 is in series with the parallel group.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components.some((component) => component.kind === "switch")).toBe(false);
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "source-positive", to: "series-middle" }));
+  });
+});
+
+describe("repairExplicitRcTwoPositionSwitchCircuit", () => {
+  it("restores the named battery and capacitor when an RC switch diagram only contains resistor branches", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: Array.from({ length: 6 }, (_, index) => ({ id: `n${index}`, position: [index, 0] })),
+        components: [
+          { id: "sw", kind: "switch", from: "n1", to: "n2", label: "S" },
+          { id: "r1", kind: "resistor", from: "n2", to: "n3", label: "2 kΩ" },
+          { id: "r2", kind: "resistor", from: "n1", to: "n4", label: "4 kΩ" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitRcTwoPositionSwitchCircuit(
+      "A student constructs an RC circuit consisting of a $12\\text{ V}$ battery, two resistors, a capacitor, and a two-position switch. R_1 = 2\\text{ k}\\Omega, R_2 = 4\\text{ k}\\Omega, C = 1000\\text{ }\\mu\\text{F}.",
+      "The time constants use R_1 C and R_2 C.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ kind: "battery", label: "12 V" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "capacitor", label: "1000 μF" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "switch", alternateTo: "switch-r2" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "capacitor-negative", to: "source-negative" }));
+    expect(repaired.warnings).toContain("repaired-explicit-rc-two-position-circuit");
+  });
+});
+
+describe("repairExplicitKirchhoffTwoLoopCircuit", () => {
+  it("separates two Kirchhoff meshes that incorrectly collapse E2 and shared R3 into one branch", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: ["A", "B", "C", "D"].map((id, index) => ({ id, position: [index, 0] })),
+        components: [
+          { id: "e1", kind: "battery", from: "C", to: "A", label: "E1" },
+          { id: "r1", kind: "resistor", from: "A", to: "B", label: "R1" },
+          { id: "r3", kind: "resistor", from: "B", to: "D", label: "R3" },
+          { id: "e2", kind: "battery", from: "D", to: "B", label: "E2" },
+          { id: "r2", kind: "resistor", from: "C", to: "D", label: "R2" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitKirchhoffTwoLoopCircuit(
+      "A circuit contains two batteries and three resistors connected in two loops.",
+      "Using Kirchhoff's Laws: loop 1 contains E_1, R_1, R_3. Loop 2 contains E_2, R_2, R_3.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ id: "r3", from: "top", to: "bottom" }));
+    expect(components).toContainEqual(expect.objectContaining({ id: "e1", kind: "battery" }));
+    expect(components).toContainEqual(expect.objectContaining({ id: "e2", kind: "battery" }));
+    expect(components.filter((component) => component.kind === "resistor")).toHaveLength(3);
+    expect(repaired.warnings).toContain("repaired-explicit-kirchhoff-two-loop-circuit");
+  });
+});
+
+describe("repairExplicitWheatstoneBridgeCircuit", () => {
+  it("rebuilds a five-resistor Wheatstone bridge when the generated battery and central branch use arm endpoints", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: ["A", "B", "C", "D"].map((id, index) => ({ id, position: [index, 0] })),
+        components: [
+          { id: "batt", kind: "battery", from: "A", to: "D", label: "12 V" },
+          { id: "res1", kind: "resistor", from: "A", to: "B", label: "R_1" },
+          { id: "res2", kind: "resistor", from: "B", to: "C", label: "R_2" },
+          { id: "res3", kind: "resistor", from: "A", to: "D", label: "R_3" },
+          { id: "res4", kind: "resistor", from: "D", to: "C", label: "R_4" },
+          { id: "res5", kind: "resistor", from: "B", to: "D", label: "R_5" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitWheatstoneBridgeCircuit(
+      "A student constructs a Wheatstone bridge circuit using five resistors and a 12 V DC battery.",
+      "The bridge is balanced when R_1/R_2 = R_3/R_4, so the current through R_5 is zero.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ id: "r5", from: "top", to: "bottom" }));
+    expect(components).toContainEqual(expect.objectContaining({ id: "battery", from: "source-negative", to: "source-positive" }));
+    expect(components).toContainEqual(expect.objectContaining({ id: "r1", from: "left", to: "top" }));
+    expect(components).toContainEqual(expect.objectContaining({ id: "r4", from: "bottom", to: "right" }));
+    expect(repaired.warnings).toContain("repaired-explicit-wheatstone-bridge");
+  });
+});
+
+describe("repairExplicitSeriesRlcCircuit", () => {
+  it("restores inductor and AC-source semantics for an explicitly stated series RLC circuit", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: Array.from({ length: 7 }, (_, index) => ({ id: `n${index}`, position: [index, 0] })),
+        components: [
+          { id: "source", kind: "battery", from: "n0", to: "n1", label: "V_{rms}" },
+          { id: "r", kind: "resistor", from: "n1", to: "n2", label: "R" },
+          { id: "l", kind: "resistor", from: "n2", to: "n3", label: "L" },
+          { id: "c", kind: "capacitor", from: "n3", to: "n4", label: "C" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitSeriesRlcCircuit(
+      "A student constructs a series RLC circuit containing an AC voltage source, a resistor, an inductor, and a capacitor.",
+      "V_{rms} = 24\\text{ V}, R = 30\\Omega, L = 0.20\\text{ H}, C = 50\\mu\\text{F}.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ kind: "ac-source", label: "V_{rms}" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "inductor", label: "L" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "capacitor", label: "C" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "right-bottom", to: "source-negative" }));
+    expect(repaired.warnings).toContain("repaired-explicit-series-rlc-circuit");
+  });
+});
+
+describe("annotateExplicitRlTransientSwitchCircuit", () => {
+  it("marks the switch open and states its closing event for a current-rise RL solution", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      spec: {
+        nodes: ["a", "b", "c"].map((id, index) => ({ id, position: [index, 0] })),
+        components: [
+          { kind: "battery", from: "a", to: "b", label: "24 V" },
+          { kind: "switch", from: "b", to: "c", label: "K" },
+          { kind: "inductor", from: "c", to: "a", label: "6 H" },
+        ],
+      },
+    }]);
+    const annotated = annotateExplicitRlTransientSwitchCircuit(
+      "RL Circuit",
+      "When the switch closes, the current rises as I(t) = I_max(1 - e^{-t/tau}). The inductor is L = 6 H.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    expect(annotated.spec.components).toContainEqual(expect.objectContaining({
+      kind: "switch", state: "open", annotation: "closes at t = 0",
+    }));
+  });
+});
+
+describe("inferStepDownTransformerBlocks", () => {
+  it("creates a primary, core, secondary, and resistive-load schematic from an explicit step-down solution", () => {
+    const blocks = inferStepDownTransformerBlocks(
+      "A step-down transformer has Vp = 240 V, Np = 1200 turns, and Ns = 300 turns. It supplies a 20 Ω resistor.",
+      "For the transformer, $\\frac{V_s}{V_p} = \\frac{N_s}{N_p}$. Therefore $V_s = 60\\text{ V}$.",
+    ) as Array<Record<string, any>>;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ diagramType: "geometry", renderTemplate: "step-down-transformer" });
+    const spec = blocks[0].spec as Record<string, any>;
+    expect(spec.shapes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ shape: "circle" }),
+      expect.objectContaining({ shape: "sine-wave" }),
+      expect.objectContaining({ shape: "rect" }),
+      expect.objectContaining({ shape: "arc" }),
+      expect.objectContaining({ shape: "line", start: [7, 4.75] }),
+      expect.objectContaining({ shape: "line", start: [7, 1.75] }),
+    ]));
+    expect(spec.labels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: "Primary" }),
+      expect.objectContaining({ text: "1200 turns" }),
+      expect.objectContaining({ text: "Secondary" }),
+      expect.objectContaining({ text: "300 turns" }),
+      expect.objectContaining({ text: "Vs = 60 V" }),
+      expect.objectContaining({ text: "R load" }),
+    ]));
+  });
+});
+
+describe("repairExplicitTwoBranchCircuit", () => {
+  it("rebuilds two stated series branches into a closed parallel battery circuit", () => {
+    const blocks = normalizeDiagramBlocks([{
+      diagramType: "circuit",
+      physicsFamily: "electric-circuits",
+      spec: {
+        nodes: Array.from({ length: 8 }, (_, index) => ({ id: `n${index}`, position: [index, 0] })),
+        components: [
+          { id: "r1", kind: "resistor", from: "n1", to: "n2", label: "3 Ohm" },
+          { id: "r2", kind: "resistor", from: "n2", to: "n4", label: "6 Ohm" },
+          { id: "r3", kind: "resistor", from: "n1", to: "n3", label: "4 Ohm" },
+          { id: "r4", kind: "resistor", from: "n3", to: "n5", label: "8 Ohm" },
+        ],
+      },
+    }]);
+    const repaired = repairExplicitTwoBranchCircuit(
+      "Complex DC Circuit with Two Parallel Branches",
+      "Branch 1 consists of R_1 and R_2 in series. Branch 2 consists of R_3 and R_4 in series. The two parallel branches use an 18\\text{ V} battery.",
+      blocks as any,
+    )[0] as Record<string, any>;
+    const components = repaired.spec.components as Array<Record<string, any>>;
+    expect(components).toContainEqual(expect.objectContaining({ kind: "battery", label: "18 V" }));
+    expect(components).toContainEqual(expect.objectContaining({ kind: "wire", from: "join", to: "source-negative" }));
+    expect(components.filter((component) => component.kind === "resistor")).toHaveLength(4);
+    expect(repaired.warnings).toContain("repaired-explicit-two-branch-circuit");
+  });
+});
 
 describe("extractAnchorClaims", () => {
   it("extracts f(x)=y and f(x)~=y anchors from solution prose", () => {

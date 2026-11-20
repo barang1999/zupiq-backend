@@ -1234,6 +1234,10 @@ router.post(
       }
 
       const userId = req.user!.sub;
+      const access = await getEffectiveAccessState(userId);
+      if (!hasEntitlement(access.entitlements, "step_breakdown_explain")) {
+        throw new ForbiddenError("Step-by-step explanations are available with Zupiq Pro.");
+      }
       const session = await getSessionById(session_id.trim(), userId);
       if (!session) {
         throw new ForbiddenError("Session is not available.");
